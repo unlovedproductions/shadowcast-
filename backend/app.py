@@ -34,6 +34,9 @@ from video_renderer import render_short_form_video, render_long_form_video
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
+from social_poster import SocialPoster, get_platform_status
+from analytics_tracker import AnalyticsTracker, create_tracking_link
+from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
 
@@ -687,6 +690,157 @@ def list_files(job_id: str):
                 "type": "video" if fn.endswith(".mp4") else "text" if fn.endswith(".txt") else "json" if fn.endswith(".json") else "zip" if fn.endswith(".zip") else "other",
             })
     return {"job_id": job_id, "files": files}
+
+
+# ── Social Posting ───────────────────────────────────────────────────
+social_poster = SocialPoster()
+analytics = AnalyticsTracker(db_path=str(OUTPUT_BASE / "analytics.json"))
+
+
+@app.get("/api/social/status")
+def social_status():
+    return get_platform_status()
+
+
+class PostRequest(BaseModel):
+    video_path: str
+    caption: str
+    platform: str  # "instagram" or "tiktok"
+    hashtags: List[str] = []
+    dry_run: bool = True
+
+
+@app.post("/api/social/post")
+def social_post(req: PostRequest):
+    try:
+        if req.platform == "instagram":
+            result = social_poster.post_to_instagram(
+                req.video_path, req.caption, req.hashtags
+            )
+        elif req.platform == "tiktok":
+            result = social_poster.post_to_tiktok(
+                req.video_path, req.caption, req.hashtags
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {req.platform}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/social/queue")
+def social_queue():
+    return social_poster.get_queue()
+
+
+class SchedulePostRequest(BaseModel):
+    platform: str
+    video_path: str
+    caption: str
+    hashtags: List[str] = []
+    scheduled_time: str  # ISO format
+
+
+@app.post("/api/social/schedule")
+def schedule_social_post(req: SchedulePostRequest):
+    result = social_poster.schedule_post(
+        req.platform, req.video_path, req.caption,
+        req.hashtags, req.scheduled_time
+    )
+    return result
+
+
+# ── Analytics ────────────────────────────────────────────────────────
+@app.post("/api/analytics/track")
+def track_video(
+    product_name: str = Form(...),
+    hook_type: str = Form(...),
+    format_type: str = Form(...),
+    video_path: str = Form(...),
+    youtube_url: Optional[str] = Form(None),
+):
+    video_id = analytics.track_video(
+        product_name, hook_type, format_type, video_path, youtube_url
+    )
+    return {"video_id": video_id}
+
+
+class MetricRequest(BaseModel):
+    video_id: str
+    metric_type: str
+    value: float
+
+
+@app.post("/api/analytics/record")
+def record_metric(req: MetricRequest):
+    analytics.record_metric(req.video_id, req.metric_type, req.value)
+    return {"status": "recorded"}
+
+
+@app.get("/api/analytics/dashboard")
+def analytics_dashboard():
+    return analytics.generate_dashboard_data()
+
+
+@app.get("/api/analytics/hooks")
+def hook_performance():
+    return analytics.get_hook_performance()
+
+
+@app.get("/api/analytics/formats")
+def format_performance():
+    return analytics.get_format_performance()
+
+
+@app.get("/api/analytics/top")
+def top_performers(metric: str = "views", limit: int = 10):
+    return analytics.get_top_performers(metric, limit)
+
+
+@app.get("/api/analytics/revenue")
+def revenue_report():
+    return analytics.get_revenue_report()
+
+
+@app.get("/api/analytics/export")
+def export_analytics():
+    export_path = str(OUTPUT_BASE / "analytics_export.csv")
+    analytics.export_csv(export_path)
+    return FileResponse(export_path, filename="shadowcast_analytics.csv")
+
+
+@app.get("/api/tracking-link")
+def get_tracking_link(affiliate_url: str, video_id: str, platform: str = "youtube"):
+    return {"tracking_url": create_tracking_link(affiliate_url, video_id, platform)}
+
+
+# ── Background Styles ────────────────────────────────────────────────
+BG_STYLES = [
+    "gradient", "mesh_gradient", "geometric", "circuit", "wave",
+    "bokeh", "noise", "radial", "grid", "abstract"
+]
+
+
+@app.get("/api/bg-styles")
+def list_bg_styles():
+    return {"styles": BG_STYLES}
+
+
+@app.get("/api/bg-preview/{style}")
+def preview_bg(style: str):
+    if style not in BG_STYLES:
+        raise HTTPException(status_code=400, detail=f"Unknown style: {style}")
+    preview_path = OUTPUT_BASE / f"bg_preview_{style}.png"
+    img = generate_background(640, 360, style=style)
+    img = apply_vignette(img, strength=0.4)
+    img.save(str(preview_path))
+    return FileResponse(str(preview_path), media_type="image/png")
+
+
+@app.get("/api/bg-recommend")
+def recommend_bg(content_style: str = "honest_review", hook_type: str = "curiosity"):
+    recommended = get_style_for_content(content_style, hook_type)
+    return {"recommended_style": recommended, "all_styles": BG_STYLES}
 
 
 # ── Serve Frontend ────────────────────────────────────────────────────

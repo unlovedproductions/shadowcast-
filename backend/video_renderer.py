@@ -205,16 +205,23 @@ def render_text_frame(
     if accent_color is None:
         accent_color = BRAND_ACCENT
     
-    # Create gradient background
-    bg_variant = random.choice(["vertical", "radial"])
-    darker = tuple(max(0, c - 10) for c in bg_color)
-    if bg_variant == "vertical":
-        bg_arr = create_gradient_bg(width, height, bg_color, darker)
-    else:
-        lighter_center = tuple(min(255, c + 20) for c in bg_color)
-        bg_arr = create_radial_gradient_bg(width, height, lighter_center, bg_color)
-    
-    bg_img = Image.fromarray(bg_arr, "RGB").convert("RGBA")
+    # Create dynamic background using bg_generator
+    try:
+        from bg_generator import generate_background, apply_vignette, apply_film_grain, get_style_for_content
+        bg_style = random.choice(["gradient", "mesh_gradient", "geometric", "bokeh", "wave", "radial", "noise", "grid", "abstract", "circuit"])
+        bg_img = generate_background(width, height, style=bg_style, accent_color=accent_color)
+        bg_img = apply_vignette(bg_img, strength=0.3)
+        bg_img = bg_img.convert("RGBA")
+    except Exception:
+        # Fallback to original gradient
+        bg_variant = random.choice(["vertical", "radial"])
+        darker = tuple(max(0, c - 10) for c in bg_color)
+        if bg_variant == "vertical":
+            bg_arr = create_gradient_bg(width, height, bg_color, darker)
+        else:
+            lighter_center = tuple(min(255, c + 20) for c in bg_color)
+            bg_arr = create_radial_gradient_bg(width, height, lighter_center, bg_color)
+        bg_img = Image.fromarray(bg_arr, "RGB").convert("RGBA")
     
     # Add particle overlay
     particles = create_particle_overlay(width, height, accent_color, num_particles=12)
