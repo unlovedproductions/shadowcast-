@@ -278,7 +278,7 @@
                 <div class="form-group full"><label>Key Features <span class="req">*</span></label><input id="keyFeatures" value="${esc(state.keyFeatures)}" placeholder="Comma-separated: ANC, 50hr battery, Hi-Res Audio"><span class="hint">Separate each feature with a comma</span></div>
                 <div class="form-group"><label>Price</label><input id="price" value="${esc(state.price)}" placeholder="$79.99"></div>
                 <div class="form-group"><label>Affiliate Link <span class="req">*</span></label><input id="affiliateLink" value="${esc(state.affiliateLink)}" placeholder="https://amzn.to/your-link"></div>
-                <div class="form-group full"><label>Target Keywords</label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization</span></div>
+                <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
                 <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
                 <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
                 <div class="form-group full"><label>Competitor Products</label><input id="competitors" value="${esc(state.competitors)}" placeholder="Comma-separated: AirPods Pro 2, Sony WF-1000XM5"><span class="hint">Used for comparisons, eliminations, and VS battles</span></div>
@@ -596,6 +596,69 @@
         } finally {
             btn.disabled = false; btn.textContent = 'Auto-Fill';
         }
+    }
+
+    async function researchKeywords() {
+        const productName = document.getElementById('productName')?.value?.trim();
+        const niche = document.getElementById('niche')?.value?.trim();
+        const query = productName || niche || '';
+        if (!query) { showToast('Enter a product name or niche first'); return; }
+        const btn = document.getElementById('researchBtn');
+        const results = document.getElementById('keywordResults');
+        btn.disabled = true; btn.textContent = 'Researching...';
+        results.style.display = 'block';
+        results.innerHTML = '<p style="color:var(--pink);font-size:13px;">Fetching YouTube keyword data... (this takes ~30 seconds)</p>';
+        try {
+            const form = new FormData(); form.append('query', query);
+            const res = await fetch('/api/youtube-research', { method: 'POST', body: form });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Research failed'); }
+            const data = await res.json();
+            const d = data.data;
+            // Auto-fill keywords field
+            const tags = d.recommended_tags || [];
+            if (tags.length > 0) {
+                const kwEl = document.getElementById('keywords');
+                if (kwEl) { kwEl.value = tags.join(', '); state.keywords = tags.join(', '); }
+            }
+            // Build results display
+            let html = '<div style="background:var(--bg);border:1px solid var(--bg4);border-radius:8px;padding:14px;">';
+            html += '<p style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:10px;">Keywords auto-filled! Here\'s what YouTube users are searching for:</p>';
+            if (d.autocomplete_suggestions?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Top Autocomplete:</p>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">';
+                d.autocomplete_suggestions.slice(0,10).forEach(s => { html += `<span style="background:var(--bg3);padding:3px 8px;border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;" onclick="appendKeyword('${s.replace(/'/g,"\\'")}')">+ ${s}</span>`; });
+                html += '</div>';
+            }
+            if (d.question_keywords?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Question Keywords (great for titles):</p>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">';
+                d.question_keywords.slice(0,15).forEach(s => { html += `<span style="background:var(--bg3);padding:3px 8px;border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;" onclick="appendKeyword('${s.replace(/'/g,"\\'")}')">+ ${s}</span>`; });
+                html += '</div>';
+            }
+            if (d.recommended_titles?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Suggested Video Titles:</p>';
+                d.recommended_titles.forEach(t => { html += `<p style="font-size:12px;color:var(--text);margin-left:8px;">• ${t}</p>`; });
+            }
+            html += '<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>';
+            html += '</div>';
+            results.innerHTML = html;
+            showToast(`Found ${tags.length} keywords + ${d.long_tail_keywords?.length || 0} long-tail terms!`);
+        } catch (e) {
+            results.innerHTML = `<p style="color:var(--red);font-size:13px;">Error: ${e.message}</p>`;
+            showToast('Keyword research failed');
+        } finally {
+            btn.disabled = false; btn.textContent = '\ud83d\udd0d Research Keywords';
+        }
+    }
+
+    function appendKeyword(kw) {
+        const el = document.getElementById('keywords');
+        if (!el) return;
+        const current = el.value.trim();
+        if (current.toLowerCase().includes(kw.toLowerCase())) { showToast('Already added'); return; }
+        el.value = current ? current + ', ' + kw : kw;
+        state.keywords = el.value;
+        showToast('Added: ' + kw);
     }
 
     function showToast(msg) {

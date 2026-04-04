@@ -25,12 +25,14 @@ from typing import List, Optional
 
 import llm_config
 from amazon_scraper import scrape_amazon_product
+from youtube_research import research_youtube_keywords
 from script_generator import (
     generate_selected_scripts, HOOK_TYPES, HOOK_DESCRIPTIONS,
     CONTENT_STYLES, DEFAULT_CONTENT_STYLE,
 )
 from video_renderer import render_short_form_video, render_long_form_video
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
+from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
 
@@ -415,6 +417,15 @@ def get_content_styles():
     }
 
 
+# ── TTS Providers ────────────────────────────────────────────────────
+@app.get("/api/tts-providers")
+def tts_providers():
+    """Return available TTS providers and their status."""
+    providers = get_tts_providers()
+    best = get_best_tts()
+    return {"providers": providers, "best": best}
+
+
 # ── Amazon Product Scraper ────────────────────────────────────────────
 @app.post("/api/scrape-amazon")
 async def scrape_amazon(url: str = Form(...)):
@@ -439,6 +450,16 @@ async def scrape_amazon(url: str = Form(...)):
         ) if result.get("negative_reviews") else "",
     }
     return {"status": "ok", "data": mapped, "raw": result}
+
+
+# ── YouTube Keyword Research ─────────────────────────────────────────
+@app.post("/api/youtube-research")
+async def youtube_research(query: str = Form(...)):
+    """Research YouTube keywords and get suggestions for a product/niche."""
+    if not query or not query.strip():
+        raise HTTPException(status_code=400, detail="No query provided")
+    result = await research_youtube_keywords(query.strip())
+    return {"status": "ok", "data": result}
 
 
 @app.get("/api/csv-template")
