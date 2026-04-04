@@ -7,3 +7,5 @@ Pillow
 numpy
 gtts
 python-dotenv
+httpx
+beautifulsoup4

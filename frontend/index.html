@@ -263,6 +263,15 @@
     function renderSingleForm() {
         return `<div class="card">
             <h2><span class="num">1</span> Product Information</h2>
+            <div style="background:var(--bg);border:1px solid var(--pink);border-radius:var(--radius);padding:16px;margin-bottom:20px;">
+                <label style="font-size:14px;font-weight:600;color:var(--pink);margin-bottom:8px;display:block;">🔗 Auto-Fill from Amazon URL</label>
+                <div style="display:flex;gap:10px;">
+                    <input id="amazonUrl" style="flex:1;" placeholder="Paste Amazon product URL (e.g., https://www.amazon.com/dp/B09B8V1BM3)">
+                    <button onclick="scrapeAmazon()" class="generate-btn" style="padding:10px 20px;font-size:13px;white-space:nowrap;" id="scrapeBtn">Auto-Fill</button>
+                </div>
+                <span class="hint" style="margin-top:6px;display:block;">Paste any Amazon product URL to auto-fill product name, price, features, reviews, complaints, and praises. Saves 5+ minutes of research per product.</span>
+                <div id="scrapeStatus" style="display:none;margin-top:8px;font-size:13px;"></div>
+            </div>
             <div class="form-grid">
                 <div class="form-group"><label>Product Name <span class="req">*</span></label><input id="productName" value="${esc(state.productName)}" placeholder="e.g., SoundCore Space A40 Earbuds"></div>
                 <div class="form-group"><label>Niche</label><input id="niche" value="${esc(state.niche)}" placeholder="e.g., Tech, Health, Home"></div>
@@ -554,6 +563,40 @@
     function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function escJs(s) { if(!s)return''; return String(s).replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$'); }
     function slugify(t) { return t.trim().toLowerCase().replace(/[^\w\s-]/g,'').replace(/[\s_-]+/g,'_').replace(/^_|_$/g,'').substring(0,60)||'product'; }
+
+    async function scrapeAmazon() {
+        const url = document.getElementById('amazonUrl')?.value?.trim();
+        if (!url) { showToast('Please paste an Amazon product URL'); return; }
+        const btn = document.getElementById('scrapeBtn');
+        const status = document.getElementById('scrapeStatus');
+        btn.disabled = true; btn.textContent = 'Scraping...';
+        status.style.display = 'block'; status.style.color = 'var(--pink)';
+        status.textContent = 'Fetching product data from Amazon...';
+        try {
+            const form = new FormData(); form.append('url', url);
+            const res = await fetch('/api/scrape-amazon', { method: 'POST', body: form });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Scrape failed'); }
+            const data = await res.json();
+            const d = data.data;
+            if (d.product_name) { state.productName = d.product_name; const el = document.getElementById('productName'); if(el) el.value = d.product_name; }
+            if (d.price) { state.price = d.price; const el = document.getElementById('price'); if(el) el.value = d.price; }
+            if (d.key_features) { state.keyFeatures = d.key_features; const el = document.getElementById('keyFeatures'); if(el) el.value = d.key_features; }
+            if (d.common_complaints) { state.commonComplaints = d.common_complaints; const el = document.getElementById('commonComplaints'); if(el) el.value = d.common_complaints; }
+            if (d.common_praises) { state.commonPraises = d.common_praises; const el = document.getElementById('commonPraises'); if(el) el.value = d.common_praises; }
+            let extra = '';
+            if (d.star_rating) extra += `Rating: ${d.star_rating}/5 | `;
+            if (d.number_of_reviews) extra += `${d.number_of_reviews} reviews | `;
+            status.style.color = 'var(--green)';
+            status.textContent = `Auto-filled! ${extra}${d.common_complaints ? 'Complaints found' : 'No complaints found'} | ${d.common_praises ? 'Praises found' : 'No praises found'}`;
+            showToast('Product data auto-filled from Amazon!');
+        } catch (e) {
+            status.style.color = 'var(--red)';
+            status.textContent = `Error: ${e.message}. You can still fill in fields manually.`;
+            showToast('Amazon scrape failed — fill in fields manually');
+        } finally {
+            btn.disabled = false; btn.textContent = 'Auto-Fill';
+        }
+    }
 
     function showToast(msg) {
         const t=document.createElement('div'); t.className='toast'; t.textContent=msg;

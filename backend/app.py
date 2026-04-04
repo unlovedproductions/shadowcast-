@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 import llm_config
+from amazon_scraper import scrape_amazon_product
 from script_generator import (
     generate_selected_scripts, HOOK_TYPES, HOOK_DESCRIPTIONS,
     CONTENT_STYLES, DEFAULT_CONTENT_STYLE,
@@ -412,6 +413,32 @@ def get_content_styles():
         "styles": CONTENT_STYLES,
         "default": DEFAULT_CONTENT_STYLE,
     }
+
+
+# ── Amazon Product Scraper ────────────────────────────────────────────
+@app.post("/api/scrape-amazon")
+async def scrape_amazon(url: str = Form(...)):
+    """Scrape an Amazon product URL to auto-fill product fields."""
+    if not url or not url.strip():
+        raise HTTPException(status_code=400, detail="No URL provided")
+    result = await scrape_amazon_product(url.strip())
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    # Map scraped data to ShadowCast product fields
+    mapped = {
+        "product_name": result.get("product_name", ""),
+        "price": result.get("price", ""),
+        "key_features": ", ".join(result.get("key_features", [])),
+        "star_rating": result.get("star_rating", ""),
+        "number_of_reviews": result.get("number_of_reviews", ""),
+        "common_praises": "\n".join(
+            [f"- {r['title']}: {r['text']}" for r in result.get("positive_reviews", [])]
+        ) if result.get("positive_reviews") else "",
+        "common_complaints": "\n".join(
+            [f"- {r['title']}: {r['text']}" for r in result.get("negative_reviews", [])]
+        ) if result.get("negative_reviews") else "",
+    }
+    return {"status": "ok", "data": mapped, "raw": result}
 
 
 @app.get("/api/csv-template")
