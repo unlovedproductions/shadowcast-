@@ -45,6 +45,14 @@ from sound_design import (
 )
 from scipy.io.wavfile import write as write_wav
 
+from comparison_layouts import (
+    render_vs_split_screen,
+    render_spec_comparison,
+    render_scorecard,
+    render_price_comparison,
+    render_winner_reveal,
+)
+
 from kinetic_effects import (
     create_word_by_word_clip,
     create_typewriter_clip,
@@ -322,6 +330,45 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
     if is_interrupt:
         text_color = accent_color
         text_style = "accent_pop"
+    
+    # ── Comparison layout path (for VS Battle segments) ──
+    layout = seg.get("layout", None)
+    if layout == "vs_split":
+        product_a = seg.get("product_a", "Product A")
+        product_b = seg.get("product_b", "Product B")
+        frame = render_vs_split_screen(width, height, product_a, product_b, accent_color)
+        clip = ImageClip(frame, duration=duration)
+        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        return clip
+    elif layout == "spec_compare":
+        spec_name = seg.get("spec_name", text)
+        value_a = seg.get("value_a", "")
+        value_b = seg.get("value_b", "")
+        winner = seg.get("winner", "a")
+        frame = render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color)
+        clip = ImageClip(frame, duration=duration)
+        clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
+        return clip
+    elif layout == "scorecard":
+        product_a = seg.get("product_a", "Product A")
+        product_b = seg.get("product_b", "Product B")
+        scores = seg.get("scores", [])
+        frame = render_scorecard(width, height, product_a, product_b, scores, accent_color)
+        clip = ImageClip(frame, duration=duration)
+        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+        return clip
+    elif layout == "price_compare":
+        products = seg.get("price_products", [])
+        frame = render_price_comparison(width, height, products, accent_color)
+        clip = ImageClip(frame, duration=duration)
+        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        return clip
+    elif layout == "winner_reveal":
+        winner_name = seg.get("winner_name", text)
+        frame = render_winner_reveal(width, height, winner_name, accent_color)
+        clip = ImageClip(frame, duration=duration)
+        clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
+        return clip
     
     # ── Kinetic typography path ──
     if animation == "word_by_word":
