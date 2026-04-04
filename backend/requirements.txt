@@ -9,3 +9,4 @@ gtts
 python-dotenv
 httpx
 beautifulsoup4
+scipy

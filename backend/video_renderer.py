@@ -36,6 +36,15 @@ from brand_overlays import (
     render_comment_prompt,
     render_subscribe_card,
 )
+from sound_design import (
+    generate_background_music,
+    generate_sfx,
+    mix_audio,
+    add_audio_to_video,
+    SAMPLE_RATE as AUDIO_SAMPLE_RATE,
+)
+from scipy.io.wavfile import write as write_wav
+
 from kinetic_effects import (
     create_word_by_word_clip,
     create_typewriter_clip,
@@ -514,10 +523,11 @@ def render_short_form_video(
     
     final_with_overlays = CompositeVideoClip(overlay_layers)
     
-    # Write output
+    # Write video (without audio first)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    video_only_path = output_path.replace(".mp4", "_video_only.mp4")
     final_with_overlays.write_videofile(
-        output_path,
+        video_only_path,
         fps=FPS,
         codec="libx264",
         audio=False,
@@ -525,6 +535,55 @@ def render_short_form_video(
         threads=4,
         logger=None,
     )
+    
+    # ── Generate and add audio ──
+    try:
+        video_duration = final.duration
+        
+        # Generate background music
+        bg_music = generate_background_music(video_duration, mood="energetic", tempo=120)
+        
+        # Generate SFX timed to segment transitions
+        sfx_list = []
+        current_time = 2.0  # After intro
+        for seg in segments:
+            seg_dur = seg.get("duration", 2.5)
+            anim = seg.get("animation", "fade_in")
+            trans = seg.get("transition_to_next", "fade")
+            
+            # Text reveal SFX
+            if anim in ("word_by_word", "typewriter"):
+                sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.4), current_time + 0.1))
+            elif anim in ("impact_scale", "shake"):
+                sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.5), current_time))
+            elif anim in ("slide_up", "slide_left"):
+                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), current_time))
+            
+            # Transition SFX
+            trans_time = current_time + seg_dur
+            if trans in ("glitch", "flash"):
+                sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.5), trans_time - 0.2))
+            elif trans == "swipe":
+                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), trans_time - 0.1))
+            
+            current_time += seg_dur
+        
+        # Mix audio
+        audio_path = output_path.replace(".mp4", "_audio.wav")
+        mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
+        
+        # Combine video + audio
+        add_audio_to_video(video_only_path, audio_path, output_path)
+        
+        # Clean up temp files
+        if os.path.exists(video_only_path):
+            os.remove(video_only_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+    except Exception as e:
+        print(f"Warning: Audio generation failed ({e}), using video without audio")
+        if os.path.exists(video_only_path):
+            os.rename(video_only_path, output_path)
     
     # Cleanup
     final_with_overlays.close()
@@ -705,10 +764,11 @@ def render_long_form_video(
     
     final_with_overlays = CompositeVideoClip(overlay_layers)
     
-    # Write output
+    # Write video (without audio first)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    video_only_path = output_path.replace(".mp4", "_video_only.mp4")
     final_with_overlays.write_videofile(
-        output_path,
+        video_only_path,
         fps=FPS,
         codec="libx264",
         audio=False,
@@ -716,6 +776,65 @@ def render_long_form_video(
         threads=4,
         logger=None,
     )
+    
+    # ── Generate and add audio ──
+    try:
+        video_duration = final.duration
+        
+        # Generate background music (chill for long-form)
+        bg_music = generate_background_music(video_duration, mood="chill", tempo=80)
+        
+        # Generate SFX timed to chapter transitions and key moments
+        sfx_list = []
+        current_time = 3.0  # After intro
+        
+        for ch_idx, chapter in enumerate(chapters):
+            # Chapter transition ding
+            sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
+            current_time += 2.5  # Chapter title card duration
+            
+            for seg in chapter.get("segments", []):
+                seg_dur = seg.get("duration", 4.0)
+                anim = seg.get("animation", "fade_in")
+                trans = seg.get("transition_to_next", "fade")
+                
+                # Text reveal SFX
+                if anim in ("word_by_word", "typewriter"):
+                    sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
+                elif anim in ("impact_scale", "shake"):
+                    sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
+                elif anim in ("slide_up", "slide_left"):
+                    sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
+                elif anim == "highlight_sweep":
+                    sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
+                
+                # Transition SFX
+                trans_time = current_time + seg_dur
+                if trans in ("glitch", "flash"):
+                    sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
+                elif trans == "swipe":
+                    sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
+                elif trans == "zoom":
+                    sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
+                
+                current_time += seg_dur
+        
+        # Mix audio
+        audio_path = output_path.replace(".mp4", "_audio.wav")
+        mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
+        
+        # Combine video + audio
+        add_audio_to_video(video_only_path, audio_path, output_path)
+        
+        # Clean up temp files
+        if os.path.exists(video_only_path):
+            os.remove(video_only_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+    except Exception as e:
+        print(f"Warning: Audio generation failed ({e}), using video without audio")
+        if os.path.exists(video_only_path):
+            os.rename(video_only_path, output_path)
     
     # Cleanup
     final_with_overlays.close()
