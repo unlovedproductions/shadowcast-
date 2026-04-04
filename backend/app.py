@@ -32,6 +32,7 @@ from script_generator import (
 )
 from video_renderer import render_short_form_video, render_long_form_video
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
+from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
@@ -279,6 +280,46 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
             step += 1
             job["progress"] = int(step / total_steps * 100)
+
+    # Phase 4: Thumbnails
+    job["current_step"] = f"[{product['product_name']}] Generating thumbnails..."
+    for hook_type in hook_types:
+        try:
+            content_style_name = product.get('content_style', 'honest_review')
+            thumb_set = generate_thumbnail_set(
+                product.get('product_name', 'Product'),
+                hook_type,
+                content_style_name,
+                keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
+            )
+            for variant_key, thumb_img in thumb_set.items():
+                # Add badge based on content style
+                badge_text = None
+                if content_style_name == 'honest_review':
+                    badge_text = 'HONEST REVIEW'
+                elif content_style_name == 'elimination_round':
+                    badge_text = 'ELIMINATION'
+                elif content_style_name == 'worth_it_or_waste':
+                    badge_text = 'WORTH IT?'
+                elif content_style_name == 'budget_challenge':
+                    badge_text = 'BUDGET PICK'
+                elif content_style_name == 'vs_battle':
+                    badge_text = 'VS BATTLE'
+                
+                if badge_text:
+                    thumb_img = add_badge(thumb_img, badge_text)
+                
+                thumb_fname = f"{slug}_{hook_type}_thumbnail_{variant_key}.png"
+                thumb_img.save(str(product_dir / thumb_fname))
+                
+                if hook_type not in product_results["hooks"]:
+                    product_results["hooks"][hook_type] = {}
+                if "thumbnails" not in product_results["hooks"][hook_type]:
+                    product_results["hooks"][hook_type]["thumbnails"] = {}
+                product_results["hooks"][hook_type]["thumbnails"][variant_key] = thumb_fname
+        except Exception as e:
+            job["errors"].append(f"[{product['product_name']}] Thumbnails ({hook_type}): {str(e)}")
+            traceback.print_exc()
 
     # Save combined posting package
     try:
