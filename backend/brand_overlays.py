@@ -8,8 +8,10 @@ BG_COLOR = (10, 10, 15)  # Near black
 ACCENT_COLOR = (196, 80, 122)  # Dark pink #c4507a
 TEXT_COLOR = (255, 255, 255)  # White
 
-# Font Paths
-FONT_DIR = "./assets"
+# Asset Paths
+ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+FONT_DIR = ASSET_DIR
+LOGO_PATH = os.path.join(ASSET_DIR, "logo.png")
 MONTSERRAT_BOLD = os.path.join(FONT_DIR, "Montserrat-Bold.ttf")
 MONTSERRAT_BLACK = os.path.join(FONT_DIR, "Montserrat-Black.ttf")
 MONTSERRAT_REGULAR = os.path.join(FONT_DIR, "Montserrat-Regular.ttf")
@@ -39,13 +41,37 @@ def numpy_to_pil(arr):
 
 # --- Branded Visual Package Functions ---
 
+def _load_logo(max_size):
+    """Load the Unloved Productions logo, resized to fit max_size."""
+    if os.path.exists(LOGO_PATH):
+        try:
+            logo = Image.open(LOGO_PATH).convert('RGBA')
+            logo.thumbnail((max_size, max_size), Image.LANCZOS)
+            return logo
+        except Exception as e:
+            print(f"Warning: Could not load logo: {e}")
+    return None
+
+
 def render_branded_intro(width, height, series_name="", product_name=""):
-    """Returns numpy array frame for branded intro. Shows 'ShadowCast' logo text with dark pink glow on black, optional series name below, 2-second card."""
-    img = Image.new('RGB', (width, height), BG_COLOR)
+    """Returns numpy array frame for branded intro. Shows Unloved Productions logo + ShadowCast text with dark pink glow on black."""
+    img = Image.new('RGBA', (width, height), BG_COLOR + (255,))
     draw = ImageDraw.Draw(img)
 
-    # ShadowCast Text — scale to fit within 80% of frame width
-    sc_font_size = int(height * 0.15)
+    # Load and place the company logo at top center
+    logo_size = int(height * 0.30)
+    logo = _load_logo(logo_size)
+    logo_bottom_y = int(height * 0.08)  # top margin
+    if logo:
+        logo_x = (width - logo.width) // 2
+        logo_y = logo_bottom_y
+        img.paste(logo, (logo_x, logo_y), logo)
+        logo_bottom_y = logo_y + logo.height + int(height * 0.02)
+    else:
+        logo_bottom_y = int(height * 0.15)
+
+    # ShadowCast Text below logo — scale to fit within 80% of frame width
+    sc_font_size = int(height * 0.10)
     sc_font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, sc_font_size)
     sc_text = "ShadowCast"
     sc_text_bbox = draw.textbbox((0, 0), sc_text, font=sc_font)
@@ -58,7 +84,7 @@ def render_branded_intro(width, height, series_name="", product_name=""):
         sc_text_width = sc_text_bbox[2] - sc_text_bbox[0]
     sc_text_height = sc_text_bbox[3] - sc_text_bbox[1]
     sc_text_x = (width - sc_text_width) / 2
-    sc_text_y = (height - sc_text_height) / 2
+    sc_text_y = logo_bottom_y
 
     # Glow effect (multiple layers of blurred text)
     glow_color = ACCENT_COLOR + (150,)
@@ -67,42 +93,61 @@ def render_branded_intro(width, height, series_name="", product_name=""):
         glow_draw = ImageDraw.Draw(glow_img)
         glow_draw.text((sc_text_x, sc_text_y), sc_text, font=sc_font, fill=glow_color)
         glow_img = glow_img.filter(ImageFilter.GaussianBlur(radius=i))
-        img = Image.alpha_composite(img.convert('RGBA'), glow_img).convert('RGB')
+        img = Image.alpha_composite(img, glow_img)
 
     # Main ShadowCast text
-    draw = ImageDraw.Draw(img) # Re-initialize draw after alpha_composite
+    draw = ImageDraw.Draw(img)
     draw.text((sc_text_x, sc_text_y), sc_text, font=sc_font, fill=TEXT_COLOR)
 
-    # Series Name / Product Name
+    # Series Name / Product Name below ShadowCast — scale to fit
     if series_name or product_name:
         sub_font_size = int(height * 0.04)
         sub_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, sub_font_size)
         sub_text = f"{series_name} - {product_name}" if series_name and product_name else series_name or product_name
         sub_text_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
         sub_text_width = sub_text_bbox[2] - sub_text_bbox[0]
+        max_sub_width = int(width * 0.85)
+        while sub_text_width > max_sub_width and sub_font_size > 14:
+            sub_font_size -= 2
+            sub_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, sub_font_size)
+            sub_text_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
+            sub_text_width = sub_text_bbox[2] - sub_text_bbox[0]
         sub_text_x = (width - sub_text_width) / 2
         sub_text_y = sc_text_y + sc_text_height + int(height * 0.02)
         draw.text((sub_text_x, sub_text_y), sub_text, font=sub_font, fill=TEXT_COLOR)
 
-    # Motto
+    # Motto at bottom
     motto_font_size = int(height * 0.03)
     motto_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, motto_font_size)
     motto_text = "Forged in Passion"
     motto_text_bbox = draw.textbbox((0, 0), motto_text, font=motto_font)
     motto_text_width = motto_text_bbox[2] - motto_text_bbox[0]
     motto_text_x = (width - motto_text_width) / 2
-    motto_text_y = height - int(height * 0.05) - motto_text_bbox[3] # Position from bottom
+    motto_text_y = height - int(height * 0.05) - motto_text_bbox[3]
     draw.text((motto_text_x, motto_text_y), motto_text, font=motto_font, fill=ACCENT_COLOR)
 
-    return pil_to_numpy(img)
+    return pil_to_numpy(img.convert('RGB'))
 
 def render_branded_outro(width, height):
-    """Returns numpy array frame for branded outro. Shows 'Subscribe for more honest reviews' + 'ShadowCast' branding."""
-    img = Image.new('RGB', (width, height), BG_COLOR)
+    """Returns numpy array frame for branded outro. Shows logo + 'Subscribe for more honest reviews' + 'ShadowCast' branding."""
+    img = Image.new('RGBA', (width, height), BG_COLOR + (255,))
+    draw = ImageDraw.Draw(img)
+
+    # Logo at top
+    logo_size = int(height * 0.20)
+    logo = _load_logo(logo_size)
+    content_start_y = int(height * 0.08)
+    if logo:
+        logo_x = (width - logo.width) // 2
+        img.paste(logo, (logo_x, content_start_y), logo)
+        content_start_y = content_start_y + logo.height + int(height * 0.03)
+    else:
+        content_start_y = int(height * 0.15)
+
     draw = ImageDraw.Draw(img)
 
     # Subscribe Text — scale to fit within 80% of frame width
-    sub_msg_font_size = int(height * 0.08)
+    sub_msg_font_size = int(height * 0.07)
     sub_msg_font = load_font(MONTSERRAT_BOLD, NOTO_SANS_BOLD, sub_msg_font_size)
     sub_msg_text = "Subscribe for more honest reviews"
     sub_msg_text_bbox = draw.textbbox((0, 0), sub_msg_text, font=sub_msg_font)
@@ -115,11 +160,11 @@ def render_branded_outro(width, height):
         sub_msg_text_width = sub_msg_text_bbox[2] - sub_msg_text_bbox[0]
     sub_msg_text_height = sub_msg_text_bbox[3] - sub_msg_text_bbox[1]
     sub_msg_x = (width - sub_msg_text_width) / 2
-    sub_msg_y = height * 0.35 - sub_msg_text_height / 2
+    sub_msg_y = content_start_y
     draw.text((sub_msg_x, sub_msg_y), sub_msg_text, font=sub_msg_font, fill=TEXT_COLOR)
 
     # ShadowCast Branding — scale to fit within 80% of frame width
-    sc_font_size = int(height * 0.12)
+    sc_font_size = int(height * 0.10)
     sc_font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, sc_font_size)
     sc_text = "ShadowCast"
     sc_text_bbox = draw.textbbox((0, 0), sc_text, font=sc_font)
@@ -131,7 +176,7 @@ def render_branded_outro(width, height):
         sc_text_width = sc_text_bbox[2] - sc_text_bbox[0]
     sc_text_height = sc_text_bbox[3] - sc_text_bbox[1]
     sc_text_x = (width - sc_text_width) / 2
-    sc_text_y = height * 0.65 - sc_text_height / 2
+    sc_text_y = sub_msg_y + sub_msg_text_height + int(height * 0.05)
     draw.text((sc_text_x, sc_text_y), sc_text, font=sc_font, fill=ACCENT_COLOR)
 
     # Unloved Productions
@@ -144,7 +189,17 @@ def render_branded_outro(width, height):
     prod_text_y = sc_text_y + sc_text_height + int(height * 0.01)
     draw.text((prod_text_x, prod_text_y), prod_text, font=prod_font, fill=TEXT_COLOR)
 
-    return pil_to_numpy(img)
+    # Motto at bottom
+    motto_font_size = int(height * 0.025)
+    motto_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, motto_font_size)
+    motto_text = "Forged in Passion"
+    motto_text_bbox = draw.textbbox((0, 0), motto_text, font=motto_font)
+    motto_text_width = motto_text_bbox[2] - motto_text_bbox[0]
+    motto_text_x = (width - motto_text_width) / 2
+    motto_text_y = height - int(height * 0.05) - motto_text_bbox[3]
+    draw.text((motto_text_x, motto_text_y), motto_text, font=motto_font, fill=ACCENT_COLOR)
+
+    return pil_to_numpy(img.convert('RGB'))
 
 def render_watermark_overlay(width, height):
     """Returns RGBA PIL Image with semi-transparent 'SC' watermark in bottom-right corner."""
