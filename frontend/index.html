@@ -157,6 +157,78 @@
 
         .toast { position: fixed; bottom: 24px; right: 24px; background: var(--green); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 200; animation: fadeInUp .3s ease; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Navigation */
+        .nav-bar { display: flex; gap: 0; border-bottom: 2px solid var(--bg3); margin-bottom: 24px; }
+        .nav-item { padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; }
+        .nav-item:hover { color: var(--text); }
+        .nav-item.active { color: var(--pink); border-bottom-color: var(--pink); }
+        .nav-item .nav-badge { background: var(--pink); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 6px; }
+
+        /* Dashboard Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 20px; text-align: center; }
+        .stat-card .stat-value { font-size: 32px; font-weight: 700; color: var(--pink); }
+        .stat-card .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card .stat-sub { font-size: 11px; color: var(--text2); margin-top: 6px; }
+        .stat-card.green .stat-value { color: var(--green); }
+        .stat-card.blue .stat-value { color: var(--blue); }
+        .stat-card.purple .stat-value { color: var(--purple); }
+
+        /* Performance Table */
+        .perf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .perf-table th { background: var(--bg3); color: var(--text2); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+        .perf-table td { padding: 10px 14px; border-bottom: 1px solid var(--bg3); }
+        .perf-table tr:hover td { background: var(--bg3); }
+        .perf-bar { height: 8px; background: var(--bg4); border-radius: 4px; overflow: hidden; min-width: 80px; }
+        .perf-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--pink), var(--pink-light)); }
+
+        /* Social Posting */
+        .platform-card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 20px; display: flex; align-items: center; gap: 16px; }
+        .platform-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; }
+        .platform-icon.ig { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: #fff; }
+        .platform-icon.tt { background: #000; color: #fff; border: 1px solid #333; }
+        .platform-info { flex: 1; }
+        .platform-info h3 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+        .platform-info .status { font-size: 12px; }
+        .status-configured { color: var(--green); }
+        .status-not-configured { color: var(--red); }
+        .platform-actions { display: flex; gap: 8px; }
+
+        .queue-item { background: var(--bg); border: 1px solid var(--bg3); border-radius: 8px; padding: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; }
+        .queue-item .qi-platform { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; }
+        .queue-item .qi-platform.ig { background: #dc2743; color: #fff; }
+        .queue-item .qi-platform.tt { background: #000; color: #fff; }
+        .queue-item .qi-info { flex: 1; }
+        .queue-item .qi-info .qi-caption { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+        .queue-item .qi-info .qi-time { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--text2); }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+        .empty-state p { font-size: 14px; }
+        .empty-state .empty-hint { font-size: 12px; margin-top: 8px; opacity: .6; }
+
+        .metric-input-row { display: flex; gap: 10px; align-items: end; margin-bottom: 12px; }
+        .metric-input-row .form-group { flex: 1; margin-bottom: 0; }
+        .metric-input-row button { height: 40px; white-space: nowrap; }
+
+        /* Nav Buttons */
+        .nav-btn { padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text2); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; display: flex; align-items: center; gap: 6px; }
+        .nav-btn:hover { color: var(--text); }
+        .nav-btn.active { color: var(--pink); border-bottom-color: var(--pink); }
+        .nav-icon { font-size: 16px; }
+
+        /* Stat Grid */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+
+        /* Analytics Table */
+        .analytics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .analytics-table th { background: var(--bg3); color: var(--text2); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+        .analytics-table td { padding: 10px 14px; border-bottom: 1px solid var(--bg3); }
+        .analytics-table tr:hover td { background: rgba(196,80,122,.05); }
+
+        /* Hook Badge */
+        .hook-badge { background: var(--pink-glow); color: var(--pink); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -194,6 +266,16 @@
         results: null, batchResults: null, errors: [],
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0,
+        // Navigation
+        navPage: 'generate',
+        // Analytics
+        analyticsData: null, analyticsLoading: false,
+        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: '',
+        metricVideoId: '', metricType: 'views', metricValue: '',
+        // Social
+        socialStatus: null, socialLoading: false,
+        postingQueue: [], queueLoading: false,
+        socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
     };
 
     const hooks = [
@@ -221,9 +303,16 @@
     function render() {
         const app = document.getElementById('app');
         let html = renderHeader() + '<div class="container">';
-        if (state.page === 'form') html += renderForm();
-        else if (state.page === 'progress') html += renderProgress();
-        else html += renderResults();
+        html += renderNavBar();
+        if (state.navPage === 'generate') {
+            if (state.page === 'form') html += renderForm();
+            else if (state.page === 'progress') html += renderProgress();
+            else html += renderResults();
+        } else if (state.navPage === 'analytics') {
+            html += renderAnalyticsPage();
+        } else if (state.navPage === 'social') {
+            html += renderSocialPage();
+        }
         html += '</div>';
         html += renderFooter();
         if (state.showSettings) html += renderSettingsModal();
@@ -532,6 +621,249 @@
         </div>`:''}`;
     }
 
+    function renderNavBar() {
+        return `<div class="nav-bar">
+            <button class="nav-btn ${state.navPage==='generate'?'active':''}" onclick="setNavPage('generate')">
+                <span class="nav-icon">🎬</span> Generate
+            </button>
+            <button class="nav-btn ${state.navPage==='analytics'?'active':''}" onclick="setNavPage('analytics')">
+                <span class="nav-icon">📊</span> Analytics
+            </button>
+            <button class="nav-btn ${state.navPage==='social'?'active':''}" onclick="setNavPage('social')">
+                <span class="nav-icon">📱</span> Social Posting
+            </button>
+        </div>`;
+    }
+
+    function renderAnalyticsPage() {
+        return `
+        <div class="card">
+            <h2>📊 Analytics Dashboard</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Track video performance, compare hook types, and find your top converters.</p>
+            <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+                <button class="btn-primary" onclick="loadDashboard()" ${state.analyticsLoading?'disabled':''}>${state.analyticsLoading?'Loading...':'Load Dashboard'}</button>
+                <button class="btn-sm btn-template" onclick="exportAnalytics()">Export CSV</button>
+            </div>
+        </div>
+
+        ${state.analyticsData ? renderDashboardData() : ''}
+
+        <div class="card">
+            <h2>📝 Track a Video</h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Register a new video for tracking after you upload it to YouTube.</p>
+            <div class="form-grid">
+                <div class="form-group"><label>Video ID / Title</label><input id="trackVideoId" value="${esc(state.trackVideoId)}" placeholder="e.g., my_earbuds_review_v1"></div>
+                <div class="form-group"><label>Product Name</label><input id="trackProduct" value="${esc(state.trackProduct)}" placeholder="e.g., SoundCore Space A40"></div>
+                <div class="form-group"><label>Hook Type</label>
+                    <select id="trackHook">
+                        <option value="">Select hook...</option>
+                        ${hooks.map(h=>`<option value="${h.id}" ${state.trackHook===h.id?'selected':''}>${h.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Format</label>
+                    <select id="trackFormat">
+                        <option value="short_form" ${state.trackFormat==='short_form'?'selected':''}>Short Form</option>
+                        <option value="long_form" ${state.trackFormat==='long_form'?'selected':''}>Long Form</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="trackVideo()" style="margin-top:10px;">Track Video</button>
+        </div>
+
+        <div class="card">
+            <h2>📈 Record Metrics</h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Update performance data for a tracked video.</p>
+            <div class="form-grid">
+                <div class="form-group"><label>Video ID</label><input id="metricVideoId" value="${esc(state.metricVideoId)}" placeholder="Video ID from above"></div>
+                <div class="form-group"><label>Metric Type</label>
+                    <select id="metricType">
+                        <option value="views" ${state.metricType==='views'?'selected':''}>Views</option>
+                        <option value="likes" ${state.metricType==='likes'?'selected':''}>Likes</option>
+                        <option value="comments" ${state.metricType==='comments'?'selected':''}>Comments</option>
+                        <option value="ctr" ${state.metricType==='ctr'?'selected':''}>CTR (%)</option>
+                        <option value="affiliate_clicks" ${state.metricType==='affiliate_clicks'?'selected':''}>Affiliate Clicks</option>
+                        <option value="revenue" ${state.metricType==='revenue'?'selected':''}>Revenue ($)</option>
+                        <option value="subscribers_gained" ${state.metricType==='subscribers_gained'?'selected':''}>Subscribers Gained</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Value</label><input id="metricValue" type="number" value="${esc(state.metricValue)}" placeholder="e.g., 1500"></div>
+            </div>
+            <button class="btn-primary" onclick="recordMetric()" style="margin-top:10px;">Record Metric</button>
+        </div>
+        `;
+    }
+
+    function renderDashboardData() {
+        const d = state.analyticsData;
+        if (!d) return '';
+        const s = d.summary || {};
+        let html = '';
+
+        // Summary cards
+        html += `<div class="card">
+            <h2>Overview</h2>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="stat-value">${s.total_videos||0}</div><div class="stat-label">Videos Tracked</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_views||0).toLocaleString()}</div><div class="stat-label">Total Views</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</div><div class="stat-label">Total Revenue</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_affiliate_clicks||0).toLocaleString()}</div><div class="stat-label">Affiliate Clicks</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.avg_ctr||0).toFixed(1)}%</div><div class="stat-label">Avg CTR</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.avg_conversion_rate||0).toFixed(2)}%</div><div class="stat-label">Avg Conversion</div></div>
+            </div>
+        </div>`;
+
+        // Hook performance
+        const hp = d.hook_performance || [];
+        if (hp.length) {
+            html += `<div class="card">
+                <h2>Hook Performance Comparison</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Hook Type</th><th>Videos</th><th>Avg Views</th><th>Avg CTR</th><th>Avg Revenue</th><th>Avg Conversion</th></tr>
+                    ${hp.map(h=>`<tr>
+                        <td><span class="hook-badge">${esc(h.hook||h.hook_type||'')}</span></td>
+                        <td>${h.count||h.video_count||0}</td>
+                        <td>${(h.avg_views||0).toLocaleString()}</td>
+                        <td>${(h.avg_ctr||0).toFixed(1)}%</td>
+                        <td>${(h.avg_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                        <td>${(h.avg_conversion||h.avg_conversion_rate||0).toFixed(2)}%</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Format performance
+        const fp = d.format_performance || [];
+        if (fp.length) {
+            html += `<div class="card">
+                <h2>Format Performance (Short vs Long)</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Format</th><th>Videos</th><th>Avg Views</th><th>Avg CTR</th><th>Avg Revenue</th></tr>
+                    ${fp.map(f=>`<tr>
+                        <td>${esc(f.format||'')}</td>
+                        <td>${f.count||f.video_count||0}</td>
+                        <td>${(f.avg_views||0).toLocaleString()}</td>
+                        <td>${(f.avg_ctr||0).toFixed(1)}%</td>
+                        <td>${(f.avg_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Top revenue videos
+        const tr = d.top_revenue_videos || [];
+        if (tr.length) {
+            html += `<div class="card">
+                <h2>💰 Top Revenue Videos</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Revenue</th><th>Views</th></tr>
+                    ${tr.map((v,i)=>`<tr>
+                        <td>${i+1}</td>
+                        <td>${esc(v.video_id||'')}</td>
+                        <td>${esc(v.product||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td style="color:var(--green);font-weight:700;">${(v.total_revenue||v.revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                        <td>${(v.total_views||v.views||0).toLocaleString()}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Top conversion videos
+        const tc = d.top_conversion_videos || [];
+        if (tc.length) {
+            html += `<div class="card">
+                <h2>🎯 Top Converting Videos</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Conversion Rate</th><th>Clicks</th></tr>
+                    ${tc.map((v,i)=>`<tr>
+                        <td>${i+1}</td>
+                        <td>${esc(v.video_id||'')}</td>
+                        <td>${esc(v.product||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td style="color:var(--pink);font-weight:700;">${(v.conversion_rate||0).toFixed(2)}%</td>
+                        <td>${(v.total_affiliate_clicks||v.clicks||0).toLocaleString()}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        return html;
+    }
+
+    function renderSocialPage() {
+        return `
+        <div class="card">
+            <h2>📱 Social Media Posting</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Post your videos to Instagram Reels and TikTok, or schedule them for later.</p>
+            <div style="display:flex;gap:10px;margin-bottom:20px;">
+                <button class="btn-primary" onclick="loadSocialStatus()" ${state.socialLoading?'disabled':''}>${state.socialLoading?'Loading...':'Check Platform Status'}</button>
+                <button class="btn-sm btn-template" onclick="loadPostingQueue()">View Queue</button>
+            </div>
+        </div>
+
+        ${state.socialStatus ? renderSocialStatus() : ''}
+
+        <div class="card">
+            <h2>📤 Post a Video</h2>
+            <div class="form-grid">
+                <div class="form-group"><label>Platform</label>
+                    <select id="socialPlatform" onchange="state.socialPostPlatform=this.value">
+                        <option value="instagram" ${state.socialPostPlatform==='instagram'?'selected':''}>Instagram Reels</option>
+                        <option value="tiktok" ${state.socialPostPlatform==='tiktok'?'selected':''}>TikTok</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Video File Path</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file (from output folder)"></div>
+                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Your post caption with CTA and affiliate link...">${esc(state.socialPostCaption)}</textarea></div>
+                <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review #tech (comma or space separated)"></div>
+                <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"><span class="hint">Leave empty to post immediately</span></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:12px;">
+                <button class="btn-primary" onclick="postToSocial(false)">Post Now</button>
+                <button class="btn-sm btn-template" onclick="postToSocial(true)">Schedule Post</button>
+                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run (Test)</button>
+            </div>
+        </div>
+
+        ${state.postingQueue.length ? renderPostingQueue() : ''}
+        `;
+    }
+
+    function renderSocialStatus() {
+        const s = state.socialStatus;
+        if (!s) return '';
+        return `<div class="card">
+            <h2>Platform Status</h2>
+            <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);">
+                <div class="stat-card">
+                    <div class="stat-label">Instagram</div>
+                    <div class="stat-value" style="font-size:16px;color:${s.instagram==='Configured'?'var(--green)':'var(--red)'}">${esc(s.instagram||'Unknown')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">TikTok</div>
+                    <div class="stat-value" style="font-size:16px;color:${s.tiktok==='Configured'?'var(--green)':'var(--red)'}">${esc(s.tiktok||'Unknown')}</div>
+                </div>
+            </div>
+            <p style="font-size:11px;color:var(--text2);margin-top:10px;">Set API credentials in your .env file. See SETUP_GUIDE.md for details.</p>
+        </div>`;
+    }
+
+    function renderPostingQueue() {
+        return `<div class="card">
+            <h2>📋 Posting Queue (${state.postingQueue.length} items)</h2>
+            <div style="overflow-x:auto;"><table class="analytics-table">
+                <tr><th>#</th><th>Platform</th><th>Video</th><th>Scheduled</th><th>Status</th></tr>
+                ${state.postingQueue.map((p,i)=>`<tr>
+                    <td>${i+1}</td>
+                    <td>${esc(p.platform||'')}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(p.video_path||'')}</td>
+                    <td>${p.scheduled_time?new Date(p.scheduled_time).toLocaleString():'Immediate'}</td>
+                    <td style="color:${p.posted?'var(--green)':'var(--pink)'}">${p.posted?'Posted':'Pending'}</td>
+                </tr>`).join('')}
+            </table></div>
+            <button class="btn-primary" onclick="processQueue()" style="margin-top:12px;">Process Queue Now</button>
+        </div>`;
+    }
+
     function renderFooter() {
         return `<div class="footer">
             <div class="company">Unloved Productions</div>
@@ -699,6 +1031,116 @@
         });
     }
     function downloadFile(filename) { window.open(`${API}/download/${state.jobId}/${filename}`,'_blank'); }
+
+    // ── Navigation ──────────────────────────────────────────
+    function setNavPage(p) { state.navPage = p; render(); }
+
+    // ── Analytics Actions ───────────────────────────────────
+    async function loadDashboard() {
+        state.analyticsLoading = true; render();
+        try {
+            const res = await fetch(`${API}/analytics/dashboard`);
+            const data = await res.json();
+            state.analyticsData = data;
+        } catch(e) { showToast('Error loading dashboard: ' + e.message); }
+        state.analyticsLoading = false; render();
+    }
+
+    async function trackVideo() {
+        const videoId = document.getElementById('trackVideoId')?.value?.trim();
+        const product = document.getElementById('trackProduct')?.value?.trim();
+        const hook = document.getElementById('trackHook')?.value;
+        const format = document.getElementById('trackFormat')?.value;
+        if (!videoId || !product) { showToast('Video ID and Product Name are required'); return; }
+        try {
+            const res = await fetch(`${API}/analytics/track`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ video_id: videoId, product: product, hook_type: hook, format: format })
+            });
+            if (res.ok) { showToast('Video tracked successfully!'); state.trackVideoId=''; state.trackProduct=''; render(); }
+            else { const err = await res.json(); showToast('Error: ' + (err.detail||'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function recordMetric() {
+        const videoId = document.getElementById('metricVideoId')?.value?.trim();
+        const metricType = document.getElementById('metricType')?.value;
+        const value = parseFloat(document.getElementById('metricValue')?.value);
+        if (!videoId || isNaN(value)) { showToast('Video ID and Value are required'); return; }
+        try {
+            const res = await fetch(`${API}/analytics/record`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ video_id: videoId, metric_type: metricType, value: value })
+            });
+            if (res.ok) { showToast('Metric recorded!'); state.metricValue=''; render(); }
+            else { const err = await res.json(); showToast('Error: ' + (err.detail||'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function exportAnalytics() {
+        try {
+            const res = await fetch(`${API}/analytics/export`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'shadowcast_analytics.csv'; a.click();
+            URL.revokeObjectURL(url); showToast('CSV exported!');
+        } catch(e) { showToast('Error exporting: ' + e.message); }
+    }
+
+    // ── Social Actions ──────────────────────────────────────
+    async function loadSocialStatus() {
+        state.socialLoading = true; render();
+        try {
+            const res = await fetch(`${API}/social/status`);
+            state.socialStatus = await res.json();
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.socialLoading = false; render();
+    }
+
+    async function loadPostingQueue() {
+        state.queueLoading = true; render();
+        try {
+            const res = await fetch(`${API}/social/queue`);
+            const data = await res.json();
+            state.postingQueue = data.queue || data || [];
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.queueLoading = false; render();
+    }
+
+    async function postToSocial(schedule, dryRun) {
+        const platform = document.getElementById('socialPlatform')?.value || 'instagram';
+        const videoPath = document.getElementById('socialVideo')?.value?.trim();
+        const caption = document.getElementById('socialCaption')?.value?.trim();
+        const hashtags = document.getElementById('socialHashtags')?.value?.trim();
+        const scheduleTime = document.getElementById('socialSchedule')?.value;
+        if (!videoPath) { showToast('Video file path is required'); return; }
+        if (!caption) { showToast('Caption is required'); return; }
+        const body = { platform, video_path: videoPath, caption, hashtags: hashtags || '', dry_run: !!dryRun };
+        try {
+            let endpoint = `${API}/social/post`;
+            if (schedule && scheduleTime) {
+                endpoint = `${API}/social/schedule`;
+                body.scheduled_time = new Date(scheduleTime).toISOString();
+            }
+            const res = await fetch(endpoint, {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(dryRun ? 'Dry run successful!' : (schedule ? 'Post scheduled!' : 'Posted successfully!'));
+                if (schedule) loadPostingQueue();
+            } else { showToast('Error: ' + (data.detail || 'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function processQueue() {
+        try {
+            const res = await fetch(`${API}/social/queue`, { method: 'POST' });
+            const data = await res.json();
+            showToast('Queue processed! ' + (data.processed || 0) + ' posts sent.');
+            loadPostingQueue();
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
 
     // ── Actions ─────────────────────────────────────────────
     function setMode(m) { state.mode = m; render(); }
