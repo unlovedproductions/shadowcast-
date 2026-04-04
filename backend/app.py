@@ -589,6 +589,58 @@ async def batch_upload(
     }
 
 
+# ── Import from APF ──────────────────────────────────────────────────────
+@app.post("/api/import-apf")
+async def import_apf(file: UploadFile = File(...)):
+    """Import products from APF JSON export file."""
+    content = await file.read()
+    try:
+        json_text = content.decode("utf-8-sig")
+        products_data = json.loads(json_text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {str(e)}")
+    
+    if not isinstance(products_data, list):
+        raise HTTPException(status_code=400, detail="JSON must be an array of products")
+    
+    products = []
+    for item in products_data:
+        try:
+            product = ProductInfo(
+                product_name=item.get("product_name", ""),
+                niche=item.get("niche", "General"),
+                key_features=item.get("key_features", []) if isinstance(item.get("key_features"), list) else [item.get("key_features", "")],
+                price=item.get("price", "$49.99"),
+                affiliate_link=item.get("affiliate_link", "[YOUR_AFFILIATE_LINK]"),
+                keywords=item.get("keywords", []) if isinstance(item.get("keywords"), list) else [item.get("keywords", "")],
+                target_audience=item.get("target_audience", "General consumers"),
+                product_category=item.get("product_category", item.get("niche", "General")),
+                competitors=item.get("competitors", []) if isinstance(item.get("competitors"), list) else [item.get("competitors", "")],
+                unique_selling_point=item.get("unique_selling_point", ""),
+                discount_info=item.get("discount_info", ""),
+                coupon_code=item.get("coupon_code", ""),
+                common_complaints=item.get("common_complaints", ""),
+                common_praises=item.get("common_praises", ""),
+                who_not_for=item.get("who_not_for", ""),
+                series_name=item.get("series_name", ""),
+                price_comparison=item.get("price_comparison", ""),
+                content_style=item.get("content_style", DEFAULT_CONTENT_STYLE),
+            )
+            products.append(product)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid product data: {str(e)}")
+    
+    if not products:
+        raise HTTPException(status_code=400, detail="No valid products found in JSON.")
+    
+    return {
+        "status": "ok",
+        "product_count": len(products),
+        "products": [p.dict() for p in products],
+        "products_found": [p.product_name for p in products],
+    }
+
+
 # ── Batch JSON upload ─────────────────────────────────────────────────
 @app.post("/api/batch-generate")
 def batch_generate(req: BatchGenerateRequest):

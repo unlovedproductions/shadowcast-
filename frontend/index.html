@@ -337,10 +337,11 @@
     function renderForm() {
         return `
         <div class="mode-tabs">
-            <button class="mode-tab ${state.mode==='single'?'active':''}" onclick="setMode('single')">Single Product</button>
-            <button class="mode-tab ${state.mode==='batch'?'active':''}" onclick="setMode('batch')">Batch Upload (CSV)</button>
+            <button class="mode-tab ${state.mode==='single'?'active':''} " onclick="setMode('single')">Single Product</button>
+            <button class="mode-tab ${state.mode==='batch'?'active':''} " onclick="setMode('batch')">Batch Upload (CSV)</button>
+            <button class="mode-tab ${state.mode==='import-apf'?'active':''} " onclick="setMode('import-apf')">Import from APF</button>
         </div>
-        ${state.mode === 'single' ? renderSingleForm() : renderBatchForm()}
+        ${state.mode === 'single' ? renderSingleForm() : state.mode === 'batch' ? renderBatchForm() : renderImportAPFForm()}
         ${renderContentStyleSelection()}
         ${renderHookSelection()}
         ${renderFormatSelection()}
@@ -390,6 +391,33 @@
         </div>`;
     }
 
+    function renderImportAPFForm() {
+        let preview = '';
+        if (state.batchProducts.length > 0) {
+            const cols = ['product_name','niche','price','affiliate_link','content_style'];
+            preview = `<div style="overflow-x:auto;margin-top:16px;">
+                <p style="font-size:13px;color:var(--green);font-weight:600;margin-bottom:8px;">${state.batchFileName} <span class="product-count">${state.batchProducts.length} products</span></p>
+                <table class="preview-table">
+                    <tr>${cols.map(c=>`<th>${c.replace(/_/g,' ')}</th>`).join('')}</tr>
+                    ${state.batchProducts.slice(0,10).map(p=>`<tr>${cols.map(c=>`<td title="${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}">${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}</td>`).join('')}</tr>`).join('')}
+                    ${state.batchProducts.length>10?`<tr><td colspan="${cols.length}" style="text-align:center;color:var(--text2);">... and ${state.batchProducts.length-10} more products</td></tr>`:''}
+                </table>
+            </div>`;
+        }
+
+        return `<div class="card">
+            <h2><span class="num">1</span> Import from APF — JSON Products</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Import products exported from Affiliate Product Finder (APF). Upload the JSON file to auto-fill all product details.</p>
+            <div class="upload-zone" id="uploadZoneAPF">
+                <input type="file" id="jsonFile" accept=".json" onchange="handleAPFFileUpload(this)">
+                <div class="icon">📄</div>
+                <p>Drag & drop your APF JSON file here, or click to browse</p>
+                <p class="formats">Accepts: .json files exported from APF</p>
+            </div>
+            ${preview}
+        </div>`;
+    }
+
     function renderBatchForm() {
         let preview = '';
         if (state.batchProducts.length > 0) {
@@ -417,7 +445,7 @@
                 <button class="btn-sm btn-gsheet" onclick="openGoogleSheet()">Open Google Sheets Template</button>
             </div>
             ${preview}
-        </div>`;
+        </div>
     }
 
     function renderContentStyleSelection() {
@@ -1143,7 +1171,7 @@
     }
 
     // ── Actions ─────────────────────────────────────────────
-    function setMode(m) { state.mode = m; render(); }
+    function setMode(m) { state.mode = m; state.batchProducts = []; state.batchFileName = ''; render(); }
     function setContentStyle(s) { state.contentStyle = s; render(); }
     function toggleHook(id) {
         const i=state.selectedHooks.indexOf(id);
@@ -1187,6 +1215,51 @@
         const reader = new FileReader();
         reader.onload = function(e) { parseCSVPreview(e.target.result); };
         reader.readAsText(file);
+    }
+
+    function handleAPFFileUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        state.batchFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = function(e) { parseAPFPreview(e.target.result); };
+        reader.readAsText(file);
+    }
+
+    function parseAPFPreview(text) {
+        try {
+            const data = JSON.parse(text);
+            if (!Array.isArray(data)) {
+                showToast('JSON must be an array of products');
+                return;
+            }
+            const products = data.map(item => ({
+                product_name: item.product_name || '',
+                niche: item.niche || 'General',
+                key_features: Array.isArray(item.key_features) ? item.key_features : (item.key_features ? [item.key_features] : []),
+                price: item.price || '$49.99',
+                affiliate_link: item.affiliate_link || '[YOUR_AFFILIATE_LINK]',
+                keywords: Array.isArray(item.keywords) ? item.keywords : (item.keywords ? [item.keywords] : []),
+                target_audience: item.target_audience || 'General consumers',
+                product_category: item.product_category || item.niche || 'General',
+                competitors: Array.isArray(item.competitors) ? item.competitors : (item.competitors ? [item.competitors] : []),
+                unique_selling_point: item.unique_selling_point || '',
+                discount_info: item.discount_info || '',
+                coupon_code: item.coupon_code || '',
+                common_complaints: item.common_complaints || '',
+                common_praises: item.common_praises || '',
+                who_not_for: item.who_not_for || '',
+                series_name: item.series_name || '',
+                price_comparison: item.price_comparison || '',
+                content_style: item.content_style || 'honest_review',
+            })).filter(p => p.product_name);
+            state.batchProducts = products;
+            render();
+            if (products.length) showToast(`Imported ${products.length} products from APF!`);
+            else showToast('No valid products found in JSON.');
+        } catch (err) {
+            showToast(`Error parsing JSON: ${err.message}`);
+        }
     }
 
     function parseCSVPreview(text) {
