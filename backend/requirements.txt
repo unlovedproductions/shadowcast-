@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+openai
+moviepy>=2.0
+Pillow
+numpy
+gtts
+python-dotenv
+httpx
+beautifulsoup4
+scipy
