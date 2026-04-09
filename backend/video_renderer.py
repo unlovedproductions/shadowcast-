@@ -1,3 +1,5 @@
+from moviepy.video.fx.fadein import fadein
+from moviepy.video.fx.fadeout import fadeout
 """
 ShadowCast Video Renderer — v2.0
 Renders script JSON into MP4 videos with kinetic typography, real transitions,
@@ -14,7 +16,7 @@ from io import BytesIO
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from moviepy import (
+from moviepy.editor import (
     ImageClip,
     CompositeVideoClip,
     TextClip,
@@ -345,7 +347,7 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
         product_b = seg.get("product_b", "Product B")
         frame = render_vs_split_screen(width, height, product_a, product_b, accent_color)
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        clip = fadeout(fadein(clip, 0.3), 0.2)
         return clip
     elif layout == "spec_compare":
         spec_name = seg.get("spec_name", text)
@@ -354,7 +356,7 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
         winner = seg.get("winner", "a")
         frame = render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color)
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
+        clip = fadeout(fadein(clip, 0.2), 0.2)
         return clip
     elif layout == "scorecard":
         product_a = seg.get("product_a", "Product A")
@@ -362,19 +364,19 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
         scores = seg.get("scores", [])
         frame = render_scorecard(width, height, product_a, product_b, scores, accent_color)
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+        clip = fadeout(fadein(clip, 0.3), 0.3)
         return clip
     elif layout == "price_compare":
         products = seg.get("price_products", [])
         frame = render_price_comparison(width, height, products, accent_color)
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        clip = fadeout(fadein(clip, 0.3), 0.2)
         return clip
     elif layout == "winner_reveal":
         winner_name = seg.get("winner_name", text)
         frame = render_winner_reveal(width, height, winner_name, accent_color)
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
+        clip = fadeout(fadein(clip, 0.4), 0.3)
         return clip
     
     # ── Kinetic typography path ──
@@ -433,14 +435,14 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
                     top = (new_h - h) // 2
                     img = img.crop((left, top, left + w, top + h))
                     return np.array(img)
-                clip = clip.transform(zoom_effect)
+                clip = clip.fl(zoom_effect)
             elif animation == "pop_in":
-                clip = clip.with_effects([vfx.FadeIn(min(0.15, duration * 0.15))])
+                clip = fadein(clip, 0.3)
             else:
-                clip = clip.with_effects([vfx.FadeIn(min(0.3, duration * 0.3))])
+                clip = fadein(clip, 0.3)
         
         # Add fade out
-        clip = clip.with_effects([vfx.FadeOut(min(0.15, duration * 0.15))])
+        clip = fadeout(clip, 0.3)
         return clip
 
 
@@ -501,7 +503,7 @@ def render_short_form_video(
     # ── Branded Intro (2 seconds) ──
     intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
     intro_clip = ImageClip(intro_frame, duration=2.0)
-    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+    intro_clip = fadeout(fadein(intro_clip, 0.3), 0.3)
     clips.append(intro_clip)
     
     # ── Content Segments ──
@@ -509,6 +511,7 @@ def render_short_form_video(
     segment_clips = []
     
     for i, seg in enumerate(segments):
+        print(f"Building segment {i+1}/{len(segments)}...")
         clip = build_segment_clip(seg, WIDTH, HEIGHT, True, accent_color, base_bg)
         segment_clips.append(clip)
         
@@ -547,13 +550,13 @@ def render_short_form_video(
         # Insert a subscribe reminder 2/3 through
         sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
         sub_clip = ImageClip(sub_frame, duration=2.0)
-        sub_clip = sub_clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
+        sub_clip = fadeout(fadein(sub_clip, 0.2), 0.2)
         clips.append(sub_clip)
     
     # ── Branded Outro (2 seconds) ──
     outro_frame = render_branded_outro(WIDTH, HEIGHT)
     outro_clip = ImageClip(outro_frame, duration=2.0)
-    outro_clip = outro_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+    outro_clip = fadeout(fadein(outro_clip, 0.3), 0.3)
     clips.append(outro_clip)
     
     # Concatenate all clips
@@ -586,8 +589,8 @@ def render_short_form_video(
         codec="libx264",
         audio=False,
         preset="ultrafast",
-        threads=4,
-        logger=None,
+        threads=1,
+        logger="bar",
     )
     
     # ── Generate and add audio ──
@@ -679,7 +682,7 @@ def render_long_form_video(
     # ── Branded Intro (3 seconds for long form) ──
     intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
     intro_clip = ImageClip(intro_frame, duration=3.0)
-    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+    intro_clip = intro_fadeout(fadein(clip, 0.5), 0.5)
     all_clips.append(intro_clip)
     
     segment_counter = 0
@@ -721,7 +724,7 @@ def render_long_form_video(
             chapter_frame = np.array(chapter_pil.convert("RGB"))
         
         chapter_clip = ImageClip(chapter_frame, duration=2.5)
-        chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
+        chapter_clip = chapter_fadeout(fadein(clip, 0.4), 0.4)
         all_clips.append(chapter_clip)
         
         # ── Render chapter segments ──
@@ -770,20 +773,20 @@ def render_long_form_video(
                 accent_color
             )
             comment_clip = ImageClip(comment_frame, duration=3.0)
-            comment_clip = comment_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+            comment_clip = comment_fadeout(fadein(clip, 0.3), 0.3)
             all_clips.append(comment_clip)
             engagement_inserted = True
     
     # ── Subscribe card before outro ──
     sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
     sub_clip = ImageClip(sub_frame, duration=3.0)
-    sub_clip = sub_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+    sub_clip = sub_fadeout(fadein(clip, 0.3), 0.3)
     all_clips.append(sub_clip)
     
     # ── Branded Outro (3 seconds) ──
     outro_frame = render_branded_outro(WIDTH, HEIGHT)
     outro_clip = ImageClip(outro_frame, duration=3.0)
-    outro_clip = outro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+    outro_clip = outro_fadeout(fadein(clip, 0.5), 0.5)
     all_clips.append(outro_clip)
     
     # Concatenate all clips
@@ -813,7 +816,7 @@ def render_long_form_video(
     
     progress_base = ImageClip(
         make_progress_frame(0), duration=final.duration
-    ).transform(lambda get_frame, t: make_progress_frame(t))
+    ).fl_image(lambda get_frame, t: make_progress_frame(t))
     overlay_layers.append(progress_base)
     
     final_with_overlays = CompositeVideoClip(overlay_layers)
@@ -827,8 +830,8 @@ def render_long_form_video(
         codec="libx264",
         audio=False,
         preset="ultrafast",
-        threads=4,
-        logger=None,
+        threads=1,
+        logger="bar",
     )
     
     # ── Generate and add audio ──

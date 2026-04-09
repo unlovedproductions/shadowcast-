@@ -100,12 +100,20 @@ class LLMConfig:
 
     def __post_init__(self):
         preset = PROVIDER_PRESETS.get(self.provider, PROVIDER_PRESETS["openai"])
+        
+        # Priority 1: Use provided base_url, otherwise environment, otherwise preset
         if not self.base_url:
-            self.base_url = preset["base_url"]
+            self.base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or preset["base_url"]
+        
+        # Priority 2: Use provided model, otherwise preset
         if not self.model:
             self.model = preset["default_model"]
+        
+        # Priority 3: Use provided api_key, otherwise environment
         if not self.api_key:
             self.api_key = os.environ.get("OPENAI_API_KEY", "")
+        
+        # Fallback for local LLMs
         if not self.api_key and not preset["api_key_required"]:
             self.api_key = "not-needed"
 

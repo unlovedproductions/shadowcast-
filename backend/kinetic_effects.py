@@ -4,12 +4,11 @@ import random
 import textwrap
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from moviepy import (
+from moviepy.editor import (
     ImageClip,
     CompositeVideoClip,
     ColorClip,
     concatenate_videoclips,
-    vfx,
 )
 
 # Fallback font paths
@@ -95,9 +94,10 @@ def create_word_by_word_clip(text, width, height, duration, text_color, bg_color
             # Draw text
             draw.text((current_x, start_y + i * line_height), word, font=font, fill=(*text_color, 255))
             
-            word_clip = ImageClip(np.array(img)).with_start(current_time).with_duration(duration - current_time)
+            word_clip = ImageClip(np.array(img)).set_start(current_time).set_duration(duration - current_time)
             # Fade in effect
-            word_clip = word_clip.with_effects([vfx.FadeIn(min(0.1, word_duration))])
+            from moviepy.video.fx.fadein import fadein
+            word_clip = fadein(word_clip, min(0.1, word_duration))
             word_clips.append(word_clip)
             
             current_x += w + space_width
@@ -140,7 +140,7 @@ def create_typewriter_clip(text, width, height, duration, text_color, bg_color, 
         draw.multiline_text((x, y), current_text, font=font, fill=(*text_color, 255), align="center")
         return np.array(img.convert("RGB"))
         
-    return ImageClip(make_frame(0)).with_duration(duration).transform(lambda get_frame, t: make_frame(t))
+    return ImageClip(make_frame(0)).set_duration(duration).fl(lambda gf, t: make_frame(t))
 
 # 3. Impact Scale
 def create_impact_scale_clip(text, width, height, duration, text_color, bg_color, accent_color, font_path, is_short_form):
@@ -191,7 +191,7 @@ def create_impact_scale_clip(text, width, height, duration, text_color, bg_color
         
         return np.array(result)
         
-    text_clip = ImageClip(base_arr).with_duration(duration).transform(scale_effect)
+    text_clip = ImageClip(base_arr).set_duration(duration).fl(scale_effect)
     return CompositeVideoClip([bg_clip, text_clip])
 
 # 4. Highlight Sweep
@@ -234,7 +234,7 @@ def create_highlight_sweep_clip(text, width, height, duration, text_color, bg_co
         draw.multiline_text((x, y), wrapped_text, font=font, fill=(*text_color, 255), align="center")
         return np.array(img.convert("RGB"))
         
-    return ImageClip(make_frame(0)).with_duration(duration).transform(lambda get_frame, t: make_frame(t))
+    return ImageClip(make_frame(0)).set_duration(duration).fl(lambda gf, t: make_frame(t))
 
 # 5. Shake
 def create_shake_clip(base_frame, duration, intensity=5):
@@ -250,7 +250,7 @@ def create_shake_clip(base_frame, duration, intensity=5):
         result.paste(img, (dx, dy))
         return np.array(result)
         
-    return ImageClip(base_frame).with_duration(duration).transform(shake_effect)
+    return ImageClip(base_frame).set_duration(duration).fl(shake_effect)
 
 # 6. Slide Up
 def create_slide_up_clip(base_frame, width, height, duration):
@@ -270,7 +270,7 @@ def create_slide_up_clip(base_frame, width, height, duration):
         result.paste(img, (0, y_offset))
         return np.array(result)
         
-    return ImageClip(base_frame).with_duration(duration).transform(slide_effect)
+    return ImageClip(base_frame).set_duration(duration).fl(slide_effect)
 
 # 7. Slide Left
 def create_slide_left_clip(base_frame, width, height, duration):
@@ -290,7 +290,7 @@ def create_slide_left_clip(base_frame, width, height, duration):
         result.paste(img, (x_offset, 0))
         return np.array(result)
         
-    return ImageClip(base_frame).with_duration(duration).transform(slide_effect)
+    return ImageClip(base_frame).set_duration(duration).fl(slide_effect)
 
 # 8. Glitch Transition
 def create_glitch_transition(frame_a, frame_b, duration=0.15):
@@ -316,15 +316,15 @@ def create_glitch_transition(frame_a, frame_b, duration=0.15):
             r, g, b, a = blended_img.split()
             
             # Shift channels
-            r = Image.composite(r, r, Image.new('1', r.size, 0)).transform(r.size, Image.AFFINE, (1, 0, glitch_offset, 0, 1, 0))
-            g = Image.composite(g, g, Image.new('1', g.size, 0)).transform(g.size, Image.AFFINE, (1, 0, -glitch_offset, 0, 1, 0))
+            r = Image.composite(r, r, Image.new('1', r.size, 0)).fl_image(r.size, Image.AFFINE, (1, 0, glitch_offset, 0, 1, 0))
+            g = Image.composite(g, g, Image.new('1', g.size, 0)).fl_image(g.size, Image.AFFINE, (1, 0, -glitch_offset, 0, 1, 0))
             
             glitched_img = Image.merge('RGBA', (r, g, b, a))
             return np.array(glitched_img.convert("RGB"))
         
         return np.array(blended_img.convert("RGB"))
         
-    return ImageClip(frame_a).with_duration(duration).transform(effect)
+    return ImageClip(frame_a).set_duration(duration).fl_image(effect)
 
 # 9. Flash Transition
 def create_flash_transition(frame_a, frame_b, accent_color, duration=0.1):
@@ -357,7 +357,7 @@ def create_flash_transition(frame_a, frame_b, accent_color, duration=0.1):
             
         return np.array(blended.convert("RGB"))
         
-    return ImageClip(frame_a).with_duration(duration).transform(effect)
+    return ImageClip(frame_a).set_duration(duration).fl_image(effect)
 
 # 10. Swipe Transition
 def create_swipe_transition(frame_a, frame_b, duration=0.3):
@@ -381,7 +381,7 @@ def create_swipe_transition(frame_a, frame_b, duration=0.3):
         
         return np.array(result)
         
-    return ImageClip(frame_a).with_duration(duration).transform(effect)
+    return ImageClip(frame_a).set_duration(duration).fl_image(effect)
 
 # 11. Zoom Transition
 def create_zoom_transition(frame_a, frame_b, duration=0.2):
@@ -411,7 +411,7 @@ def create_zoom_transition(frame_a, frame_b, duration=0.2):
         else:
             return frame_b
             
-    return ImageClip(frame_a).with_duration(duration).transform(effect)
+    return ImageClip(frame_a).set_duration(duration).fl_image(effect)
 
 
 if __name__ == "__main__":

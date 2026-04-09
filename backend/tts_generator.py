@@ -14,7 +14,7 @@ import os
 import tempfile
 import subprocess
 
-from moviepy import AudioFileClip, VideoFileClip, CompositeAudioClip, concatenate_audioclips
+from moviepy.editor import AudioFileClip, VideoFileClip, CompositeAudioClip, concatenate_audioclips
 
 
 # ── Provider Detection ───────────────────────────────────────────────
