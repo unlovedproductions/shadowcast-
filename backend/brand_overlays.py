@@ -42,10 +42,19 @@ def numpy_to_pil(arr):
 # --- Branded Visual Package Functions ---
 
 def _load_logo(max_size):
-    """Load the Unloved Productions logo, resized to fit max_size."""
+    """Load the Unloved Productions logo, resized to fit max_size.
+    Converts white/near-white background pixels to transparent so the logo
+    blends cleanly onto dark intro/outro frames.
+    """
     if os.path.exists(LOGO_PATH):
         try:
             logo = Image.open(LOGO_PATH).convert('RGBA')
+            # Remove white/near-white background pixels (R>200, G>200, B>200)
+            logo_data = np.array(logo)
+            r, g, b, a = logo_data[:,:,0], logo_data[:,:,1], logo_data[:,:,2], logo_data[:,:,3]
+            white_mask = (r > 200) & (g > 200) & (b > 200)
+            logo_data[white_mask, 3] = 0  # Set alpha to 0 for white pixels
+            logo = Image.fromarray(logo_data, 'RGBA')
             logo.thumbnail((max_size, max_size), Image.LANCZOS)
             return logo
         except Exception as e:
@@ -245,18 +254,41 @@ def render_lower_third(width, height, product_name, price="", is_short_form=Fals
     # Product Name
     prod_name_font_size = int(lt_height * 0.4)
     prod_name_font = load_font(MONTSERRAT_BOLD, NOTO_SANS_BOLD, prod_name_font_size)
-    prod_name_text_bbox = draw.textbbox((0, 0), product_name, font=prod_name_font)
-    prod_name_text_height = prod_name_text_bbox[3] - prod_name_text_bbox[1]
-    prod_name_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
-    draw.text((text_padding_x, prod_name_y), product_name, font=prod_name_font, fill=TEXT_COLOR)
 
-    # Price (if provided)
+    # Price (if provided) — measure price first so we can reserve space on the right
+    price_reserved_width = 0
+    price_font = None
+    price_text_width = 0
+    price_text_height = 0
     if price:
         price_font_size = int(lt_height * 0.35)
         price_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, price_font_size)
         price_text_bbox = draw.textbbox((0, 0), price, font=price_font)
         price_text_width = price_text_bbox[2] - price_text_bbox[0]
         price_text_height = price_text_bbox[3] - price_text_bbox[1]
+        price_reserved_width = price_text_width + text_padding_x * 3  # gap between name and price
+
+    # Truncate product name with ellipsis if it would overlap the price area
+    max_prod_name_width = width - text_padding_x - price_reserved_width - text_padding_x
+    display_name = product_name
+    prod_name_text_bbox = draw.textbbox((0, 0), display_name, font=prod_name_font)
+    prod_name_text_width = prod_name_text_bbox[2] - prod_name_text_bbox[0]
+    if prod_name_text_width > max_prod_name_width:
+        # Truncate character by character until it fits
+        while len(display_name) > 1:
+            display_name = display_name[:-1]
+            test_bbox = draw.textbbox((0, 0), display_name + "...", font=prod_name_font)
+            if (test_bbox[2] - test_bbox[0]) <= max_prod_name_width:
+                display_name = display_name + "..."
+                break
+        prod_name_text_bbox = draw.textbbox((0, 0), display_name, font=prod_name_font)
+
+    prod_name_text_height = prod_name_text_bbox[3] - prod_name_text_bbox[1]
+    prod_name_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
+    draw.text((text_padding_x, prod_name_y), display_name, font=prod_name_font, fill=TEXT_COLOR)
+
+    # Draw price on the right side
+    if price and price_font is not None:
         price_x = width - price_text_width - text_padding_x
         price_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - price_text_height) / 2
         draw.text((price_x, price_y), price, font=price_font, fill=TEXT_COLOR)

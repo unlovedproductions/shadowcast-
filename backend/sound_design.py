@@ -286,7 +286,10 @@ def mix_audio(bg_music_array, sfx_list_with_timestamps, voiceover_array=None, ou
             mixed_audio[start_sample:end_sample] += sfx_data
 
     # Normalize to -1 to 1 range and convert to 16-bit PCM
-    mixed_audio = mixed_audio / np.max(np.abs(mixed_audio)) * 0.9 # Scale to avoid clipping
+    # Bug 4 fix: guard against division-by-zero when mixed_audio is silent
+    max_val = np.max(np.abs(mixed_audio))
+    if max_val > 1e-6:
+        mixed_audio = mixed_audio / max_val * 0.9  # Scale to avoid clipping
     audio_int = (mixed_audio * 32767).astype(np.int16)
     write_wav(output_path, SAMPLE_RATE, audio_int)
 

@@ -210,6 +210,11 @@ def render_text_frame(
         from bg_generator import generate_background, apply_vignette, apply_film_grain, get_style_for_content
         bg_style = random.choice(["gradient", "mesh_gradient", "geometric", "bokeh", "wave", "radial", "noise", "grid", "abstract", "circuit"])
         bg_img = generate_background(width, height, style=bg_style, accent_color=accent_color)
+        # Bug 2 fix: enforce dark theme — if generated background is too bright, fall back to near-black
+        bg_arr_check = np.array(bg_img)
+        avg_luminance = float(np.mean(bg_arr_check))
+        if avg_luminance > 50:
+            bg_img = Image.new("RGB", (width, height), BRAND_BG)
         bg_img = apply_vignette(bg_img, strength=0.3)
         bg_img = bg_img.convert("RGBA")
     except Exception:
