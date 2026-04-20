@@ -1,4 +1,4 @@
-#!/home/ubuntu/shadowcast-/venv/bin/python3
+#!/home/unloved/apps/shadowcast-/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
