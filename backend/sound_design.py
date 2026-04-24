@@ -187,7 +187,9 @@ def generate_background_music(duration_seconds, mood="chill", tempo=100):
 
     # Normalize to -1 to 1 range for WAV file output
     if len(all_music) > 0:
-        all_music = all_music / np.max(np.abs(all_music))
+        max_val = np.max(np.abs(all_music))
+        if max_val > 1e-6:
+            all_music = all_music / max_val
     
     return all_music
 
