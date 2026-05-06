@@ -419,6 +419,11 @@ def _run_batch_generation(job_id: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────
 
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "app": "ShadowCast", "version": "4.0"}
+
+
 @app.get("/api/providers")
 def get_providers():
     return {
