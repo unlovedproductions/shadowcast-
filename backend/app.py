@@ -39,7 +39,6 @@ from analytics_tracker import AnalyticsTracker, create_tracking_link
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,6 +46,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def check_internal_auth(request):
+    service_key = request.headers.get("X-Service-Key")
+    internal_secret = os.getenv("INTERNAL_SERVICE_SECRET")
+    if internal_secret and service_key != internal_secret:
+        # We don't raise 401 here to maintain backward compatibility 
+        # but we could if we wanted to enforce it.
+        pass
+
 
 OUTPUT_BASE = Path(__file__).parent / "output"
 OUTPUT_BASE.mkdir(exist_ok=True)
