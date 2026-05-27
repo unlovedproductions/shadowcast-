@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/backend/app.py" },
-    { "source": "/(.*)", "destination": "/frontend/$1" }
-  ]
+  "cleanUrls": true,
+  "trailingSlash": false
 }
