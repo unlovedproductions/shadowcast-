@@ -5,7 +5,7 @@ never need to physically buy or test products.
 """
 
 import json
-from llm_config import get_config
+from llm_config import get_config, parse_llm_json
 
 HOOK_TYPES = [
     "curiosity",
@@ -77,7 +77,9 @@ def _call_llm(prompt: str) -> dict:
         temperature=0.8,
         response_format={"type": "json_object"},
     )
-    return json.loads(response.choices[0].message.content)
+    content = getattr(response.choices[0].message, "content", "")
+    parsed = parse_llm_json(content)
+    return parsed
 
 
 def _build_research_context(product_info: dict) -> str:

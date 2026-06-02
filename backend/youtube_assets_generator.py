@@ -6,7 +6,7 @@ engagement, and affiliate conversions.
 
 import json
 import os
-from llm_config import get_config
+from llm_config import get_config, parse_llm_json
 
 
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
@@ -103,7 +103,26 @@ Return ONLY valid JSON."""
         response_format={"type": "json_object"},
     )
 
-    return json.loads(response.choices[0].message.content)
+    content = getattr(response.choices[0].message, "content", "")
+    parsed = parse_llm_json(content)
+
+    # If parsed output doesn't look like the expected package, create a safe fallback
+    if not isinstance(parsed, dict) or "seo_title" not in parsed:
+        fallback = {
+            "seo_title": title_suggestion or f"{product_info['product_name']} - Honest Review",
+            "seo_title_alternatives": [],
+            "seo_description": f"Auto-generated posting package for {product_info['product_name']}.",
+            "tags": product_info.get("keywords", [])[:20],
+            "hashtags": [],
+            "pinned_comment": "",
+            "thumbnail_text_primary": product_info['product_name'],
+        }
+        # Merge any fields found in parsed dict
+        if isinstance(parsed, dict):
+            fallback.update(parsed)
+        return fallback
+
+    return parsed
 
 
 def save_posting_package_readable(package: dict, product_info: dict, output_path: str):

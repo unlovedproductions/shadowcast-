@@ -16,7 +16,7 @@ import traceback
 import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,8 +52,21 @@ def check_internal_auth(request):
     internal_secret = os.getenv("INTERNAL_SERVICE_SECRET")
     if internal_secret and service_key != internal_secret:
         # We don't raise 401 here to maintain backward compatibility 
-        # but we could if we wanted to enforce it.
-        pass
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# Global middleware to enforce internal service auth for non-GET requests
+from fastapi.responses import JSONResponse
+
+
+@app.middleware("http")
+async def enforce_internal_auth_middleware(request: Request, call_next):
+    internal_secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
+    if internal_secret and request.method != "GET":
+        service_key = request.headers.get("X-Service-Key")
+        if service_key != internal_secret:
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 OUTPUT_BASE = Path(__file__).parent / "output"

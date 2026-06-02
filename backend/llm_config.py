@@ -42,6 +42,8 @@ RECOMMENDED SETUP:
 """
 
 import os
+import json
+import re
 from dataclasses import dataclass
 from openai import OpenAI
 
@@ -125,3 +127,29 @@ def set_config(provider: str = "openai", api_key: str = "", base_url: str = "", 
     global _current_config
     _current_config = LLMConfig(provider=provider, api_key=api_key, base_url=base_url, model=model)
     return _current_config
+
+
+def parse_llm_json(text: str) -> dict:
+    """
+    Robustly parse JSON returned by an LLM. LLM outputs sometimes include
+    explanation text surrounding JSON blobs; try to recover a JSON object
+    by first attempting a direct load, then falling back to extracting the
+    first {...} substring.
+    Returns a dict (may contain a '__raw' key if parsing failed).
+    """
+    if not isinstance(text, str):
+        return {"__raw": text}
+
+    try:
+        return json.loads(text)
+    except Exception:
+        # Attempt to extract a JSON object substring
+        m = re.search(r"(\{.*\})", text, re.S)
+        if m:
+            candidate = m.group(1)
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+        # Fallback: return the raw text so callers can decide how to proceed
+        return {"__raw": text}
