@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShadowCast — by Unloved Productions</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0a; --bg2: #141414; --bg3: #1e1e1e; --bg4: #2a2a2a;
+            --text: #e8e8e8; --text2: #aaa; --accent: #c4507a; --accent2: #d4698f;
+            --green: #4caf50; --red: #f44336; --blue: #2196f3; --cyan: #c4507a;
+            --purple: #9c27b0; --yellow: #d4698f; --radius: 10px;
+            --pink: #c4507a; --pink-light: #d4698f; --pink-glow: rgba(196,80,122,.15);
+        }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent2); }
+
+        .header { background: linear-gradient(135deg, var(--bg2) 0%, #1a0a10 100%); border-bottom: 1px solid var(--pink); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+        .header-left { display: flex; align-items: center; gap: 14px; }
+        .logo-placeholder { width: 40px; height: 40px; border-radius: 8px; border: 2px dashed var(--pink); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--pink); text-align: center; line-height: 1.1; }
+        .logo-placeholder img { width: 100%; height: 100%; object-fit: contain; border-radius: 6px; }
+        .footer { background: var(--bg2); border-top: 1px solid var(--bg3); padding: 20px 24px; text-align: center; margin-top: 40px; }
+        .footer .company { font-size: 13px; color: var(--pink); font-weight: 600; }
+        .footer .motto { font-size: 11px; color: var(--text2); font-style: italic; margin-top: 4px; }
+        .footer .tagline { font-size: 10px; color: var(--text2); opacity: .6; margin-top: 6px; }
+        .header h1 { font-size: 20px; font-weight: 700; }
+        .header h1 span { color: var(--pink); }
+        .header h1 .edition { font-size: 11px; color: var(--pink-light); font-weight: 400; display: block; margin-top: 2px; }
+        .header-right { display: flex; gap: 12px; align-items: center; }
+        .settings-btn { background: var(--bg3); border: 1px solid var(--bg4); color: var(--text2); padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 13px; transition: all .2s; }
+        .settings-btn:hover { background: var(--bg4); color: var(--text); }
+        .provider-badge { background: var(--bg3); padding: 4px 10px; border-radius: 20px; font-size: 12px; color: var(--cyan); }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+        .card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+        .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .card h2 .num { background: var(--accent); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .card h2 .badge { font-size: 10px; background: var(--cyan); color: #000; padding: 2px 8px; border-radius: 10px; font-weight: 700; margin-left: 8px; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: 13px; color: var(--text2); font-weight: 500; }
+        label .req { color: var(--accent); }
+        label .trust { color: var(--green); font-size: 10px; font-weight: 700; }
+        input, textarea, select { background: var(--bg); border: 1px solid var(--bg4); color: var(--text); padding: 10px 14px; border-radius: 8px; font-size: 14px; font-family: inherit; transition: border .2s; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+        textarea { resize: vertical; min-height: 60px; }
+        .hint { font-size: 11px; color: var(--text2); opacity: .7; }
+        .hint-green { font-size: 11px; color: var(--green); opacity: .85; }
+
+        .section-divider { border: none; border-top: 1px dashed var(--bg4); margin: 20px 0 16px; }
+        .section-label { font-size: 12px; font-weight: 700; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+
+        .mode-tabs { display: flex; gap: 0; margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--bg4); }
+        .mode-tab { flex: 1; padding: 14px; text-align: center; cursor: pointer; font-size: 14px; font-weight: 600; background: var(--bg2); color: var(--text2); transition: all .2s; border: none; }
+        .mode-tab:hover { background: var(--bg3); }
+        .mode-tab.active { background: var(--accent); color: #fff; }
+
+        .upload-zone { border: 2px dashed var(--bg4); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--pink); background: var(--pink-glow); }
+        .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .upload-zone .icon { font-size: 40px; margin-bottom: 12px; }
+        .upload-zone p { font-size: 14px; color: var(--text2); }
+        .upload-zone .formats { font-size: 12px; color: var(--text2); opacity: .6; margin-top: 6px; }
+        .upload-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+        .upload-actions button { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+        .btn-template { background: var(--blue); color: #fff; }
+        .btn-gsheet { background: var(--green); color: #fff; }
+        .btn-template:hover, .btn-gsheet:hover { opacity: .85; }
+        .preview-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
+        .preview-table th { background: var(--bg3); color: var(--text2); padding: 8px 10px; text-align: left; font-weight: 600; }
+        .preview-table td { padding: 8px 10px; border-bottom: 1px solid var(--bg3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .preview-table tr:hover td { background: var(--bg3); }
+        .product-count { display: inline-block; background: var(--accent); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-left: 8px; }
+
+        .hook-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+        .hook-option { background: var(--bg); border: 2px solid var(--bg4); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: all .2s; position: relative; }
+        .hook-option:hover { border-color: var(--accent); }
+        .hook-option.selected { border-color: var(--pink); background: var(--pink-glow); }
+        .hook-option h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .hook-option p { font-size: 11px; color: var(--text2); line-height: 1.4; }
+        .hook-option .adv-badge { position: absolute; top: 8px; right: 8px; font-size: 9px; background: var(--yellow); color: #000; padding: 1px 6px; border-radius: 8px; font-weight: 700; }
+        .select-all-btn { background: none; border: 1px solid var(--bg4); color: var(--text2); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-bottom: 10px; }
+        .select-all-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        .style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
+        .style-option { background: var(--bg); border: 2px solid var(--bg4); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: all .2s; }
+        .style-option:hover { border-color: var(--pink); }
+        .style-option.selected { border-color: var(--pink); background: var(--pink-glow); }
+        .style-option h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--pink); }
+        .style-option p { font-size: 11px; color: var(--text2); line-height: 1.4; }
+
+        .format-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .format-option { background: var(--bg); border: 2px solid var(--bg4); border-radius: var(--radius); padding: 16px; cursor: pointer; text-align: center; transition: all .2s; }
+        .format-option:hover { border-color: var(--accent); }
+        .format-option.selected { border-color: var(--pink); background: var(--pink-glow); }
+        .format-option .icon { font-size: 28px; margin-bottom: 6px; }
+        .format-option h3 { font-size: 13px; font-weight: 600; }
+        .format-option p { font-size: 11px; color: var(--text2); }
+
+        .btn-primary { background: var(--accent); color: #fff; border: none; padding: 14px 32px; border-radius: var(--radius); font-size: 16px; font-weight: 700; cursor: pointer; transition: all .2s; width: 100%; }
+        .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+        .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; }
+        .btn-download { background: var(--green); color: #fff; }
+        .btn-copy { background: var(--blue); color: #fff; }
+        .btn-copy:hover, .btn-download:hover { opacity: .85; }
+
+        .progress-section { text-align: center; padding: 40px; }
+        .progress-bar-bg { background: var(--bg); border-radius: 20px; height: 12px; overflow: hidden; margin: 20px 0; }
+        .progress-bar { background: linear-gradient(90deg, var(--pink), var(--pink-light)); height: 100%; border-radius: 20px; transition: width .5s ease; }
+        .progress-text { font-size: 14px; color: var(--text2); }
+        .progress-pct { font-size: 36px; font-weight: 700; color: var(--pink); }
+        .spinner { display: inline-block; width: 40px; height: 40px; border: 3px solid var(--bg4); border-top-color: var(--pink); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .results-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn { background: var(--bg); border: 1px solid var(--bg4); color: var(--text2); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .2s; }
+        .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .tab-btn.product-tab.active { background: var(--purple); border-color: var(--purple); }
+        .result-block { background: var(--bg); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+        .result-block h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+        .result-block .content { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+        .result-block .actions { display: flex; gap: 8px; margin-top: 10px; }
+        .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { background: var(--bg3); padding: 3px 10px; border-radius: 20px; font-size: 11px; color: var(--text2); }
+        .video-player { width: 100%; max-width: 480px; border-radius: var(--radius); background: #000; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .modal { background: var(--bg2); border: 1px solid var(--bg3); border-radius: 12px; padding: 28px; width: 90%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+        .modal h2 { font-size: 18px; margin-bottom: 20px; }
+        .modal .form-group { margin-bottom: 14px; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+        .modal-actions .save { background: var(--accent); color: #fff; }
+        .modal-actions .cancel { background: var(--bg4); color: var(--text); }
+        .model-rec { background: var(--bg); border: 1px solid var(--bg3); border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 11px; }
+        .model-rec table { width: 100%; border-collapse: collapse; }
+        .model-rec th { text-align: left; color: var(--text2); padding: 3px 6px; font-size: 10px; }
+        .model-rec td { padding: 3px 6px; font-size: 11px; }
+        .model-rec .pick { cursor: pointer; color: var(--cyan); text-decoration: underline; }
+
+        .new-gen-btn { background: var(--bg3); border: 1px solid var(--bg4); color: var(--text); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; margin-bottom: 20px; }
+        .new-gen-btn:hover { background: var(--bg4); }
+
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .format-grid { grid-template-columns: 1fr; }
+            .hook-grid { grid-template-columns: 1fr 1fr; }
+            .style-grid { grid-template-columns: 1fr 1fr; }
+            .mode-tabs { flex-direction: column; }
+        }
+
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--green); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 200; animation: fadeInUp .3s ease; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Navigation */
+        .nav-bar { display: flex; gap: 0; border-bottom: 2px solid var(--bg3); margin-bottom: 24px; }
+        .nav-item { padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; }
+        .nav-item:hover { color: var(--text); }
+        .nav-item.active { color: var(--pink); border-bottom-color: var(--pink); }
+        .nav-item .nav-badge { background: var(--pink); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 6px; }
+
+        /* Dashboard Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 20px; text-align: center; }
+        .stat-card .stat-value { font-size: 32px; font-weight: 700; color: var(--pink); }
+        .stat-card .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card .stat-sub { font-size: 11px; color: var(--text2); margin-top: 6px; }
+        .stat-card.green .stat-value { color: var(--green); }
+        .stat-card.blue .stat-value { color: var(--blue); }
+        .stat-card.purple .stat-value { color: var(--purple); }
+
+        /* Performance Table */
+        .perf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .perf-table th { background: var(--bg3); color: var(--text2); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+        .perf-table td { padding: 10px 14px; border-bottom: 1px solid var(--bg3); }
+        .perf-table tr:hover td { background: var(--bg3); }
+        .perf-bar { height: 8px; background: var(--bg4); border-radius: 4px; overflow: hidden; min-width: 80px; }
+        .perf-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--pink), var(--pink-light)); }
+
+        /* Social Posting */
+        .platform-card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 20px; display: flex; align-items: center; gap: 16px; }
+        .platform-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; }
+        .platform-icon.ig { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: #fff; }
+        .platform-icon.tt { background: #000; color: #fff; border: 1px solid #333; }
+        .platform-info { flex: 1; }
+        .platform-info h3 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+        .platform-info .status { font-size: 12px; }
+        .status-configured { color: var(--green); }
+        .status-not-configured { color: var(--red); }
+        .platform-actions { display: flex; gap: 8px; }
+
+        .queue-item { background: var(--bg); border: 1px solid var(--bg3); border-radius: 8px; padding: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; }
+        .queue-item .qi-platform { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; }
+        .queue-item .qi-platform.ig { background: #dc2743; color: #fff; }
+        .queue-item .qi-platform.tt { background: #000; color: #fff; }
+        .queue-item .qi-info { flex: 1; }
+        .queue-item .qi-info .qi-caption { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+        .queue-item .qi-info .qi-time { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--text2); }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+        .empty-state p { font-size: 14px; }
+        .empty-state .empty-hint { font-size: 12px; margin-top: 8px; opacity: .6; }
+
+        .metric-input-row { display: flex; gap: 10px; align-items: end; margin-bottom: 12px; }
+        .metric-input-row .form-group { flex: 1; margin-bottom: 0; }
+        .metric-input-row button { height: 40px; white-space: nowrap; }
+
+        /* Nav Buttons */
+        .nav-btn { padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text2); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; display: flex; align-items: center; gap: 6px; }
+        .nav-btn:hover { color: var(--text); }
+        .nav-btn.active { color: var(--pink); border-bottom-color: var(--pink); }
+        .nav-icon { font-size: 16px; }
+
+        /* Stat Grid */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+
+        /* Analytics Table */
+        .analytics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .analytics-table th { background: var(--bg3); color: var(--text2); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+        .analytics-table td { padding: 10px 14px; border-bottom: 1px solid var(--bg3); }
+        .analytics-table tr:hover td { background: rgba(196,80,122,.05); }
+
+        /* Hook Badge */
+        .hook-badge { background: var(--pink-glow); color: var(--pink); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script>
+    const API = window.location.origin + '/api';
+
+    let state = {
+        page: 'form',
+        mode: 'single',
+        showSettings: false,
+        llmProvider: 'openai', llmApiKey: '', llmBaseUrl: '', llmModel: '',
+        providerPresets: {},
+        // Single product — core
+        productName: '', niche: '', keyFeatures: '', price: '',
+        affiliateLink: '', keywords: '', targetAudience: '',
+        productCategory: '', competitors: '', usp: '',
+        discountInfo: '', couponCode: '',
+        // Single product — trust-based
+        commonComplaints: '', commonPraises: '', whoNotFor: '',
+        seriesName: '', priceComparison: '',
+        // Content style
+        contentStyle: 'honest_review',
+        // Batch
+        batchProducts: [],
+        batchFileName: '',
+        // Selections
+        selectedHooks: ['curiosity'],
+        selectedFormats: ['short_form', 'long_form'],
+        audioMood: 'chill',
+        audioEnabled: true,
+        // Job
+        jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
+        results: null, batchResults: null, errors: [],
+        // Results view
+        activeTab: null, activeFormat: 'short_form', activeProductIdx: 0,
+        // Navigation
+        navPage: 'generate',
+        // Analytics
+        analyticsData: null, analyticsLoading: false,
+        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: '',
+        metricVideoId: '', metricType: 'views', metricValue: '',
+        // Social
+        socialStatus: null, socialLoading: false,
+        postingQueue: [], queueLoading: false,
+        socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
+    };
+
+    const hooks = [
+        { id: 'curiosity', name: 'Curiosity', desc: 'Provocative questions, surprising reveals that make viewers click', adv: false },
+        { id: 'problem_agitation', name: 'Problem-Agitation', desc: 'Pain point \u2192 agitate \u2192 tease the solution', adv: false },
+        { id: 'listicle', name: 'Listicle', desc: 'Top X reasons / numbered format for easy consumption', adv: false },
+        { id: 'urgency', name: 'Urgency', desc: 'FOMO, limited deals, time pressure to drive action', adv: false },
+        { id: 'contrarian', name: 'Contrarian', desc: 'Challenge popular opinions, spark debate', adv: false },
+        { id: 'data_bomb', name: 'Data Bomb', desc: 'Open with a surprising statistic for instant credibility', adv: true },
+        { id: 'confession', name: 'Confession', desc: 'Admit a past mistake to build trust and curiosity', adv: true },
+        { id: 'comparison_trap', name: 'Comparison Trap', desc: 'Price comparison that makes viewers feel smart', adv: true },
+        { id: 'myth_buster', name: 'Myth Buster', desc: 'Challenge conventional wisdom to spark engagement', adv: true },
+    ];
+
+    const contentStyles = {
+        honest_review: { name: 'Honest Review', desc: 'Balanced pros AND cons. "Who This Is NOT For" section. Builds trust.' },
+        elimination: { name: 'Elimination Round', desc: 'Show rejected products, then reveal the winner. Massive credibility.' },
+        worth_it_or_waste: { name: 'Worth It or Waste?', desc: 'Test a hyped product against its claims. Series format.' },
+        budget_challenge: { name: 'Budget Challenge', desc: 'Best product under a price limit. Relatable for budget audiences.' },
+        vs_battle: { name: 'VS Battle', desc: 'Side-by-side comparison. Spec breakdown. Clear winner.' },
+        standard: { name: 'Standard Promo', desc: 'Classic features + benefits + CTA promotion.' },
+    };
+
+    // ── Render ───────────────────────────────────────────────
+    function render() {
+        const app = document.getElementById('app');
+        let html = renderHeader() + '<div class="container">';
+        html += renderNavBar();
+        if (state.navPage === 'generate') {
+            if (state.page === 'form') html += renderForm();
+            else if (state.page === 'progress') html += renderProgress();
+            else html += renderResults();
+        } else if (state.navPage === 'analytics') {
+            html += renderAnalyticsPage();
+        } else if (state.navPage === 'social') {
+            html += renderSocialPage();
+        }
+        html += '</div>';
+        html += renderFooter();
+        if (state.showSettings) html += renderSettingsModal();
+        app.innerHTML = html;
+        attachEvents();
+    }
+
+    function renderHeader() {
+        const pn = state.providerPresets[state.llmProvider]?.name || state.llmProvider;
+        return `<div class="header">
+            <div class="header-left">
+                <div class="logo-placeholder"><img src="/assets/logo.png" onerror="this.style.display='none';this.parentElement.textContent='LOGO'"></div>
+                <h1><span>Shadow</span>Cast<span class="edition">by Unloved Productions</span></h1>
+            </div>
+            <div class="header-right">
+                <span class="provider-badge">${pn}</span>
+                <button class="settings-btn" onclick="toggleSettings()">Settings</button>
+            </div>
+        </div>`;
+    }
+
+    function renderForm() {
+        return `
+        <div class="mode-tabs">
+            <button class="mode-tab ${state.mode==='single'?'active':''} " onclick="setMode('single')">Single Product</button>
+            <button class="mode-tab ${state.mode==='batch'?'active':''} " onclick="setMode('batch')">Batch Upload (CSV)</button>
+            <button class="mode-tab ${state.mode==='import-apf'?'active':''} " onclick="setMode('import-apf')">Import from APF</button>
+        </div>
+        ${state.mode === 'single' ? renderSingleForm() : state.mode === 'batch' ? renderBatchForm() : renderImportAPFForm()}
+        ${renderContentStyleSelection()}
+        ${renderHookSelection()}
+        ${renderFormatSelection()}
+        <button class="btn-primary" onclick="startGeneration()">
+            ${state.mode === 'batch' && state.batchProducts.length > 0
+                ? 'Generate ' + state.batchProducts.length + ' Products'
+                : 'Generate Videos + YouTube Package'}
+        </button>`;
+    }
+
+    function renderSingleForm() {
+        return `<div class="card">
+            <h2><span class="num">1</span> Product Information</h2>
+            <div style="background:var(--bg);border:1px solid var(--pink);border-radius:var(--radius);padding:16px;margin-bottom:20px;">
+                <label style="font-size:14px;font-weight:600;color:var(--pink);margin-bottom:8px;display:block;">🔗 Auto-Fill from Amazon URL</label>
+                <div style="display:flex;gap:10px;">
+                    <input id="amazonUrl" style="flex:1;" placeholder="Paste Amazon product URL (e.g., https://www.amazon.com/dp/B09B8V1BM3)">
+                    <button onclick="scrapeAmazon()" class="generate-btn" style="padding:10px 20px;font-size:13px;white-space:nowrap;" id="scrapeBtn">Auto-Fill</button>
+                </div>
+                <span class="hint" style="margin-top:6px;display:block;">Paste any Amazon product URL to auto-fill product name, price, features, reviews, complaints, and praises. Saves 5+ minutes of research per product.</span>
+                <div id="scrapeStatus" style="display:none;margin-top:8px;font-size:13px;"></div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group"><label>Product Name <span class="req">*</span></label><input id="productName" value="${esc(state.productName)}" placeholder="e.g., SoundCore Space A40 Earbuds"></div>
+                <div class="form-group"><label>Niche</label><input id="niche" value="${esc(state.niche)}" placeholder="e.g., Tech, Health, Home"></div>
+                <div class="form-group full"><label>Key Features <span class="req">*</span></label><input id="keyFeatures" value="${esc(state.keyFeatures)}" placeholder="Comma-separated: ANC, 50hr battery, Hi-Res Audio"><span class="hint">Separate each feature with a comma</span></div>
+                <div class="form-group"><label>Price</label><input id="price" value="${esc(state.price)}" placeholder="$79.99"></div>
+                <div class="form-group"><label>Affiliate Link <span class="req">*</span></label><input id="affiliateLink" value="${esc(state.affiliateLink)}" placeholder="https://amzn.to/your-link"></div>
+                <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
+                <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
+                <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
+                <div class="form-group full"><label>Competitor Products</label><input id="competitors" value="${esc(state.competitors)}" placeholder="Comma-separated: AirPods Pro 2, Sony WF-1000XM5"><span class="hint">Used for comparisons, eliminations, and VS battles</span></div>
+                <div class="form-group full"><label>Unique Selling Point</label><input id="usp" value="${esc(state.usp)}" placeholder="What makes this product stand out from competitors?"></div>
+                <div class="form-group"><label>Current Discount/Deal</label><input id="discountInfo" value="${esc(state.discountInfo)}" placeholder="e.g., 20% off this week only"></div>
+                <div class="form-group"><label>Coupon Code</label><input id="couponCode" value="${esc(state.couponCode)}" placeholder="e.g., SAVE20"></div>
+            </div>
+
+            <hr class="section-divider">
+            <div class="section-label">Trust-Based Fields (Your Competitive Edge)</div>
+            <div class="form-grid">
+                <div class="form-group full"><label>Common Complaints <span class="trust">TRUST BUILDER</span></label><textarea id="commonComplaints" placeholder="What do reviewers complain about? (from Amazon/Reddit reviews)&#10;e.g., ANC cuts out in wind, case scratches easily, no multipoint">${esc(state.commonComplaints)}</textarea><span class="hint-green">Including real complaints builds massive trust. If left blank, AI will generate plausible ones.</span></div>
+                <div class="form-group full"><label>Common Praises <span class="trust">TRUST BUILDER</span></label><textarea id="commonPraises" placeholder="What do reviewers love about it?&#10;e.g., Battery life is incredible, ANC rivals $200 earbuds">${esc(state.commonPraises)}</textarea><span class="hint-green">Real praise from reviews is more convincing than marketing copy.</span></div>
+                <div class="form-group full"><label>Who This Is NOT For <span class="trust">TRUST BUILDER</span></label><input id="whoNotFor" value="${esc(state.whoNotFor)}" placeholder="e.g., Audiophiles wanting wired quality, people with very small ears"><span class="hint-green">Telling viewers who should NOT buy builds more trust than any sales pitch.</span></div>
+                <div class="form-group full"><label>Price Comparison</label><input id="priceComparison" value="${esc(state.priceComparison)}" placeholder="e.g., AirPods Pro 2 costs $249 for similar ANC quality"><span class="hint">How does the price compare to competitors?</span></div>
+                <div class="form-group"><label>Series Name</label><input id="seriesName" value="${esc(state.seriesName)}" placeholder="e.g., Worth It or Waste?, The $50 Challenge"><span class="hint">Recurring series name for channel building</span></div>
+            </div>
+        </div>`;
+    }
+
+    function renderImportAPFForm() {
+        let preview = '';
+        if (state.batchProducts.length > 0) {
+            const cols = ['product_name','niche','price','affiliate_link','content_style'];
+            preview = `<div style="overflow-x:auto;margin-top:16px;">
+                <p style="font-size:13px;color:var(--green);font-weight:600;margin-bottom:8px;">${state.batchFileName} <span class="product-count">${state.batchProducts.length} products</span></p>
+                <table class="preview-table">
+                    <tr>${cols.map(c=>`<th>${c.replace(/_/g,' ')}</th>`).join('')}</tr>
+                    ${state.batchProducts.slice(0,10).map(p=>`<tr>${cols.map(c=>`<td title="${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}">${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}</td>`).join('')}</tr>`).join('')}
+                    ${state.batchProducts.length>10?`<tr><td colspan="${cols.length}" style="text-align:center;color:var(--text2);">... and ${state.batchProducts.length-10} more products</td></tr>`:''}
+                </table>
+            </div>`;
+        }
+
+        return `<div class="card">
+            <h2><span class="num">1</span> Import from APF — JSON Products</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Import products exported from Affiliate Product Finder (APF). Upload the JSON file to auto-fill all product details.</p>
+            <div class="upload-zone" id="uploadZoneAPF">
+                <input type="file" id="jsonFile" accept=".json" onchange="handleAPFFileUpload(this)">
+                <div class="icon">📄</div>
+                <p>Drag & drop your APF JSON file here, or click to browse</p>
+                <p class="formats">Accepts: .json files exported from APF</p>
+            </div>
+            ${preview}
+        </div>`;
+    }
+
+    function renderBatchForm() {
+        let preview = '';
+        if (state.batchProducts.length > 0) {
+            const cols = ['product_name','niche','price','affiliate_link','content_style'];
+            preview = `<div style="overflow-x:auto;margin-top:16px;">
+                <p style="font-size:13px;color:var(--green);font-weight:600;margin-bottom:8px;">${state.batchFileName} <span class="product-count">${state.batchProducts.length} products</span></p>
+                <table class="preview-table">
+                    <tr>${cols.map(c=>`<th>${c.replace(/_/g,' ')}</th>`).join('')}</tr>
+                    ${state.batchProducts.slice(0,10).map(p=>`<tr>${cols.map(c=>`<td title="${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}">${esc(Array.isArray(p[c])?p[c].join(', '):p[c]||'')}</td>`).join('')}</tr>`).join('')}
+                    ${state.batchProducts.length>10?`<tr><td colspan="${cols.length}" style="text-align:center;color:var(--text2);">... and ${state.batchProducts.length-10} more products</td></tr>`:''}
+                </table>
+            </div>`;
+        }
+
+        return `<div class="card">
+            <h2><span class="num">1</span> Batch Upload — Multiple Products</h2>
+            <div class="upload-zone" id="uploadZone">
+                <input type="file" id="csvFile" accept=".csv,.tsv,.txt" onchange="handleFileUpload(this)">
+                <div class="icon">📁</div>
+                <p>Drag & drop your CSV file here, or click to browse</p>
+                <p class="formats">Accepts: .csv files — includes trust-based fields (complaints, praises, who_not_for, etc.)</p>
+            </div>
+            <div class="upload-actions">
+                <button class="btn-sm btn-template" onclick="downloadTemplate()">Download CSV Template</button>
+                <button class="btn-sm btn-gsheet" onclick="openGoogleSheet()">Open Google Sheets Template</button>
+            </div>
+            ${preview}
+        </div>`;
+    }
+
+    function renderContentStyleSelection() {
+        return `<div class="card">
+            <h2><span class="num">2</span> Content Style <span class="badge">DIFFERENTIATOR</span></h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Choose how your video is framed. This is what makes you different from generic "Top 10 Best" channels.</p>
+            <div class="style-grid">
+                ${Object.entries(contentStyles).map(([id,s])=>`<div class="style-option ${state.contentStyle===id?'selected':''}" onclick="setContentStyle('${id}')"><h3>${s.name}</h3><p>${s.desc}</p></div>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    function renderHookSelection() {
+        return `<div class="card">
+            <h2><span class="num">3</span> Hook Types</h2>
+            <button class="select-all-btn" onclick="toggleAllHooks()">${state.selectedHooks.length===hooks.length?'Deselect All':'Select All ('+hooks.length+' hooks)'}</button>
+            <div class="hook-grid">
+                ${hooks.map(h=>`<div class="hook-option ${state.selectedHooks.includes(h.id)?'selected':''}" onclick="toggleHook('${h.id}')">
+                    ${h.adv?'<span class="adv-badge">ADVANCED</span>':''}
+                    <h3>${h.name}</h3><p>${h.desc}</p>
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    function renderFormatSelection() {
+        return `<div class="card">
+            <h2><span class="num">4</span> Video Formats</h2>
+            <div class="format-grid">
+                <div class="format-option ${state.selectedFormats.length===1&&state.selectedFormats[0]==='short_form'?'selected':''}" onclick="setFormats(['short_form'])">
+                    <div class="icon">📱</div><h3>Short-Form Only</h3><p>YouTube Shorts (9:16, 30-60s)</p>
+                </div>
+                <div class="format-option ${state.selectedFormats.length===1&&state.selectedFormats[0]==='long_form'?'selected':''}" onclick="setFormats(['long_form'])">
+                    <div class="icon">🖥️</div><h3>Long-Form Only</h3><p>YouTube (16:9, 5-8 min)</p>
+                </div>
+                <div class="format-option ${state.selectedFormats.length===2?'selected':''}" onclick="setFormats(['short_form','long_form'])">
+                    <div class="icon">🎬</div><h3>Both Formats</h3><p>Recommended for max reach</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="num">5</span> Audio Settings <span class="badge">NEW</span></h2>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" ${state.audioEnabled?'checked':''} onchange="state.audioEnabled=this.checked;render()">
+                    <span style="font-size:13px;">Enable Background Music & SFX</span>
+                </label>
+            </div>
+            ${state.audioEnabled ? `
+            <div class="format-grid" style="grid-template-columns:repeat(4,1fr);">
+                <div class="format-option ${state.audioMood==='chill'?'selected':''}" onclick="state.audioMood='chill';render()">
+                    <div class="icon">🎵</div><h3>Chill</h3><p>Lo-fi ambient, relaxed</p>
+                </div>
+                <div class="format-option ${state.audioMood==='energetic'?'selected':''}" onclick="state.audioMood='energetic';render()">
+                    <div class="icon">⚡</div><h3>Energetic</h3><p>Upbeat, fast-paced</p>
+                </div>
+                <div class="format-option ${state.audioMood==='dramatic'?'selected':''}" onclick="state.audioMood='dramatic';render()">
+                    <div class="icon">🎭</div><h3>Dramatic</h3><p>Tension, reveals</p>
+                </div>
+                <div class="format-option ${state.audioMood==='minimal'?'selected':''}" onclick="state.audioMood='minimal';render()">
+                    <div class="icon">🔇</div><h3>Minimal</h3><p>Subtle, barely there</p>
+                </div>
+            </div>` : ''}
+        </div>`;
+    }
+
+    function renderProgress() {
+        return `<div class="progress-section card">
+            <div class="spinner"></div>
+            <div class="progress-pct">${state.progress}%</div>
+            <div class="progress-bar-bg"><div class="progress-bar" style="width:${state.progress}%"></div></div>
+            <div class="progress-text">${esc(state.currentStep)}</div>
+            ${state.errors.length?'<div style="color:var(--red);margin-top:12px;font-size:13px;">Warnings: '+state.errors.join(', ')+'</div>':''}
+        </div>`;
+    }
+
+    function renderResults() {
+        if (state.jobMode === 'batch') return renderBatchResults();
+        return renderSingleResults();
+    }
+
+    function renderSingleResults() {
+        if (!state.results) return '<div class="card">No results yet.</div>';
+        const hookKeys = Object.keys(state.results);
+        if (!state.activeTab && hookKeys.length) state.activeTab = hookKeys[0];
+        const data = state.results[state.activeTab] || {};
+        const ytAssets = (data.youtube_assets||{})[state.activeFormat] || {};
+
+        return `
+        <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
+        <div class="card" style="text-align:center;border-color:var(--green);">
+            <h2 style="color:var(--green);justify-content:center;">Generation Complete!</h2>
+            <p style="color:var(--text2);font-size:14px;">Your videos and YouTube posting packages are ready.</p>
+        </div>
+        <div class="results-tabs">
+            ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
+        </div>
+        <div class="results-tabs" style="margin-bottom:16px;">
+            ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
+        </div>
+        ${renderVideoSection(data, '')}
+        ${renderYTAssets(ytAssets, '')}`;
+    }
+
+    function renderBatchResults() {
+        if (!state.batchResults || !state.batchResults.length) return '<div class="card">No results yet.</div>';
+        const pr = state.batchResults[state.activeProductIdx] || {};
+        const hookKeys = Object.keys(pr.hooks || {});
+        if (!state.activeTab && hookKeys.length) state.activeTab = hookKeys[0];
+        const data = (pr.hooks||{})[state.activeTab] || {};
+        const ytAssets = (data.youtube_assets||{})[state.activeFormat] || {};
+        const slug = slugify(pr.product_name || 'product');
+
+        return `
+        <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
+        <div class="card" style="text-align:center;border-color:var(--green);">
+            <h2 style="color:var(--green);justify-content:center;">Batch Complete! ${state.batchResults.length} Products</h2>
+            <p style="color:var(--text2);font-size:14px;margin-bottom:12px;">All videos and YouTube posting packages are ready.</p>
+            <button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>
+        </div>
+
+        <div class="card"><h2>Select Product</h2>
+        <div class="results-tabs">
+            ${state.batchResults.map((p,i)=>`<button class="tab-btn product-tab ${state.activeProductIdx===i?'active':''}" onclick="setProduct(${i})">${esc(p.product_name||'Product '+(i+1))}</button>`).join('')}
+        </div></div>
+
+        <div class="results-tabs">
+            ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
+        </div>
+        <div class="results-tabs" style="margin-bottom:16px;">
+            ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
+        </div>
+        ${renderVideoSection(data, slug + '/')}
+        ${renderYTAssets(ytAssets, slug + '/')}`;
+    }
+
+    function renderVideoSection(data, pathPrefix) {
+        const videos = data.videos || {};
+        const vid = videos[state.activeFormat];
+        if (!vid) return '';
+        return `<div class="card">
+            <h2>Video Preview</h2>
+            <video class="video-player" controls src="${API}/download/${state.jobId}/${pathPrefix}${vid}"></video>
+            <div style="margin-top:12px;"><button class="btn-sm btn-download" onclick="downloadFile('${pathPrefix}${vid}')">Download ${vid}</button></div>
+        </div>`;
+    }
+
+    function renderYTAssets(a, pathPrefix) {
+        if (!a || !a.seo_title) return '<div class="card"><p style="color:var(--text2)">YouTube package not available for this combination.</p></div>';
+        return `
+        <div class="card"><h2>SEO Title</h2>
+            <div class="result-block"><div class="content">${esc(a.seo_title)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(a.seo_title)}\`)">Copy</button></div></div>
+            ${(a.seo_title_alternatives||[]).map((t,i)=>`<div class="result-block"><h3>Alternative ${i+1}</h3><div class="content">${esc(t)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(t)}\`)">Copy</button></div></div>`).join('')}
+        </div>
+        <div class="card"><h2>SEO Description</h2>
+            <div class="result-block"><div class="content">${esc(a.seo_description||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(a.seo_description||'')}\`)">Copy</button></div></div>
+        </div>
+        <div class="card"><h2>Tags</h2>
+            <div class="tag-list">${(a.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
+            <div style="margin-top:10px;"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.tags||[]).join(', '))}\`)">Copy All Tags</button></div>
+        </div>
+        <div class="card"><h2>Hashtags</h2>
+            <div class="content" style="font-size:15px;font-weight:600;color:var(--cyan);">${esc((a.hashtags||[]).join(' '))}</div>
+            <div style="margin-top:10px;"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.hashtags||[]).join(' '))}\`)">Copy</button></div>
+        </div>
+        <div class="card"><h2>Pinned Comment</h2>
+            <div class="result-block"><div class="content">${esc(a.pinned_comment||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(a.pinned_comment||'')}\`)">Copy</button></div></div>
+            ${(a.pinned_comment_alternatives||[]).map((c,i)=>`<div class="result-block"><h3>Alternative ${i+1}</h3><div class="content">${esc(c)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(c)}\`)">Copy</button></div></div>`).join('')}
+        </div>
+        <div class="card"><h2>Thumbnail Suggestions</h2>
+            <div class="result-block"><h3>Primary Text</h3><div class="content">${esc(a.thumbnail_text_primary||'')}</div></div>
+            <div class="result-block"><h3>Secondary Text</h3><div class="content">${esc(a.thumbnail_text_secondary||'')}</div></div>
+            <div class="result-block"><h3>Color Scheme</h3><div class="content">${esc(a.thumbnail_color_scheme||'')}</div></div>
+            <div class="result-block"><h3>Tips</h3><div class="content">${esc(a.thumbnail_tips||'')}</div></div>
+        </div>
+        <div class="card"><h2>Strategy</h2>
+            <div class="result-block"><h3>End Screen</h3><div class="content">${esc(a.end_screen_strategy||'')}</div></div>
+            <div class="result-block"><h3>Cards</h3><div class="content">${esc(a.cards_strategy||'')}</div></div>
+            <div class="result-block"><h3>Best Posting Time</h3><div class="content">${esc(a.best_posting_time||'')}</div></div>
+            <div class="result-block"><h3>Posting Frequency</h3><div class="content">${esc(a.posting_frequency_tip||'')}</div></div>
+        </div>
+        <div class="card"><h2>Community Post Template</h2>
+            <div class="result-block"><div class="content">${esc(a.community_post_template||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(a.community_post_template||'')}\`)">Copy</button></div></div>
+        </div>
+        <div class="card"><h2>Engagement Boosters</h2>
+            ${(a.engagement_boosters||[]).map((t,i)=>`<div class="result-block"><div class="content">${i+1}. ${esc(t)}</div></div>`).join('')}
+        </div>
+        <div class="card"><h2>Cross-Promotion Ideas</h2>
+            ${(a.cross_promotion_ideas||[]).map((t,i)=>`<div class="result-block"><div class="content">${i+1}. ${esc(t)}</div></div>`).join('')}
+        </div>
+        <div class="card"><h2>Comment Reply Templates</h2>
+            <div class="result-block"><h3>Positive Comment Reply</h3><div class="content">${esc((a.reply_templates||{}).positive_comment||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.reply_templates||{}).positive_comment||'')}\`)">Copy</button></div></div>
+            <div class="result-block"><h3>Product Question Reply</h3><div class="content">${esc((a.reply_templates||{}).question_about_product||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.reply_templates||{}).question_about_product||'')}\`)">Copy</button></div></div>
+            <div class="result-block"><h3>Comparison Question Reply</h3><div class="content">${esc((a.reply_templates||{}).comparison_question||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.reply_templates||{}).comparison_question||'')}\`)">Copy</button></div></div>
+            <div class="result-block"><h3>Negative Comment Reply</h3><div class="content">${esc((a.reply_templates||{}).negative_comment||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.reply_templates||{}).negative_comment||'')}\`)">Copy</button></div></div>
+            <div class="result-block"><h3>"Where to Buy?" Reply</h3><div class="content">${esc((a.reply_templates||{}).where_to_buy||'')}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs((a.reply_templates||{}).where_to_buy||'')}\`)">Copy</button></div></div>
+        </div>
+        ${(a.series_suggestions||[]).length?`<div class="card"><h2>Next Video Ideas (Series)</h2>
+            ${(a.series_suggestions||[]).map((t,i)=>`<div class="result-block"><div class="content">${i+1}. ${esc(t)}</div></div>`).join('')}
+        </div>`:''}`;
+    }
+
+    function renderNavBar() {
+        return `<div class="nav-bar">
+            <button class="nav-btn ${state.navPage==='generate'?'active':''}" onclick="setNavPage('generate')">
+                <span class="nav-icon">🎬</span> Generate
+            </button>
+            <button class="nav-btn ${state.navPage==='analytics'?'active':''}" onclick="setNavPage('analytics')">
+                <span class="nav-icon">📊</span> Analytics
+            </button>
+            <button class="nav-btn ${state.navPage==='social'?'active':''}" onclick="setNavPage('social')">
+                <span class="nav-icon">📱</span> Social Posting
+            </button>
+        </div>`;
+    }
+
+    function renderAnalyticsPage() {
+        return `
+        <div class="card">
+            <h2>📊 Analytics Dashboard</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Track video performance, compare hook types, and find your top converters.</p>
+            <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+                <button class="btn-primary" onclick="loadDashboard()" ${state.analyticsLoading?'disabled':''}>${state.analyticsLoading?'Loading...':'Load Dashboard'}</button>
+                <button class="btn-sm btn-template" onclick="exportAnalytics()">Export CSV</button>
+            </div>
+        </div>
+
+        ${state.analyticsData ? renderDashboardData() : ''}
+
+        <div class="card">
+            <h2>📝 Track a Video</h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Register a new video for tracking after you upload it to YouTube.</p>
+            <div class="form-grid">
+                <div class="form-group"><label>Video ID / Title</label><input id="trackVideoId" value="${esc(state.trackVideoId)}" placeholder="e.g., my_earbuds_review_v1"></div>
+                <div class="form-group"><label>Product Name</label><input id="trackProduct" value="${esc(state.trackProduct)}" placeholder="e.g., SoundCore Space A40"></div>
+                <div class="form-group"><label>Hook Type</label>
+                    <select id="trackHook">
+                        <option value="">Select hook...</option>
+                        ${hooks.map(h=>`<option value="${h.id}" ${state.trackHook===h.id?'selected':''}>${h.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Format</label>
+                    <select id="trackFormat">
+                        <option value="short_form" ${state.trackFormat==='short_form'?'selected':''}>Short Form</option>
+                        <option value="long_form" ${state.trackFormat==='long_form'?'selected':''}>Long Form</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="trackVideo()" style="margin-top:10px;">Track Video</button>
+        </div>
+
+        <div class="card">
+            <h2>📈 Record Metrics</h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Update performance data for a tracked video.</p>
+            <div class="form-grid">
+                <div class="form-group"><label>Video ID</label><input id="metricVideoId" value="${esc(state.metricVideoId)}" placeholder="Video ID from above"></div>
+                <div class="form-group"><label>Metric Type</label>
+                    <select id="metricType">
+                        <option value="views" ${state.metricType==='views'?'selected':''}>Views</option>
+                        <option value="likes" ${state.metricType==='likes'?'selected':''}>Likes</option>
+                        <option value="comments" ${state.metricType==='comments'?'selected':''}>Comments</option>
+                        <option value="ctr" ${state.metricType==='ctr'?'selected':''}>CTR (%)</option>
+                        <option value="affiliate_clicks" ${state.metricType==='affiliate_clicks'?'selected':''}>Affiliate Clicks</option>
+                        <option value="revenue" ${state.metricType==='revenue'?'selected':''}>Revenue ($)</option>
+                        <option value="subscribers_gained" ${state.metricType==='subscribers_gained'?'selected':''}>Subscribers Gained</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Value</label><input id="metricValue" type="number" value="${esc(state.metricValue)}" placeholder="e.g., 1500"></div>
+            </div>
+            <button class="btn-primary" onclick="recordMetric()" style="margin-top:10px;">Record Metric</button>
+        </div>
+        `;
+    }
+
+    function renderDashboardData() {
+        const d = state.analyticsData;
+        if (!d) return '';
+        const s = d.summary || {};
+        let html = '';
+
+        // Summary cards
+        html += `<div class="card">
+            <h2>Overview</h2>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="stat-value">${s.total_videos||0}</div><div class="stat-label">Videos Tracked</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_views||0).toLocaleString()}</div><div class="stat-label">Total Views</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</div><div class="stat-label">Total Revenue</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.total_affiliate_clicks||0).toLocaleString()}</div><div class="stat-label">Affiliate Clicks</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.avg_ctr||0).toFixed(1)}%</div><div class="stat-label">Avg CTR</div></div>
+                <div class="stat-card"><div class="stat-value">${(s.avg_conversion_rate||0).toFixed(2)}%</div><div class="stat-label">Avg Conversion</div></div>
+            </div>
+        </div>`;
+
+        // Hook performance
+        const hp = d.hook_performance || [];
+        if (hp.length) {
+            html += `<div class="card">
+                <h2>Hook Performance Comparison</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Hook Type</th><th>Videos</th><th>Avg Views</th><th>Avg CTR</th><th>Avg Revenue</th><th>Avg Conversion</th></tr>
+                    ${hp.map(h=>`<tr>
+                        <td><span class="hook-badge">${esc(h.hook||h.hook_type||'')}</span></td>
+                        <td>${h.count||h.video_count||0}</td>
+                        <td>${(h.avg_views||0).toLocaleString()}</td>
+                        <td>${(h.avg_ctr||0).toFixed(1)}%</td>
+                        <td>${(h.avg_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                        <td>${(h.avg_conversion||h.avg_conversion_rate||0).toFixed(2)}%</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Format performance
+        const fp = d.format_performance || [];
+        if (fp.length) {
+            html += `<div class="card">
+                <h2>Format Performance (Short vs Long)</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Format</th><th>Videos</th><th>Avg Views</th><th>Avg CTR</th><th>Avg Revenue</th></tr>
+                    ${fp.map(f=>`<tr>
+                        <td>${esc(f.format||'')}</td>
+                        <td>${f.count||f.video_count||0}</td>
+                        <td>${(f.avg_views||0).toLocaleString()}</td>
+                        <td>${(f.avg_ctr||0).toFixed(1)}%</td>
+                        <td>${(f.avg_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Top revenue videos
+        const tr = d.top_revenue_videos || [];
+        if (tr.length) {
+            html += `<div class="card">
+                <h2>💰 Top Revenue Videos</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Revenue</th><th>Views</th></tr>
+                    ${tr.map((v,i)=>`<tr>
+                        <td>${i+1}</td>
+                        <td>${esc(v.video_id||'')}</td>
+                        <td>${esc(v.product||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td style="color:var(--green);font-weight:700;">${(v.total_revenue||v.revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                        <td>${(v.total_views||v.views||0).toLocaleString()}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        // Top conversion videos
+        const tc = d.top_conversion_videos || [];
+        if (tc.length) {
+            html += `<div class="card">
+                <h2>🎯 Top Converting Videos</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Conversion Rate</th><th>Clicks</th></tr>
+                    ${tc.map((v,i)=>`<tr>
+                        <td>${i+1}</td>
+                        <td>${esc(v.video_id||'')}</td>
+                        <td>${esc(v.product||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td style="color:var(--pink);font-weight:700;">${(v.conversion_rate||0).toFixed(2)}%</td>
+                        <td>${(v.total_affiliate_clicks||v.clicks||0).toLocaleString()}</td>
+                    </tr>`).join('')}
+                </table></div>
+            </div>`;
+        }
+
+        return html;
+    }
+
+    function renderSocialPage() {
+        return `
+        <div class="card">
+            <h2>📱 Social Media Posting</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Post your videos to Instagram Reels and TikTok, or schedule them for later.</p>
+            <div style="display:flex;gap:10px;margin-bottom:20px;">
+                <button class="btn-primary" onclick="loadSocialStatus()" ${state.socialLoading?'disabled':''}>${state.socialLoading?'Loading...':'Check Platform Status'}</button>
+                <button class="btn-sm btn-template" onclick="loadPostingQueue()">View Queue</button>
+            </div>
+        </div>
+
+        ${state.socialStatus ? renderSocialStatus() : ''}
+
+        <div class="card">
+            <h2>📤 Post a Video</h2>
+            <div class="form-grid">
+                <div class="form-group"><label>Platform</label>
+                    <select id="socialPlatform" onchange="state.socialPostPlatform=this.value">
+                        <option value="instagram" ${state.socialPostPlatform==='instagram'?'selected':''}>Instagram Reels</option>
+                        <option value="tiktok" ${state.socialPostPlatform==='tiktok'?'selected':''}>TikTok</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Video File Path</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file (from output folder)"></div>
+                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Your post caption with CTA and affiliate link...">${esc(state.socialPostCaption)}</textarea></div>
+                <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review #tech (comma or space separated)"></div>
+                <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"><span class="hint">Leave empty to post immediately</span></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:12px;">
+                <button class="btn-primary" onclick="postToSocial(false)">Post Now</button>
+                <button class="btn-sm btn-template" onclick="postToSocial(true)">Schedule Post</button>
+                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run (Test)</button>
+            </div>
+        </div>
+
+        ${state.postingQueue.length ? renderPostingQueue() : ''}
+        `;
+    }
+
+    function renderSocialStatus() {
+        const s = state.socialStatus;
+        if (!s) return '';
+        return `<div class="card">
+            <h2>Platform Status</h2>
+            <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);">
+                <div class="stat-card">
+                    <div class="stat-label">Instagram</div>
+                    <div class="stat-value" style="font-size:16px;color:${s.instagram==='Configured'?'var(--green)':'var(--red)'}">${esc(s.instagram||'Unknown')}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">TikTok</div>
+                    <div class="stat-value" style="font-size:16px;color:${s.tiktok==='Configured'?'var(--green)':'var(--red)'}">${esc(s.tiktok||'Unknown')}</div>
+                </div>
+            </div>
+            <p style="font-size:11px;color:var(--text2);margin-top:10px;">Set API credentials in your .env file. See SETUP_GUIDE.md for details.</p>
+        </div>`;
+    }
+
+    function renderPostingQueue() {
+        return `<div class="card">
+            <h2>📋 Posting Queue (${state.postingQueue.length} items)</h2>
+            <div style="overflow-x:auto;"><table class="analytics-table">
+                <tr><th>#</th><th>Platform</th><th>Video</th><th>Scheduled</th><th>Status</th></tr>
+                ${state.postingQueue.map((p,i)=>`<tr>
+                    <td>${i+1}</td>
+                    <td>${esc(p.platform||'')}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(p.video_path||'')}</td>
+                    <td>${p.scheduled_time?new Date(p.scheduled_time).toLocaleString():'Immediate'}</td>
+                    <td style="color:${p.posted?'var(--green)':'var(--pink)'}">${p.posted?'Posted':'Pending'}</td>
+                </tr>`).join('')}
+            </table></div>
+            <button class="btn-primary" onclick="processQueue()" style="margin-top:12px;">Process Queue Now</button>
+        </div>`;
+    }
+
+    function renderFooter() {
+        return `<div class="footer">
+            <div class="company">Unloved Productions</div>
+            <div class="motto">Forged in Passion</div>
+            <div class="tagline">Creating software for the problems you didn't know you had</div>
+        </div>`;
+    }
+
+    function renderSettingsModal() {
+        const presets = state.providerPresets;
+        const p = presets[state.llmProvider] || {};
+        const recs = p.recommended_models || [];
+        return `<div class="modal-overlay" onclick="if(event.target===this)toggleSettings()">
+            <div class="modal">
+                <h2>LLM Settings</h2>
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="settingsProvider" onchange="onProviderChange(this.value)">
+                        ${Object.entries(presets).map(([k,v])=>`<option value="${k}" ${state.llmProvider===k?'selected':''}>${v.name}</option>`).join('')}
+                    </select>
+                    <span class="hint">${p.description||''}</span>
+                </div>
+                <div class="form-group">
+                    <label>API Key ${p.api_key_required?'<span class="req">*</span>':'(not required for local)'}</label>
+                    <input id="settingsApiKey" type="password" value="${esc(state.llmApiKey)}" placeholder="${p.api_key_required?'sk-...':'not-needed'}">
+                </div>
+                <div class="form-group">
+                    <label>Base URL</label>
+                    <input id="settingsBaseUrl" value="${esc(state.llmBaseUrl||p.base_url||'')}" placeholder="Auto-detected from provider">
+                </div>
+                <div class="form-group">
+                    <label>Model</label>
+                    <input id="settingsModel" value="${esc(state.llmModel||p.default_model||'')}" placeholder="e.g., gpt-4.1-mini, qwen2.5:14b-instruct-q5_K_M">
+                    <span class="hint">For Ollama: run "ollama list" to see models. For LM Studio: check loaded model name.</span>
+                </div>
+                ${recs.length?`<div class="model-rec">
+                    <p style="font-weight:600;margin-bottom:6px;color:var(--cyan);">Recommended for your RTX 3080 (16GB VRAM):</p>
+                    <table>
+                        <tr><th>Model</th><th>VRAM</th><th>Quality</th><th>Speed</th></tr>
+                        ${recs.map(r=>`<tr>
+                            <td><span class="pick" onclick="document.getElementById('settingsModel').value='${r.name}'">${r.name}</span></td>
+                            <td>${r.vram}</td><td>${r.quality}</td><td>${r.speed}</td>
+                        </tr>`).join('')}
+                    </table>
+                    <p style="margin-top:6px;font-size:10px;color:var(--text2);">Click a model name to auto-fill it.</p>
+                </div>`:''}
+                <div class="modal-actions">
+                    <button class="cancel" onclick="toggleSettings()">Cancel</button>
+                    <button class="save" onclick="saveSettings()">Save Settings</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────
+    function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escJs(s) { if(!s)return''; return String(s).replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$'); }
+    function slugify(t) { return t.trim().toLowerCase().replace(/[^\w\s-]/g,'').replace(/[\s_-]+/g,'_').replace(/^_|_$/g,'').substring(0,60)||'product'; }
+
+    async function scrapeAmazon() {
+        const url = document.getElementById('amazonUrl')?.value?.trim();
+        if (!url) { showToast('Please paste an Amazon product URL'); return; }
+        const btn = document.getElementById('scrapeBtn');
+        const status = document.getElementById('scrapeStatus');
+        btn.disabled = true; btn.textContent = 'Scraping...';
+        status.style.display = 'block'; status.style.color = 'var(--pink)';
+        status.textContent = 'Fetching product data from Amazon...';
+        try {
+            const form = new FormData(); form.append('url', url);
+            const res = await fetch('/api/scrape-amazon', { method: 'POST', body: form });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Scrape failed'); }
+            const data = await res.json();
+            const d = data.data;
+            if (d.product_name) { state.productName = d.product_name; const el = document.getElementById('productName'); if(el) el.value = d.product_name; }
+            if (d.price) { state.price = d.price; const el = document.getElementById('price'); if(el) el.value = d.price; }
+            if (d.key_features) { state.keyFeatures = d.key_features; const el = document.getElementById('keyFeatures'); if(el) el.value = d.key_features; }
+            if (d.common_complaints) { state.commonComplaints = d.common_complaints; const el = document.getElementById('commonComplaints'); if(el) el.value = d.common_complaints; }
+            if (d.common_praises) { state.commonPraises = d.common_praises; const el = document.getElementById('commonPraises'); if(el) el.value = d.common_praises; }
+            let extra = '';
+            if (d.star_rating) extra += `Rating: ${d.star_rating}/5 | `;
+            if (d.number_of_reviews) extra += `${d.number_of_reviews} reviews | `;
+            status.style.color = 'var(--green)';
+            status.textContent = `Auto-filled! ${extra}${d.common_complaints ? 'Complaints found' : 'No complaints found'} | ${d.common_praises ? 'Praises found' : 'No praises found'}`;
+            showToast('Product data auto-filled from Amazon!');
+        } catch (e) {
+            status.style.color = 'var(--red)';
+            status.textContent = `Error: ${e.message}. You can still fill in fields manually.`;
+            showToast('Amazon scrape failed — fill in fields manually');
+        } finally {
+            btn.disabled = false; btn.textContent = 'Auto-Fill';
+        }
+    }
+
+    async function researchKeywords() {
+        const productName = document.getElementById('productName')?.value?.trim();
+        const niche = document.getElementById('niche')?.value?.trim();
+        const query = productName || niche || '';
+        if (!query) { showToast('Enter a product name or niche first'); return; }
+        const btn = document.getElementById('researchBtn');
+        const results = document.getElementById('keywordResults');
+        btn.disabled = true; btn.textContent = 'Researching...';
+        results.style.display = 'block';
+        results.innerHTML = '<p style="color:var(--pink);font-size:13px;">Fetching YouTube keyword data... (this takes ~30 seconds)</p>';
+        try {
+            const form = new FormData(); form.append('query', query);
+            const res = await fetch('/api/youtube-research', { method: 'POST', body: form });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Research failed'); }
+            const data = await res.json();
+            const d = data.data;
+            // Auto-fill keywords field
+            const tags = d.recommended_tags || [];
+            if (tags.length > 0) {
+                const kwEl = document.getElementById('keywords');
+                if (kwEl) { kwEl.value = tags.join(', '); state.keywords = tags.join(', '); }
+            }
+            // Build results display
+            let html = '<div style="background:var(--bg);border:1px solid var(--bg4);border-radius:8px;padding:14px;">';
+            html += '<p style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:10px;">Keywords auto-filled! Here\'s what YouTube users are searching for:</p>';
+            if (d.autocomplete_suggestions?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Top Autocomplete:</p>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">';
+                d.autocomplete_suggestions.slice(0,10).forEach(s => { html += `<span style="background:var(--bg3);padding:3px 8px;border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;" onclick="appendKeyword('${s.replace(/'/g,"\\'")}')">+ ${s}</span>`; });
+                html += '</div>';
+            }
+            if (d.question_keywords?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Question Keywords (great for titles):</p>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">';
+                d.question_keywords.slice(0,15).forEach(s => { html += `<span style="background:var(--bg3);padding:3px 8px;border-radius:4px;font-size:11px;color:var(--text2);cursor:pointer;" onclick="appendKeyword('${s.replace(/'/g,"\\'")}')">+ ${s}</span>`; });
+                html += '</div>';
+            }
+            if (d.recommended_titles?.length) {
+                html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Suggested Video Titles:</p>';
+                d.recommended_titles.forEach(t => { html += `<p style="font-size:12px;color:var(--text);margin-left:8px;">• ${t}</p>`; });
+            }
+            html += '<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>';
+            html += '</div>';
+            results.innerHTML = html;
+            showToast(`Found ${tags.length} keywords + ${d.long_tail_keywords?.length || 0} long-tail terms!`);
+        } catch (e) {
+            results.innerHTML = `<p style="color:var(--red);font-size:13px;">Error: ${e.message}</p>`;
+            showToast('Keyword research failed');
+        } finally {
+            btn.disabled = false; btn.textContent = '\ud83d\udd0d Research Keywords';
+        }
+    }
+
+    function appendKeyword(kw) {
+        const el = document.getElementById('keywords');
+        if (!el) return;
+        const current = el.value.trim();
+        if (current.toLowerCase().includes(kw.toLowerCase())) { showToast('Already added'); return; }
+        el.value = current ? current + ', ' + kw : kw;
+        state.keywords = el.value;
+        showToast('Added: ' + kw);
+    }
+
+    function showToast(msg) {
+        const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+        document.body.appendChild(t); setTimeout(()=>t.remove(),2500);
+    }
+    function copyText(text) {
+        navigator.clipboard.writeText(text).then(()=>showToast('Copied!')).catch(()=>{
+            const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta); showToast('Copied!');
+        });
+    }
+    function downloadFile(filename) { window.open(`${API}/download/${state.jobId}/${filename}`,'_blank'); }
+
+    // ── Navigation ──────────────────────────────────────────
+    function setNavPage(p) { state.navPage = p; render(); }
+
+    // ── Analytics Actions ───────────────────────────────────
+    async function loadDashboard() {
+        state.analyticsLoading = true; render();
+        try {
+            const res = await fetch(`${API}/analytics/dashboard`);
+            const data = await res.json();
+            state.analyticsData = data;
+        } catch(e) { showToast('Error loading dashboard: ' + e.message); }
+        state.analyticsLoading = false; render();
+    }
+
+    async function trackVideo() {
+        const videoId = document.getElementById('trackVideoId')?.value?.trim();
+        const product = document.getElementById('trackProduct')?.value?.trim();
+        const hook = document.getElementById('trackHook')?.value;
+        const format = document.getElementById('trackFormat')?.value;
+        if (!videoId || !product) { showToast('Video ID and Product Name are required'); return; }
+        try {
+            const res = await fetch(`${API}/analytics/track`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ video_id: videoId, product: product, hook_type: hook, format: format })
+            });
+            if (res.ok) { showToast('Video tracked successfully!'); state.trackVideoId=''; state.trackProduct=''; render(); }
+            else { const err = await res.json(); showToast('Error: ' + (err.detail||'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function recordMetric() {
+        const videoId = document.getElementById('metricVideoId')?.value?.trim();
+        const metricType = document.getElementById('metricType')?.value;
+        const value = parseFloat(document.getElementById('metricValue')?.value);
+        if (!videoId || isNaN(value)) { showToast('Video ID and Value are required'); return; }
+        try {
+            const res = await fetch(`${API}/analytics/record`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ video_id: videoId, metric_type: metricType, value: value })
+            });
+            if (res.ok) { showToast('Metric recorded!'); state.metricValue=''; render(); }
+            else { const err = await res.json(); showToast('Error: ' + (err.detail||'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function exportAnalytics() {
+        try {
+            const res = await fetch(`${API}/analytics/export`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'shadowcast_analytics.csv'; a.click();
+            URL.revokeObjectURL(url); showToast('CSV exported!');
+        } catch(e) { showToast('Error exporting: ' + e.message); }
+    }
+
+    // ── Social Actions ──────────────────────────────────────
+    async function loadSocialStatus() {
+        state.socialLoading = true; render();
+        try {
+            const res = await fetch(`${API}/social/status`);
+            state.socialStatus = await res.json();
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.socialLoading = false; render();
+    }
+
+    async function loadPostingQueue() {
+        state.queueLoading = true; render();
+        try {
+            const res = await fetch(`${API}/social/queue`);
+            const data = await res.json();
+            state.postingQueue = data.queue || data || [];
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.queueLoading = false; render();
+    }
+
+    async function postToSocial(schedule, dryRun) {
+        const platform = document.getElementById('socialPlatform')?.value || 'instagram';
+        const videoPath = document.getElementById('socialVideo')?.value?.trim();
+        const caption = document.getElementById('socialCaption')?.value?.trim();
+        const hashtags = document.getElementById('socialHashtags')?.value?.trim();
+        const scheduleTime = document.getElementById('socialSchedule')?.value;
+        if (!videoPath) { showToast('Video file path is required'); return; }
+        if (!caption) { showToast('Caption is required'); return; }
+        const body = { platform, video_path: videoPath, caption, hashtags: hashtags || '', dry_run: !!dryRun };
+        try {
+            let endpoint = `${API}/social/post`;
+            if (schedule && scheduleTime) {
+                endpoint = `${API}/social/schedule`;
+                body.scheduled_time = new Date(scheduleTime).toISOString();
+            }
+            const res = await fetch(endpoint, {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(dryRun ? 'Dry run successful!' : (schedule ? 'Post scheduled!' : 'Posted successfully!'));
+                if (schedule) loadPostingQueue();
+            } else { showToast('Error: ' + (data.detail || 'Failed')); }
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function processQueue() {
+        try {
+            const res = await fetch(`${API}/social/queue`, { method: 'POST' });
+            const data = await res.json();
+            showToast('Queue processed! ' + (data.processed || 0) + ' posts sent.');
+            loadPostingQueue();
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    // ── Actions ─────────────────────────────────────────────
+    function setMode(m) { state.mode = m; state.batchProducts = []; state.batchFileName = ''; render(); }
+    function setContentStyle(s) { state.contentStyle = s; render(); }
+    function toggleHook(id) {
+        const i=state.selectedHooks.indexOf(id);
+        if(i>=0){if(state.selectedHooks.length>1)state.selectedHooks.splice(i,1);}
+        else state.selectedHooks.push(id);
+        render();
+    }
+    function toggleAllHooks() { state.selectedHooks=state.selectedHooks.length===hooks.length?['curiosity']:hooks.map(h=>h.id); render(); }
+    function setFormats(f) { state.selectedFormats=f; render(); }
+    function setTab(t) { state.activeTab=t; render(); }
+    function setFormat(f) { state.activeFormat=f; render(); }
+    function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
+    function toggleSettings() { state.showSettings=!state.showSettings; render(); }
+    function resetToForm() { state.page='form'; state.results=null; state.batchResults=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0; render(); }
+
+    function onProviderChange(p) {
+        state.llmProvider=p;
+        const pr=state.providerPresets[p]||{};
+        state.llmBaseUrl=pr.base_url||''; state.llmModel=pr.default_model||'';
+        render();
+    }
+
+    async function saveSettings() {
+        const apiKey=document.getElementById('settingsApiKey').value;
+        const baseUrl=document.getElementById('settingsBaseUrl').value;
+        const model=document.getElementById('settingsModel').value;
+        state.llmApiKey=apiKey; state.llmBaseUrl=baseUrl; state.llmModel=model;
+        try {
+            await fetch(`${API}/config`,{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({provider:state.llmProvider,api_key:apiKey,base_url:baseUrl,model:model})});
+            showToast('Settings saved!');
+        } catch(e) { showToast('Error saving settings'); }
+        state.showSettings=false; render();
+    }
+
+    // ── CSV Upload ──────────────────────────────────────────
+    function handleFileUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        state.batchFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = function(e) { parseCSVPreview(e.target.result); };
+        reader.readAsText(file);
+    }
+
+    function handleAPFFileUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        state.batchFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = function(e) { parseAPFPreview(e.target.result); };
+        reader.readAsText(file);
+    }
+
+    function parseAPFPreview(text) {
+        try {
+            const data = JSON.parse(text);
+            if (!Array.isArray(data)) {
+                showToast('JSON must be an array of products');
+                return;
+            }
+            const products = data.map(item => ({
+                product_name: item.product_name || '',
+                niche: item.niche || 'General',
+                key_features: Array.isArray(item.key_features) ? item.key_features : (item.key_features ? [item.key_features] : []),
+                price: item.price || '$49.99',
+                affiliate_link: item.affiliate_link || '[YOUR_AFFILIATE_LINK]',
+                keywords: Array.isArray(item.keywords) ? item.keywords : (item.keywords ? [item.keywords] : []),
+                target_audience: item.target_audience || 'General consumers',
+                product_category: item.product_category || item.niche || 'General',
+                competitors: Array.isArray(item.competitors) ? item.competitors : (item.competitors ? [item.competitors] : []),
+                unique_selling_point: item.unique_selling_point || '',
+                discount_info: item.discount_info || '',
+                coupon_code: item.coupon_code || '',
+                common_complaints: item.common_complaints || '',
+                common_praises: item.common_praises || '',
+                who_not_for: item.who_not_for || '',
+                series_name: item.series_name || '',
+                price_comparison: item.price_comparison || '',
+                content_style: item.content_style || 'honest_review',
+            })).filter(p => p.product_name);
+            state.batchProducts = products;
+            render();
+            if (products.length) showToast(`Imported ${products.length} products from APF!`);
+            else showToast('No valid products found in JSON.');
+        } catch (err) {
+            showToast(`Error parsing JSON: ${err.message}`);
+        }
+    }
+
+    function parseCSVPreview(text) {
+        const lines = text.split('\n').filter(l=>l.trim());
+        if (lines.length < 2) { showToast('CSV needs a header row and at least one product row'); return; }
+        const headers = lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/\s+/g,'_').replace(/"/g,''));
+        const products = [];
+        for (let i=1; i<lines.length; i++) {
+            const vals = parseCSVLine(lines[i]);
+            if (!vals.length) continue;
+            const row = {};
+            headers.forEach((h,j)=> row[h] = (vals[j]||'').trim());
+            if (!row.product_name) continue;
+            products.push({
+                product_name: row.product_name||'',
+                niche: row.niche||'General',
+                key_features: (row.key_features||'').split(',').map(s=>s.trim()).filter(Boolean),
+                price: row.price||'$49.99',
+                affiliate_link: row.affiliate_link||'[YOUR_AFFILIATE_LINK]',
+                keywords: (row.keywords||'').split(',').map(s=>s.trim()).filter(Boolean),
+                target_audience: row.target_audience||'General consumers',
+                product_category: row.product_category||row.niche||'General',
+                competitors: (row.competitors||'').split(',').map(s=>s.trim()).filter(Boolean),
+                unique_selling_point: row.unique_selling_point||'',
+                discount_info: row.discount_info||'',
+                coupon_code: row.coupon_code||'',
+                common_complaints: row.common_complaints||'',
+                common_praises: row.common_praises||'',
+                who_not_for: row.who_not_for||'',
+                series_name: row.series_name||'',
+                price_comparison: row.price_comparison||'',
+                content_style: row.content_style||'honest_review',
+            });
+        }
+        state.batchProducts = products;
+        render();
+        if (products.length) showToast(`Found ${products.length} products!`);
+        else showToast('No valid products found. Check your CSV format.');
+    }
+
+    function parseCSVLine(line) {
+        const result=[]; let current=''; let inQuotes=false;
+        for(let i=0;i<line.length;i++){
+            const c=line[i];
+            if(c==='"'){inQuotes=!inQuotes;}
+            else if(c===','&&!inQuotes){result.push(current);current='';}
+            else{current+=c;}
+        }
+        result.push(current);
+        return result;
+    }
+
+    function downloadTemplate() { window.open(`${API}/csv-template`,'_blank'); }
+    function openGoogleSheet() {
+        window.open('https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/copy','_blank');
+    }
+
+    // ── Generation ──────────────────────────────────────────
+    function readFormValues() {
+        state.productName=document.getElementById('productName')?.value||'';
+        state.niche=document.getElementById('niche')?.value||'';
+        state.keyFeatures=document.getElementById('keyFeatures')?.value||'';
+        state.price=document.getElementById('price')?.value||'';
+        state.affiliateLink=document.getElementById('affiliateLink')?.value||'';
+        state.keywords=document.getElementById('keywords')?.value||'';
+        state.targetAudience=document.getElementById('targetAudience')?.value||'';
+        state.productCategory=document.getElementById('productCategory')?.value||'';
+        state.competitors=document.getElementById('competitors')?.value||'';
+        state.usp=document.getElementById('usp')?.value||'';
+        state.discountInfo=document.getElementById('discountInfo')?.value||'';
+        state.couponCode=document.getElementById('couponCode')?.value||'';
+        state.commonComplaints=document.getElementById('commonComplaints')?.value||'';
+        state.commonPraises=document.getElementById('commonPraises')?.value||'';
+        state.whoNotFor=document.getElementById('whoNotFor')?.value||'';
+        state.seriesName=document.getElementById('seriesName')?.value||'';
+        state.priceComparison=document.getElementById('priceComparison')?.value||'';
+    }
+
+    async function startGeneration() {
+        if (state.mode === 'batch') {
+            await startBatchGeneration();
+        } else {
+            await startSingleGeneration();
+        }
+    }
+
+    async function startSingleGeneration() {
+        readFormValues();
+        if (!state.productName||!state.keyFeatures||!state.affiliateLink) {
+            showToast('Please fill in Product Name, Key Features, and Affiliate Link'); return;
+        }
+        const body = {
+            product_info: {
+                product_name:state.productName, niche:state.niche||'General',
+                key_features:state.keyFeatures.split(',').map(s=>s.trim()).filter(Boolean),
+                price:state.price||'$49.99', affiliate_link:state.affiliateLink,
+                keywords:state.keywords?state.keywords.split(',').map(s=>s.trim()).filter(Boolean):[],
+                target_audience:state.targetAudience||'General consumers',
+                product_category:state.productCategory||state.niche||'General',
+                competitors:state.competitors?state.competitors.split(',').map(s=>s.trim()).filter(Boolean):[],
+                unique_selling_point:state.usp||'', discount_info:state.discountInfo||'', coupon_code:state.couponCode||'',
+                common_complaints:state.commonComplaints||'',
+                common_praises:state.commonPraises||'',
+                who_not_for:state.whoNotFor||'',
+                series_name:state.seriesName||'',
+                price_comparison:state.priceComparison||'',
+                content_style:state.contentStyle,
+            },
+            hook_types:state.selectedHooks, formats:state.selectedFormats,
+            content_style:state.contentStyle,
+            audio_enabled:state.audioEnabled, audio_mood:state.audioMood,
+        };
+        try {
+            const res=await fetch(`${API}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            const data=await res.json();
+            state.jobId=data.job_id; state.jobMode='single';
+            state.page='progress'; state.progress=0; state.currentStep='Starting...';
+            render(); pollStatus();
+        } catch(e) { showToast('Error: '+e.message); }
+    }
+
+    async function startBatchGeneration() {
+        if (!state.batchProducts.length) { showToast('Please upload a CSV file with products first'); return; }
+        const body = { products:state.batchProducts, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood };
+        try {
+            const res=await fetch(`${API}/batch-generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            const data=await res.json();
+            state.jobId=data.job_id; state.jobMode='batch';
+            state.page='progress'; state.progress=0; state.currentStep=`Starting batch: ${data.product_count} products...`;
+            render(); pollStatus();
+        } catch(e) { showToast('Error: '+e.message); }
+    }
+
+    async function pollStatus() {
+        if (!state.jobId) return;
+        try {
+            const res=await fetch(`${API}/status/${state.jobId}`);
+            const data=await res.json();
+            state.progress=data.progress; state.currentStep=data.current_step;
+            state.jobStatus=data.status; state.errors=data.errors||[];
+
+            if (data.status==='complete') {
+                const rres=await fetch(`${API}/results/${state.jobId}`);
+                const rdata=await rres.json();
+                if (state.jobMode==='batch') {
+                    state.batchResults=rdata.product_results||[];
+                    state.activeProductIdx=0; state.activeTab=null;
+                    state.selectedFormats=rdata.formats||state.selectedFormats;
+                } else {
+                    state.results=rdata.results;
+                    state.activeTab=Object.keys(state.results||{})[0]||null;
+                }
+                state.activeFormat=state.selectedFormats[0];
+                state.page='results'; render(); return;
+            }
+            if (data.status==='error') { state.page='results'; render(); return; }
+            render(); setTimeout(pollStatus,2000);
+        } catch(e) { setTimeout(pollStatus,3000); }
+    }
+
+    function attachEvents() {
+        const fields = ['productName','niche','keyFeatures','price','affiliateLink','keywords','targetAudience','productCategory','competitors','usp','discountInfo','couponCode','commonComplaints','commonPraises','whoNotFor','seriesName','priceComparison'];
+        fields.forEach(id=>{
+            const el=document.getElementById(id);
+            if(el) el.addEventListener('input',()=>{state[id]=el.value;});
+        });
+        const zone=document.getElementById('uploadZone');
+        if(zone){
+            zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('dragover');});
+            zone.addEventListener('dragleave',()=>zone.classList.remove('dragover'));
+            zone.addEventListener('drop',e=>{
+                e.preventDefault(); zone.classList.remove('dragover');
+                const file=e.dataTransfer.files[0];
+                if(file){state.batchFileName=file.name;const r=new FileReader();r.onload=ev=>parseCSVPreview(ev.target.result);r.readAsText(file);}
+            });
+        }
+    }
+
+    // ── Init ────────────────────────────────────────────────
+    async function init() {
+        try {
+            const res=await fetch(`${API}/providers`);
+            const data=await res.json();
+            state.providerPresets=data.providers;
+            state.llmProvider=data.current.provider;
+            state.llmBaseUrl=data.current.base_url;
+            state.llmModel=data.current.model||'';
+        } catch(e) {
+            state.providerPresets={
+                openai:{name:'OpenAI API',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'OpenAI cloud API. ~$0.02/video.'},
+                ollama:{name:'Ollama (Local — FREE)',base_url:'http://localhost:11434/v1',default_model:'qwen2.5:14b-instruct-q5_K_M',api_key_required:false,description:'Ollama local LLM. FREE. Recommended for RTX 3080.',recommended_models:[
+                    {name:'qwen2.5:14b-instruct-q5_K_M',vram:'~12GB',quality:'Best',speed:'Medium'},
+                    {name:'llama3.1:8b-instruct-q6_K',vram:'~7GB',quality:'Good',speed:'Very Fast'},
+                    {name:'phi3.5:3.8b-mini-instruct-q6_K',vram:'~4GB',quality:'Decent',speed:'Ultra Fast'},
+                ]},
+                lmstudio:{name:'LM Studio (Local — FREE)',base_url:'http://localhost:1234/v1',default_model:'local-model',api_key_required:false,description:'LM Studio with GUI model management.'},
+                custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any OpenAI-compatible API endpoint.'},
+            };
+        }
+        // Also fetch content styles from backend
+        try {
+            const sres=await fetch(`${API}/content-styles`);
+            const sdata=await sres.json();
+            if(sdata.default) state.contentStyle=sdata.default;
+        } catch(e) {}
+        render();
+    }
+    init();
+    </script>
+</body>
+</html>

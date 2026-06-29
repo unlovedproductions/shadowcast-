@@ -1469,5 +1469,652 @@
     }
     init();
     </script>
+
+<!-- BEGIN APF_JSON_NORMALIZER_PATCH -->
+<script>
+/*
+  Enhanced APF JSON → ShadowCast creative brief normalizer.
+
+  APF is the product-data app.
+  ShadowCast is the creative/video app.
+
+  This adapter converts APF marketplace facts into the richer fields ShadowCast
+  needs for scripts, packages, videos, captions, thumbnails, and CTAs.
+*/
+(function () {
+  function isObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function clean(value) {
+    if (value === undefined || value === null) return "";
+    if (Array.isArray(value)) return value.filter(Boolean).map(clean).filter(Boolean).join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value).trim();
+  }
+
+  function pick(obj, names) {
+    if (!isObject(obj)) return "";
+
+    for (const name of names) {
+      if (obj[name] !== undefined && obj[name] !== null && clean(obj[name]) !== "") {
+        return obj[name];
+      }
+    }
+
+    const lowerMap = {};
+    for (const key of Object.keys(obj)) lowerMap[key.toLowerCase()] = key;
+
+    for (const name of names) {
+      const realKey = lowerMap[String(name).toLowerCase()];
+      if (realKey && obj[realKey] !== undefined && obj[realKey] !== null && clean(obj[realKey]) !== "") {
+        return obj[realKey];
+      }
+    }
+
+    return "";
+  }
+
+  function firstProduct(payload) {
+    if (Array.isArray(payload)) return payload[0] || {};
+    if (!isObject(payload)) return {};
+
+    const objectWrappers = ["product", "selectedProduct", "apfProduct", "item", "offer"];
+    for (const key of objectWrappers) {
+      if (isObject(payload[key])) return payload[key];
+    }
+
+    const arrayWrappers = ["products", "items", "data", "results", "offers", "clickbank_products"];
+    for (const key of arrayWrappers) {
+      if (Array.isArray(payload[key]) && payload[key].length > 0) {
+        return firstProduct(payload[key]);
+      }
+    }
+
+    if (payload.result && payload.result.data && payload.result.data.json) {
+      return firstProduct(payload.result.data.json);
+    }
+
+    return payload;
+  }
+
+  function numberish(value) {
+    const raw = clean(value).replace(/[$,%]/g, "");
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function moneyLabel(value, fallback) {
+    const n = numberish(value);
+    if (n === null) return fallback || "Varies";
+    return "$" + n.toFixed(2);
+  }
+
+  function inferAudience(category, productName) {
+    const c = clean(category).toLowerCase();
+
+    if (c.includes("health") || c.includes("fitness") || c.includes("weight")) {
+      return "Health-conscious adults researching practical wellness, energy, fitness, or weight-management solutions before buying.";
+    }
+
+    if (c.includes("business") || c.includes("marketing") || c.includes("e-business")) {
+      return "Entrepreneurs, side-hustlers, creators, and marketers looking for tools or training that can improve results.";
+    }
+
+    if (c.includes("self") || c.includes("education") || c.includes("spiritual")) {
+      return "People interested in self-improvement, personal growth, mindset, learning, or lifestyle transformation.";
+    }
+
+    if (c.includes("home") || c.includes("garden")) {
+      return "Homeowners and DIY buyers comparing practical products that solve everyday home or lifestyle problems.";
+    }
+
+    if (c.includes("software") || c.includes("technology")) {
+      return "Tech-aware buyers comparing digital tools, automation, software, or productivity solutions.";
+    }
+
+    return productName
+      ? "People researching whether " + productName + " is worth trying before they click or buy."
+      : "Affiliate product buyers researching trusted product recommendations before making a purchase.";
+  }
+
+  function inferPainPoints(category) {
+    const c = clean(category).toLowerCase();
+
+    if (c.includes("health") || c.includes("fitness") || c.includes("weight")) {
+      return "Frustration with inconsistent results, confusing supplement choices, low energy, and not knowing which products are worth trusting.";
+    }
+
+    if (c.includes("business") || c.includes("marketing") || c.includes("e-business")) {
+      return "Too many tools, unclear ROI, wasted time, inconsistent traffic, and uncertainty about which offer is actually useful.";
+    }
+
+    if (c.includes("self") || c.includes("education")) {
+      return "Information overload, lack of structure, low motivation, and not knowing which program is credible.";
+    }
+
+    return "Uncertainty about whether the product is legitimate, useful, fairly priced, and worth clicking through to learn more.";
+  }
+
+  function inferBenefits(productName, category, vendor, rank, epc, apv, conversion, score) {
+    const parts = [];
+
+    if (productName) parts.push(productName + " is a real ClickBank product imported from APF.");
+    if (vendor) parts.push("Vendor: " + vendor + ".");
+    if (category) parts.push("Category/niche: " + category + ".");
+    if (rank) parts.push("Marketplace rank: " + rank + ".");
+    if (epc) parts.push("EPC signal: " + epc + ".");
+    if (apv) parts.push("Average order/purchase value signal: " + apv + ".");
+    if (conversion) parts.push("Hop conversion signal: " + conversion + ".");
+    if (score) parts.push("APF Hidden Gem Score: " + score + "/100.");
+
+    parts.push("Position the video as a trust-first review: explain what it is, who it may help, what to verify, and why viewers should check the link.");
+
+    return parts.join(" ");
+  }
+
+  function inferKeywords(productName, vendor, category) {
+    return [
+      productName,
+      vendor,
+      category,
+      "ClickBank",
+      "affiliate product",
+      "review",
+      "worth it",
+      "honest review",
+      "pros and cons",
+      "before you buy"
+    ].filter(Boolean).join(", ");
+  }
+
+  function inferHook(productName, category, score) {
+    if (score && Number(score) >= 70) {
+      return "Hidden gem review: why this " + (category || "ClickBank") + " product stood out in APF scoring.";
+    }
+
+    if (productName) {
+      return "Is " + productName + " actually worth checking out, or just another affiliate offer?";
+    }
+
+    return "Is this ClickBank product worth your attention, or should you skip it?";
+  }
+
+  function normalizeAPFProduct(payload) {
+    const product = firstProduct(payload);
+
+    const productName = clean(pick(product, [
+      "product_name", "productName", "name", "title", "product_title", "productTitle"
+    ]));
+
+    const vendor = clean(pick(product, [
+      "vendor", "vendor_name", "seller", "brand", "author"
+    ]));
+
+    const category = clean(pick(product, [
+      "niche", "category", "product_category", "marketplace_category", "vertical"
+    ])) || "ClickBank";
+
+    const rank = clean(pick(product, [
+      "rank", "product_rank", "gravity_rank"
+    ]));
+
+    const epc = clean(pick(product, [
+      "epc", "earnings_per_click"
+    ]));
+
+    const apv = clean(pick(product, [
+      "apv", "average_purchase_value", "average_payout", "avg_order_value"
+    ]));
+
+    const conversion = clean(pick(product, [
+      "hop_conversion_rate", "hopConversionRate", "conversion_rate"
+    ]));
+
+    const hiddenGemScore = clean(pick(product, [
+      "hidden_gem_score", "hiddenGemScore", "score"
+    ]));
+
+    const affiliateLink = clean(pick(product, [
+      "affiliate_link", "affiliateLink",
+      "affiliate_url", "affiliateUrl",
+      "hoplink", "hop_link",
+      "product_url", "productUrl",
+      "url", "link"
+    ]));
+
+    const price = clean(pick(product, [
+      "price", "product_price"
+    ])) || (apv ? "Avg order value: " + moneyLabel(apv) : "Varies");
+
+    const explicitFeatures = clean(pick(product, [
+      "key_features", "keyFeatures", "features", "benefits", "bullets", "description", "summary"
+    ]));
+
+    const keyFeatures = explicitFeatures || inferBenefits(
+      productName,
+      category,
+      vendor,
+      rank,
+      epc,
+      apv,
+      conversion,
+      hiddenGemScore
+    );
+
+    const targetAudience = clean(pick(product, [
+      "target_audience", "targetAudience", "audience", "customer_avatar", "customerAvatar"
+    ])) || inferAudience(category, productName);
+
+    const painPoints = clean(pick(product, [
+      "pain_points", "painPoints", "problems", "common_complaints", "commonComplaints"
+    ])) || inferPainPoints(category);
+
+    const commonPraises = clean(pick(product, [
+      "common_praises", "commonPraises", "praises", "positive_reviews"
+    ])) || "Potentially strong marketplace signals based on APF metrics; present claims carefully and encourage viewers to verify details on the product page.";
+
+    const commonComplaints = clean(pick(product, [
+      "common_complaints", "commonComplaints", "complaints", "negative_reviews"
+    ])) || painPoints;
+
+    const uniqueSellingPoint = clean(pick(product, [
+      "unique_selling_point", "uniqueSellingPoint", "usp"
+    ])) || inferHook(productName, category, numberish(hiddenGemScore));
+
+    const keywords = clean(pick(product, [
+      "keywords", "tags", "search_terms", "searchTerms"
+    ])) || inferKeywords(productName, vendor, category);
+
+    const cta = affiliateLink
+      ? "Click the link to check the current product page, details, price, and availability."
+      : "Check the product page for current details, price, and availability.";
+
+    return {
+      // ShadowCast frontend state fields
+      productName: productName,
+      niche: category,
+      keyFeatures: keyFeatures,
+      price: price,
+      affiliateLink: affiliateLink,
+      keywords: keywords,
+      targetAudience: targetAudience,
+
+      // Extra creative fields used by some backend generators if present
+      vendor: vendor,
+      productCategory: category,
+      uniqueSellingPoint: uniqueSellingPoint,
+      commonComplaints: commonComplaints,
+      commonPraises: commonPraises,
+      painPoints: painPoints,
+      whoNotFor: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
+      discountInfo: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
+      couponCode: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
+      priceComparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
+      seriesName: "Hidden Gem Review",
+      contentStyle: clean(pick(product, ["content_style", "contentStyle"])) || "trust_first_review",
+      cta: cta,
+
+      // Snake_case equivalents for backend compatibility
+      product_name: productName,
+      product_category: category,
+      key_features: keyFeatures,
+      affiliate_link: affiliateLink,
+      target_audience: targetAudience,
+      unique_selling_point: uniqueSellingPoint,
+      common_complaints: commonComplaints,
+      common_praises: commonPraises,
+      who_not_for: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
+      discount_info: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
+      coupon_code: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
+      price_comparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
+      series_name: "Hidden Gem Review",
+
+      // Preserve APF facts
+      marketplace: clean(pick(product, ["marketplace"])) || "clickbank",
+      rank: rank,
+      epc: epc,
+      apv: apv,
+      hopConversionRate: conversion,
+      hiddenGemScore: hiddenGemScore,
+      rawApfProduct: product
+    };
+  }
+
+  function setInput(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value || "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function hydrateShadowCastState(mapped) {
+    try {
+      if (typeof state !== "undefined" && state) {
+        for (const [key, value] of Object.entries(mapped)) {
+          if (value !== undefined && value !== null && clean(value) !== "") {
+            state[key] = value;
+          }
+        }
+
+        if ("mode" in state) state.mode = "single";
+      }
+    } catch (err) {
+      console.warn("APF normalizer: could not write global state directly:", err);
+    }
+
+    try {
+      if (typeof render === "function") render();
+    } catch (err) {
+      console.warn("APF normalizer: render failed:", err);
+    }
+
+    setTimeout(function () {
+      setInput("productName", mapped.productName);
+      setInput("niche", mapped.niche);
+      setInput("keyFeatures", mapped.keyFeatures);
+      setInput("price", mapped.price);
+      setInput("affiliateLink", mapped.affiliateLink);
+      setInput("keywords", mapped.keywords);
+      setInput("targetAudience", mapped.targetAudience);
+
+      // Fill optional fields if the current UI has them.
+      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
+      setInput("commonComplaints", mapped.commonComplaints);
+      setInput("commonPraises", mapped.commonPraises);
+      setInput("painPoints", mapped.painPoints);
+      setInput("whoNotFor", mapped.whoNotFor);
+      setInput("discountInfo", mapped.discountInfo);
+      setInput("couponCode", mapped.couponCode);
+      setInput("seriesName", mapped.seriesName);
+
+      console.log("[APF JSON normalizer] mapped creative brief:", mapped);
+
+      const missing = [];
+      if (!mapped.productName) missing.push("product name");
+      if (!mapped.niche) missing.push("niche/category");
+      if (!mapped.keyFeatures) missing.push("key features");
+      if (!mapped.price) missing.push("price/value");
+      if (!mapped.affiliateLink) missing.push("affiliate/product link");
+      if (!mapped.keywords) missing.push("keywords");
+      if (!mapped.targetAudience) missing.push("target audience");
+
+      if (missing.length) {
+        alert("APF JSON imported, but still missing: " + missing.join(", "));
+      } else {
+        const msg = "Imported APF JSON and built full ShadowCast brief for: " + mapped.productName;
+        try {
+          if (typeof showToast === "function") showToast(msg, "success");
+          else alert(msg);
+        } catch (_) {
+          alert(msg);
+        }
+      }
+    }, 50);
+  }
+
+  window.normalizeAPFProductForShadowCast = normalizeAPFProduct;
+
+  window.handleAPFFileUpload = function handleAPFFileUpload(input) {
+    const file = input && input.files && input.files[0];
+
+    if (!file) {
+      alert("Please choose an APF JSON file.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = function (event) {
+      try {
+        const payload = JSON.parse(event.target.result);
+        const mapped = normalizeAPFProduct(payload);
+
+        if (!mapped.productName) {
+          alert("APF JSON was read, but no product name was found. Check the APF export format.");
+          console.warn("[APF JSON normalizer] payload without product name:", payload);
+          return;
+        }
+
+        hydrateShadowCastState(mapped);
+      } catch (err) {
+        console.error("[APF JSON normalizer] JSON import failed:", err);
+        alert("Could not read APF JSON: " + err.message);
+      }
+    };
+
+    reader.onerror = function () {
+      alert("Could not read the selected APF JSON file.");
+    };
+
+    reader.readAsText(file);
+  };
+
+  console.log("[APF JSON normalizer] enhanced patch installed");
+})();
+</script>
+<!-- END APF_JSON_NORMALIZER_PATCH -->
+
+<!-- BEGIN APF_REVIEW_BRIEF_IMPORT_PATCH -->
+<script>
+(function () {
+  function obj(v){ return v && typeof v === "object" && !Array.isArray(v); }
+  function clean(v){
+    if (v === undefined || v === null) return "";
+    if (Array.isArray(v)) return v.filter(Boolean).map(clean).filter(Boolean).join("; ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v).trim();
+  }
+  function firstProduct(payload){
+    if (Array.isArray(payload)) return payload[0] || {};
+    if (!obj(payload)) return {};
+    return obj(payload.product) ? payload.product : payload;
+  }
+  function setInput(id, value){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value || "";
+    el.dispatchEvent(new Event("input", {bubbles:true}));
+    el.dispatchEvent(new Event("change", {bubbles:true}));
+  }
+  function normalize(payload){
+    let base = {};
+    try {
+      if (typeof window.normalizeAPFProductForShadowCast === "function") {
+        base = window.normalizeAPFProductForShadowCast(payload) || {};
+      }
+    } catch {}
+
+    const product = firstProduct(payload);
+    const brief = payload.review_brief || null;
+    const positive = brief?.positive_signals || [];
+    const negative = brief?.negative_signals || [];
+    const claims = brief?.common_claims || [];
+    const complaints = brief?.common_complaints || [];
+    const angles = brief?.best_video_angles || [];
+
+    const productName = base.productName || product.name || product.product_name || "";
+    const niche = base.niche || product.category || product.niche || "ClickBank";
+    const affiliateLink = base.affiliateLink || product.affiliate_url || product.affiliateLink || product.affiliate_link || product.product_url || "";
+
+    return {
+      ...base,
+      productName,
+      niche,
+      affiliateLink,
+      keyFeatures: brief
+        ? [brief.review_summary, positive.length ? "Positive signals: " + positive.map(clean).join("; ") : "", claims.length ? "Common claims: " + claims.map(clean).join("; ") : ""].filter(Boolean).join("\n")
+        : base.keyFeatures,
+      commonComplaints: brief
+        ? [negative.length ? "Negative signals: " + negative.map(clean).join("; ") : "", complaints.length ? "Common complaints: " + complaints.map(clean).join("; ") : ""].filter(Boolean).join("\n")
+        : base.commonComplaints,
+      targetAudience: brief ? clean(brief.target_audience || brief.who_it_may_help) : base.targetAudience,
+      uniqueSellingPoint: brief ? clean(angles[0] || brief.review_summary) : base.uniqueSellingPoint,
+      commonPraises: positive.map(clean).join("; ") || base.commonPraises,
+      whoNotFor: brief ? clean(brief.who_should_skip_it) : base.whoNotFor,
+      cta: brief ? clean(brief.cta_guidance) : base.cta,
+      keywords: base.keywords || [productName, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"].filter(Boolean).join(", "),
+      reviewBrief: brief,
+      reviewSources: payload.review_sources || []
+    };
+  }
+  function hydrate(mapped){
+    try {
+      if (typeof state !== "undefined" && state) {
+        Object.entries(mapped).forEach(([k,v]) => { if (clean(v)) state[k] = v; });
+        if ("mode" in state) state.mode = "single";
+      }
+    } catch {}
+    try { if (typeof render === "function") render(); } catch {}
+
+    setTimeout(() => {
+      setInput("productName", mapped.productName);
+      setInput("niche", mapped.niche);
+      setInput("keyFeatures", mapped.keyFeatures);
+      setInput("price", mapped.price);
+      setInput("affiliateLink", mapped.affiliateLink);
+      setInput("keywords", mapped.keywords);
+      setInput("targetAudience", mapped.targetAudience);
+      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
+      setInput("commonComplaints", mapped.commonComplaints);
+      setInput("commonPraises", mapped.commonPraises);
+      setInput("whoNotFor", mapped.whoNotFor);
+      console.log("[APF review brief importer] mapped enriched ShadowCast brief:", mapped);
+      alert("Imported enriched APF review brief for: " + (mapped.productName || "product"));
+    }, 50);
+  }
+  window.handleAPFFileUpload = function(input){
+    const file = input?.files?.[0];
+    if (!file) return alert("Please choose an APF JSON file.");
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const mapped = normalize(JSON.parse(e.target.result));
+        if (!mapped.productName) return alert("APF JSON was read, but no product name was found.");
+        hydrate(mapped);
+      } catch (err) {
+        console.error("[APF review brief importer] failed:", err);
+        alert("Could not read APF JSON: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  console.log("[APF review brief importer] installed");
+})();
+</script>
+<!-- END APF_REVIEW_BRIEF_IMPORT_PATCH -->
+<!-- BEGIN UNLOVED_DIRECT_APF_DRAFT_LOADER -->
+<script>
+(function () {
+  if (window.__UNLOVED_DIRECT_APF_DRAFT_LOADER__) return;
+  window.__UNLOVED_DIRECT_APF_DRAFT_LOADER__ = true;
+
+  function clean(v) {
+    if (v === undefined || v === null) return "";
+    if (Array.isArray(v)) return v.filter(Boolean).map(clean).filter(Boolean).join("; ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v).trim();
+  }
+
+  function setInput(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    el.value = value || "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  function hydrate(mapped) {
+    if (!mapped || !mapped.productName) {
+      console.warn("[APF direct import] missing mapped product:", mapped);
+      alert("ShadowCast received the APF draft, but no product name was found.");
+      return;
+    }
+
+    try {
+      if (typeof state !== "undefined" && state) {
+        Object.entries(mapped).forEach(([k, v]) => {
+          if (clean(v)) state[k] = v;
+        });
+        if ("mode" in state) state.mode = "single";
+      }
+    } catch (err) {
+      console.warn("[APF direct import] state hydrate skipped:", err);
+    }
+
+    try {
+      if (typeof render === "function") render();
+    } catch (err) {
+      console.warn("[APF direct import] render skipped:", err);
+    }
+
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+
+      const filled = [
+        setInput("productName", mapped.productName),
+        setInput("niche", mapped.niche),
+        setInput("keyFeatures", mapped.keyFeatures),
+        setInput("price", mapped.price),
+        setInput("affiliateLink", mapped.affiliateLink),
+        setInput("keywords", mapped.keywords),
+        setInput("targetAudience", mapped.targetAudience),
+        setInput("uniqueSellingPoint", mapped.uniqueSellingPoint),
+        setInput("commonPraises", mapped.commonPraises),
+        setInput("commonComplaints", mapped.commonComplaints),
+        setInput("whoNotFor", mapped.whoNotFor)
+      ].some(Boolean);
+
+      if (filled || tries >= 20) {
+        clearInterval(timer);
+        console.log("[APF direct import] fields hydrated:", mapped);
+        if (filled) {
+          alert("Imported APF product into ShadowCast: " + mapped.productName);
+        }
+      }
+    }, 150);
+  }
+
+  window.handleAPFDirectImportPayload = function (payload) {
+    const mapped = payload && payload.normalized ? payload.normalized : payload;
+    hydrate(mapped);
+  };
+
+  async function loadDraftFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const token =
+      params.get("apf_draft") ||
+      params.get("apfImport") ||
+      params.get("apf_import");
+
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/import-apf/direct/" + encodeURIComponent(token));
+      if (!res.ok) throw new Error(await res.text());
+      const payload = await res.json();
+      window.handleAPFDirectImportPayload(payload);
+
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } catch (err) {
+      console.error("[APF direct import] failed:", err);
+      alert("Could not load APF draft into ShadowCast: " + err.message);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadDraftFromUrl);
+  } else {
+    loadDraftFromUrl();
+  }
+
+  console.log("[APF direct import] draft loader installed");
+})();
+</script>
+<!-- END UNLOVED_DIRECT_APF_DRAFT_LOADER -->
 </body>
 </html>

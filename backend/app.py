@@ -61,6 +61,34 @@ from fastapi.responses import JSONResponse
 
 @app.middleware("http")
 async def enforce_internal_auth_middleware(request: Request, call_next):
+    # UNLOVED_PUBLIC_UI_ROUTE_AUTH_BYPASS
+    path = request.url.path
+    public_paths = {
+        "/",
+        "/api/health",
+        "/api/providers",
+        "/api/hooks",
+        "/api/content-styles",
+        "/api/tts-providers",
+        "/api/csv-template",
+        "/api/generate",
+        "/api/batch-upload",
+        "/api/import-apf",
+        "/api/import-apf/direct",  # UNLOVED_APF_DIRECT_IMPORT_AUTH_BYPASS
+        "/api/batch-generate",
+    }
+    public_prefixes = (
+        "/api/status/",
+        "/api/results/",
+        "/api/download/",
+        "/api/files/",
+        "/api/bg-",
+        "/api/analytics",
+        "/api/social",
+        "/api/tracking-link",
+    )
+    if path in public_paths or any(path.startswith(prefix) for prefix in public_prefixes):
+        return await call_next(request)
     internal_secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
     if internal_secret and request.method != "GET":
         service_key = request.headers.get("X-Service-Key")
@@ -944,3 +972,160 @@ else:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# BEGIN UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS
+# Local APF → ShadowCast direct draft import.
+# This lets APF POST enriched product JSON and open ShadowCast with fields prefilled.
+import os as _unloved_os
+import json as _unloved_json
+import secrets as _unloved_secrets
+from pathlib import Path as _UnlovedPath
+from datetime import datetime as _unloved_datetime, timezone as _unloved_timezone
+from fastapi import Request as _UnlovedRequest, HTTPException as _UnlovedHTTPException
+
+_UNLOVED_APF_IMPORT_DIR = _UnlovedPath(
+    _unloved_os.getenv(
+        "SHADOWCAST_APF_IMPORT_DIR",
+        "/home/unloved/shadowcast-/backend/apf_imports"
+    )
+)
+_UNLOVED_APF_IMPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+def _unloved_clean(value):
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "; ".join([_unloved_clean(v) for v in value if _unloved_clean(v)])
+    if isinstance(value, dict):
+        return _unloved_json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+def _unloved_pick(obj, keys):
+    if not isinstance(obj, dict):
+        return ""
+    lowered = {str(k).lower(): k for k in obj.keys()}
+    for key in keys:
+        if key in obj and _unloved_clean(obj[key]):
+            return obj[key]
+        real = lowered.get(str(key).lower())
+        if real and _unloved_clean(obj[real]):
+            return obj[real]
+    return ""
+
+def _unloved_first_product(payload):
+    if isinstance(payload, list):
+        return payload[0] if payload else {}
+    if not isinstance(payload, dict):
+        return {}
+    if isinstance(payload.get("product"), dict):
+        return payload["product"]
+    for key in ["selectedProduct", "apfProduct", "item", "offer"]:
+        if isinstance(payload.get(key), dict):
+            return payload[key]
+    for key in ["products", "items", "data", "results", "offers"]:
+        if isinstance(payload.get(key), list) and payload[key]:
+            return _unloved_first_product(payload[key])
+    return payload
+
+def _unloved_normalize_apf_payload(payload):
+    raw = payload.get("payload") if isinstance(payload, dict) and isinstance(payload.get("payload"), dict) else payload
+    product = _unloved_first_product(raw)
+
+    brief = {}
+    if isinstance(raw, dict):
+        brief = raw.get("review_brief") or raw.get("reviewBrief") or {}
+    if not isinstance(brief, dict):
+        brief = {}
+
+    review_sources = []
+    if isinstance(raw, dict) and isinstance(raw.get("review_sources"), list):
+        review_sources = raw["review_sources"]
+
+    product_name = _unloved_clean(_unloved_pick(product, ["name", "product_name", "productName", "title"]))
+    niche = _unloved_clean(_unloved_pick(product, ["category", "niche", "product_category"])) or "ClickBank"
+    affiliate_link = _unloved_clean(_unloved_pick(product, [
+        "affiliate_url", "affiliateLink", "affiliate_link", "hoplink", "product_url", "url"
+    ]))
+
+    positives = brief.get("positive_signals") or []
+    negatives = brief.get("negative_signals") or []
+    claims = brief.get("common_claims") or []
+    complaints = brief.get("common_complaints") or []
+    angles = brief.get("best_video_angles") or []
+
+    key_features = "\n".join([
+        part for part in [
+            _unloved_clean(brief.get("review_summary")),
+            "Positive signals: " + _unloved_clean(positives) if positives else "",
+            "Common claims: " + _unloved_clean(claims) if claims else "",
+            _unloved_clean(_unloved_pick(product, ["description", "summary", "keyFeatures", "key_features"]))
+        ] if part
+    ])
+
+    common_complaints = "\n".join([
+        part for part in [
+            "Negative signals: " + _unloved_clean(negatives) if negatives else "",
+            "Common complaints: " + _unloved_clean(complaints) if complaints else ""
+        ] if part
+    ])
+
+    return {
+        "productName": product_name,
+        "niche": niche,
+        "keyFeatures": key_features,
+        "price": _unloved_clean(_unloved_pick(product, ["price", "initialPrice", "front_end_price"])),
+        "affiliateLink": affiliate_link,
+        "keywords": _unloved_clean(_unloved_pick(product, ["keywords", "tags"])) or ", ".join(
+            [v for v in [product_name, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"] if v]
+        ),
+        "targetAudience": _unloved_clean(brief.get("target_audience") or brief.get("who_it_may_help")),
+        "uniqueSellingPoint": _unloved_clean((angles[0] if isinstance(angles, list) and angles else "") or brief.get("review_summary")),
+        "commonPraises": _unloved_clean(positives),
+        "commonComplaints": common_complaints,
+        "whoNotFor": _unloved_clean(brief.get("who_should_skip_it")),
+        "cta": _unloved_clean(brief.get("cta_guidance")),
+        "reviewBrief": brief,
+        "reviewSources": review_sources,
+        "apfProduct": product,
+    }
+
+@app.post("/api/import-apf/direct")
+async def unloved_apf_direct_import(request: _UnlovedRequest):
+    payload = await request.json()
+
+    token = _unloved_secrets.token_urlsafe(18)
+    normalized = _unloved_normalize_apf_payload(payload)
+
+    if not normalized.get("productName"):
+        raise _UnlovedHTTPException(status_code=400, detail="APF payload did not include a product name.")
+
+    doc = {
+        "ok": True,
+        "token": token,
+        "created_at": _unloved_datetime.now(_unloved_timezone.utc).isoformat(),
+        "payload": payload,
+        "normalized": normalized,
+    }
+
+    path = _UNLOVED_APF_IMPORT_DIR / f"{token}.json"
+    path.write_text(_unloved_json.dumps(doc, ensure_ascii=False, indent=2))
+
+    base = _unloved_os.getenv("SHADOWCAST_PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+    return {
+        "ok": True,
+        "token": token,
+        "productName": normalized.get("productName"),
+        "open_url": f"{base}/?apf_draft={token}",
+    }
+
+@app.get("/api/import-apf/direct/{token}")
+async def unloved_get_apf_direct_import(token: str):
+    if not token or "/" in token or "\\" in token or ".." in token:
+        raise _UnlovedHTTPException(status_code=400, detail="Invalid token.")
+
+    path = _UNLOVED_APF_IMPORT_DIR / f"{token}.json"
+    if not path.exists():
+        raise _UnlovedHTTPException(status_code=404, detail="APF import draft not found.")
+
+    return _unloved_json.loads(path.read_text())
+# END UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS

@@ -24,3 +24,42 @@ __pycache__/
 # Local backups
 *.backup.*
 frontend/index.html.backup.*
+# --- Unloved local-only / secret files ---
+!.env.example
+!.env.sample
+*.local
+*.secret
+secrets/
+credentials/
+*.pem
+*.key
+*.crt
+id_rsa
+id_ed25519
+# --- Dependencies / build outputs ---
+node_modules/
+.pnpm-store/
+.next/
+dist/
+build/
+.turbo/
+.cache/
+.parcel-cache/
+# --- Python local files ---
+# --- Databases / generated local runtime data ---
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+outputs/
+exports/
+uploads/
+downloads/
+apf_imports/
+logs/
+*.log
+# --- OS/editor ---
+.DS_Store
+.idea/
+.vscode/
+*~

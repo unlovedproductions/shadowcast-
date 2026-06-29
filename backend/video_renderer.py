@@ -111,6 +111,55 @@ KINETIC_ANIMATIONS = {
 REAL_TRANSITIONS = {"glitch", "flash", "swipe", "zoom", "cut"}
 
 
+
+# BEGIN UNLOVED_LONG_FORM_FONT_SCALE_HELPER
+from contextlib import contextmanager
+import os as _unloved_os
+
+@contextmanager
+def _unloved_scaled_long_form_fonts():
+    """
+    Scale down fonts only while rendering long-form videos.
+
+    This fixes long-form text overlays that are too large or slightly out of frame
+    without changing short-form rendering.
+    """
+    try:
+        from PIL import ImageFont as _PILImageFont
+    except Exception:
+        yield
+        return
+
+    original_truetype = getattr(_PILImageFont, "truetype", None)
+    if original_truetype is None:
+        yield
+        return
+
+    try:
+        scale = float(_unloved_os.getenv("SHADOWCAST_LONG_FORM_FONT_SCALE", "0.62"))
+    except Exception:
+        scale = 0.62
+
+    # Keep this conservative so tiny captions do not become unreadable.
+    minimum_size = int(_unloved_os.getenv("SHADOWCAST_LONG_FORM_MIN_FONT_SIZE", "18"))
+
+    def scaled_truetype(font, size=None, *args, **kwargs):
+        if size is None:
+            return original_truetype(font, size, *args, **kwargs)
+
+        try:
+            scaled_size = max(minimum_size, int(float(size) * scale))
+        except Exception:
+            scaled_size = size
+
+        return original_truetype(font, scaled_size, *args, **kwargs)
+
+    _PILImageFont.truetype = scaled_truetype
+    try:
+        yield
+    finally:
+        _PILImageFont.truetype = original_truetype
+# END UNLOVED_LONG_FORM_FONT_SCALE_HELPER
 def hex_to_rgb(hex_color: str) -> tuple:
     """Convert hex color string to RGB tuple."""
     hex_color = hex_color.lstrip("#")
@@ -664,247 +713,249 @@ def render_long_form_video(
     price: str = "",
     series_name: str = "",
 ) -> str:
-    """Render a long-form (YouTube) video from script JSON."""
-    
-    WIDTH, HEIGHT = 1920, 1080  # 16:9 landscape
-    FPS = 30
-    
-    chapters = script.get("chapters", [])
-    if not chapters:
-        raise ValueError("No chapters found in script")
-    
-    accent_color = BRAND_ACCENT
-    base_bg = BRAND_BG
-    
-    total_chapters = len(chapters)
-    total_segments = sum(len(ch.get("segments", [])) for ch in chapters)
-    
-    all_clips = []
-    
-    # ── Branded Intro (3 seconds for long form) ──
-    intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
-    intro_clip = ImageClip(intro_frame, duration=3.0)
-    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
-    all_clips.append(intro_clip)
-    
-    segment_counter = 0
-    engagement_inserted = False
-    
-    for ch_idx, chapter in enumerate(chapters):
-        chapter_name = chapter.get("chapter_name", "")
-        segments = chapter.get("segments", [])
-        
-        # ── Section header overlay for chapter ──
-        # Detect section type from chapter name
-        section_type = None
-        ch_lower = chapter_name.lower()
-        if any(w in ch_lower for w in ["pro", "good", "strength", "advantage"]):
-            section_type = "pros"
-        elif any(w in ch_lower for w in ["con", "bad", "weakness", "drawback"]):
-            section_type = "cons"
-        elif any(w in ch_lower for w in ["verdict", "final", "conclusion", "rating"]):
-            section_type = "verdict"
-        elif any(w in ch_lower for w in ["vs", "compar", "battle", "versus"]):
-            section_type = "comparison"
-        
-        # Chapter title card with section header
-        chapter_frame = render_text_frame(
-            text=chapter_name.upper(),
-            width=WIDTH, height=HEIGHT,
-            text_color=accent_color,
-            bg_color=base_bg,
-            text_style="headline_bold",
-            is_short_form=False,
-            accent_color=accent_color,
-        )
-        
-        # Composite section header onto chapter card if applicable
-        if section_type:
-            header_overlay = render_section_header(WIDTH, HEIGHT, section_type, accent_color)
-            chapter_pil = Image.fromarray(chapter_frame).convert("RGBA")
-            chapter_pil = Image.alpha_composite(chapter_pil, header_overlay)
-            chapter_frame = np.array(chapter_pil.convert("RGB"))
-        
-        chapter_clip = ImageClip(chapter_frame, duration=2.5)
-        chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
-        all_clips.append(chapter_clip)
-        
-        # ── Render chapter segments ──
-        rendered_frames = []
-        segment_clips_ch = []
-        
-        for seg in segments:
-            clip = build_segment_clip(seg, WIDTH, HEIGHT, False, accent_color, base_bg)
-            segment_clips_ch.append(clip)
-            
-            frame = render_text_frame(
-                text=seg.get("text", ""),
+    # UNLOVED_LONG_FORM_FONT_SCALE_WRAP
+    with _unloved_scaled_long_form_fonts():
+        """Render a long-form (YouTube) video from script JSON."""
+
+        WIDTH, HEIGHT = 1920, 1080  # 16:9 landscape
+        FPS = 30
+
+        chapters = script.get("chapters", [])
+        if not chapters:
+            raise ValueError("No chapters found in script")
+
+        accent_color = BRAND_ACCENT
+        base_bg = BRAND_BG
+
+        total_chapters = len(chapters)
+        total_segments = sum(len(ch.get("segments", [])) for ch in chapters)
+
+        all_clips = []
+
+        # ── Branded Intro (3 seconds for long form) ──
+        intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
+        intro_clip = ImageClip(intro_frame, duration=3.0)
+        intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+        all_clips.append(intro_clip)
+
+        segment_counter = 0
+        engagement_inserted = False
+
+        for ch_idx, chapter in enumerate(chapters):
+            chapter_name = chapter.get("chapter_name", "")
+            segments = chapter.get("segments", [])
+
+            # ── Section header overlay for chapter ──
+            # Detect section type from chapter name
+            section_type = None
+            ch_lower = chapter_name.lower()
+            if any(w in ch_lower for w in ["pro", "good", "strength", "advantage"]):
+                section_type = "pros"
+            elif any(w in ch_lower for w in ["con", "bad", "weakness", "drawback"]):
+                section_type = "cons"
+            elif any(w in ch_lower for w in ["verdict", "final", "conclusion", "rating"]):
+                section_type = "verdict"
+            elif any(w in ch_lower for w in ["vs", "compar", "battle", "versus"]):
+                section_type = "comparison"
+
+            # Chapter title card with section header
+            chapter_frame = render_text_frame(
+                text=chapter_name.upper(),
                 width=WIDTH, height=HEIGHT,
-                text_color=ensure_readable_color(
-                    hex_to_rgb(seg.get("text_color", "#FFFFFF")) if seg.get("text_color") else (255, 255, 255),
-                    base_bg
-                ),
+                text_color=accent_color,
                 bg_color=base_bg,
-                text_style=seg.get("text_style", "subtitle"),
+                text_style="headline_bold",
                 is_short_form=False,
                 accent_color=accent_color,
             )
-            rendered_frames.append(frame)
-            segment_counter += 1
-        
-        # Interleave segments with transitions
-        for i, seg_clip in enumerate(segment_clips_ch):
-            all_clips.append(seg_clip)
-            
-            if i < len(segment_clips_ch) - 1:
-                transition_type = segments[i].get("transition_to_next", "fade")
-                if transition_type in REAL_TRANSITIONS and transition_type != "cut":
-                    trans_clip = build_transition_clip(
-                        rendered_frames[i], rendered_frames[i + 1],
-                        transition_type, accent_color
-                    )
-                    if trans_clip is not None:
-                        all_clips.append(trans_clip)
-        
-        # ── Engagement bait: insert poll/comment prompt mid-video ──
-        if not engagement_inserted and ch_idx >= total_chapters // 2:
-            # Insert a comment prompt card
-            comment_frame = render_comment_prompt(
-                WIDTH, HEIGHT,
-                "What do you think? Drop your opinion below!",
-                accent_color
-            )
-            comment_clip = ImageClip(comment_frame, duration=3.0)
-            comment_clip = comment_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-            all_clips.append(comment_clip)
-            engagement_inserted = True
-    
-    # ── Subscribe card before outro ──
-    sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
-    sub_clip = ImageClip(sub_frame, duration=3.0)
-    sub_clip = sub_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-    all_clips.append(sub_clip)
-    
-    # ── Branded Outro (3 seconds) ──
-    outro_frame = render_branded_outro(WIDTH, HEIGHT)
-    outro_clip = ImageClip(outro_frame, duration=3.0)
-    outro_clip = outro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
-    all_clips.append(outro_clip)
-    
-    # Concatenate all clips
-    final = concatenate_videoclips(all_clips, method="compose")
-    
-    # ── Persistent overlays: watermark + lower third + progress bar ──
-    overlay_layers = [final]
-    
-    # Watermark
-    watermark = render_watermark_overlay(WIDTH, HEIGHT)
-    watermark_arr = np.array(watermark.convert("RGBA"))
-    watermark_clip = ImageClip(watermark_arr, duration=final.duration)
-    overlay_layers.append(watermark_clip)
-    
-    # Lower third (if product name provided)
-    if product_name:
-        lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=False)
-        lt_arr = np.array(lower_third.convert("RGBA"))
-        lt_clip = ImageClip(lt_arr, duration=final.duration)
-        overlay_layers.append(lt_clip)
-    
-    # Progress bar overlay (animated)
-    def make_progress_frame(t):
-        progress = t / max(final.duration, 1)
-        overlay = render_progress_overlay(WIDTH, HEIGHT, progress, accent_color=accent_color)
-        return np.array(overlay.convert("RGBA"))
-    
-    progress_base = ImageClip(
-        make_progress_frame(0), duration=final.duration
-    ).transform(lambda get_frame, t: make_progress_frame(t))
-    overlay_layers.append(progress_base)
-    
-    final_with_overlays = CompositeVideoClip(overlay_layers)
-    
-    # Write video (without audio first)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    video_only_path = output_path.replace(".mp4", "_video_only.mp4")
-    final_with_overlays.write_videofile(
-        video_only_path,
-        fps=FPS,
-        codec="libx264",
-        audio=False,
-        preset="ultrafast",
-        threads=4,
-        logger=None,
-    )
-    
-    # ── Generate and add audio ──
-    try:
-        video_duration = final.duration
-        
-        # Generate background music (chill for long-form)
-        bg_music = generate_background_music(video_duration, mood="chill", tempo=80)
-        
-        # Generate SFX timed to chapter transitions and key moments
-        sfx_list = []
-        current_time = 3.0  # After intro
-        
-        for ch_idx, chapter in enumerate(chapters):
-            # Chapter transition ding
-            sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
-            current_time += 2.5  # Chapter title card duration
-            
-            for seg in chapter.get("segments", []):
-                seg_dur = seg.get("duration", 4.0)
-                anim = seg.get("animation", "fade_in")
-                trans = seg.get("transition_to_next", "fade")
-                
-                # Text reveal SFX
-                if anim in ("word_by_word", "typewriter"):
-                    sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
-                elif anim in ("impact_scale", "shake"):
-                    sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
-                elif anim in ("slide_up", "slide_left"):
-                    sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
-                elif anim == "highlight_sweep":
-                    sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
-                
-                # Transition SFX
-                trans_time = current_time + seg_dur
-                if trans in ("glitch", "flash"):
-                    sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
-                elif trans == "swipe":
-                    sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
-                elif trans == "zoom":
-                    sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
-                
-                current_time += seg_dur
-        
-        # Mix audio
-        audio_path = output_path.replace(".mp4", "_audio.wav")
-        mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
-        
-        # Combine video + audio
-        add_audio_to_video(video_only_path, audio_path, output_path)
-        
-        # Clean up temp files
-        if os.path.exists(video_only_path):
-            os.remove(video_only_path)
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
-    except Exception as e:
-        print(f"Warning: Audio generation failed ({e}), using video without audio")
-        if os.path.exists(video_only_path):
-            os.rename(video_only_path, output_path)
-    
-    # Cleanup
-    final_with_overlays.close()
-    final.close()
-    for c in all_clips:
+
+            # Composite section header onto chapter card if applicable
+            if section_type:
+                header_overlay = render_section_header(WIDTH, HEIGHT, section_type, accent_color)
+                chapter_pil = Image.fromarray(chapter_frame).convert("RGBA")
+                chapter_pil = Image.alpha_composite(chapter_pil, header_overlay)
+                chapter_frame = np.array(chapter_pil.convert("RGB"))
+
+            chapter_clip = ImageClip(chapter_frame, duration=2.5)
+            chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
+            all_clips.append(chapter_clip)
+
+            # ── Render chapter segments ──
+            rendered_frames = []
+            segment_clips_ch = []
+
+            for seg in segments:
+                clip = build_segment_clip(seg, WIDTH, HEIGHT, False, accent_color, base_bg)
+                segment_clips_ch.append(clip)
+
+                frame = render_text_frame(
+                    text=seg.get("text", ""),
+                    width=WIDTH, height=HEIGHT,
+                    text_color=ensure_readable_color(
+                        hex_to_rgb(seg.get("text_color", "#FFFFFF")) if seg.get("text_color") else (255, 255, 255),
+                        base_bg
+                    ),
+                    bg_color=base_bg,
+                    text_style=seg.get("text_style", "subtitle"),
+                    is_short_form=False,
+                    accent_color=accent_color,
+                )
+                rendered_frames.append(frame)
+                segment_counter += 1
+
+            # Interleave segments with transitions
+            for i, seg_clip in enumerate(segment_clips_ch):
+                all_clips.append(seg_clip)
+
+                if i < len(segment_clips_ch) - 1:
+                    transition_type = segments[i].get("transition_to_next", "fade")
+                    if transition_type in REAL_TRANSITIONS and transition_type != "cut":
+                        trans_clip = build_transition_clip(
+                            rendered_frames[i], rendered_frames[i + 1],
+                            transition_type, accent_color
+                        )
+                        if trans_clip is not None:
+                            all_clips.append(trans_clip)
+
+            # ── Engagement bait: insert poll/comment prompt mid-video ──
+            if not engagement_inserted and ch_idx >= total_chapters // 2:
+                # Insert a comment prompt card
+                comment_frame = render_comment_prompt(
+                    WIDTH, HEIGHT,
+                    "What do you think? Drop your opinion below!",
+                    accent_color
+                )
+                comment_clip = ImageClip(comment_frame, duration=3.0)
+                comment_clip = comment_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+                all_clips.append(comment_clip)
+                engagement_inserted = True
+
+        # ── Subscribe card before outro ──
+        sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
+        sub_clip = ImageClip(sub_frame, duration=3.0)
+        sub_clip = sub_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+        all_clips.append(sub_clip)
+
+        # ── Branded Outro (3 seconds) ──
+        outro_frame = render_branded_outro(WIDTH, HEIGHT)
+        outro_clip = ImageClip(outro_frame, duration=3.0)
+        outro_clip = outro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+        all_clips.append(outro_clip)
+
+        # Concatenate all clips
+        final = concatenate_videoclips(all_clips, method="compose")
+
+        # ── Persistent overlays: watermark + lower third + progress bar ──
+        overlay_layers = [final]
+
+        # Watermark
+        watermark = render_watermark_overlay(WIDTH, HEIGHT)
+        watermark_arr = np.array(watermark.convert("RGBA"))
+        watermark_clip = ImageClip(watermark_arr, duration=final.duration)
+        overlay_layers.append(watermark_clip)
+
+        # Lower third (if product name provided)
+        if product_name:
+            lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=False)
+            lt_arr = np.array(lower_third.convert("RGBA"))
+            lt_clip = ImageClip(lt_arr, duration=final.duration)
+            overlay_layers.append(lt_clip)
+
+        # Progress bar overlay (animated)
+        def make_progress_frame(t):
+            progress = t / max(final.duration, 1)
+            overlay = render_progress_overlay(WIDTH, HEIGHT, progress, accent_color=accent_color)
+            return np.array(overlay.convert("RGBA"))
+
+        progress_base = ImageClip(
+            make_progress_frame(0), duration=final.duration
+        ).transform(lambda get_frame, t: make_progress_frame(t))
+        overlay_layers.append(progress_base)
+
+        final_with_overlays = CompositeVideoClip(overlay_layers)
+
+        # Write video (without audio first)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        video_only_path = output_path.replace(".mp4", "_video_only.mp4")
+        final_with_overlays.write_videofile(
+            video_only_path,
+            fps=FPS,
+            codec="libx264",
+            audio=False,
+            preset="ultrafast",
+            threads=4,
+            logger=None,
+        )
+
+        # ── Generate and add audio ──
         try:
-            c.close()
-        except Exception:
-            pass
-    
-    return output_path
+            video_duration = final.duration
+
+            # Generate background music (chill for long-form)
+            bg_music = generate_background_music(video_duration, mood="chill", tempo=80)
+
+            # Generate SFX timed to chapter transitions and key moments
+            sfx_list = []
+            current_time = 3.0  # After intro
+
+            for ch_idx, chapter in enumerate(chapters):
+                # Chapter transition ding
+                sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
+                current_time += 2.5  # Chapter title card duration
+
+                for seg in chapter.get("segments", []):
+                    seg_dur = seg.get("duration", 4.0)
+                    anim = seg.get("animation", "fade_in")
+                    trans = seg.get("transition_to_next", "fade")
+
+                    # Text reveal SFX
+                    if anim in ("word_by_word", "typewriter"):
+                        sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
+                    elif anim in ("impact_scale", "shake"):
+                        sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
+                    elif anim in ("slide_up", "slide_left"):
+                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
+                    elif anim == "highlight_sweep":
+                        sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
+
+                    # Transition SFX
+                    trans_time = current_time + seg_dur
+                    if trans in ("glitch", "flash"):
+                        sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
+                    elif trans == "swipe":
+                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
+                    elif trans == "zoom":
+                        sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
+
+                    current_time += seg_dur
+
+            # Mix audio
+            audio_path = output_path.replace(".mp4", "_audio.wav")
+            mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
+
+            # Combine video + audio
+            add_audio_to_video(video_only_path, audio_path, output_path)
+
+            # Clean up temp files
+            if os.path.exists(video_only_path):
+                os.remove(video_only_path)
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except Exception as e:
+            print(f"Warning: Audio generation failed ({e}), using video without audio")
+            if os.path.exists(video_only_path):
+                os.rename(video_only_path, output_path)
+
+        # Cleanup
+        final_with_overlays.close()
+        final.close()
+        for c in all_clips:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+        return output_path
 
 
 def render_from_script_file(script_path: str, output_dir: str = None) -> dict:

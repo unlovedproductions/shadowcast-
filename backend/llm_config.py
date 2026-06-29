@@ -153,3 +153,51 @@ def parse_llm_json(text: str) -> dict:
                 pass
         # Fallback: return the raw text so callers can decide how to proceed
         return {"__raw": text}
+
+# BEGIN UNLOVED_FORCE_OLLAMA_CONFIG
+#
+# Local Unloved Stack override:
+# ShadowCast was reporting OpenAI from /api/providers even when .env contained
+# Ollama settings. This wrapper forces get_config() to respect the local Ollama
+# runtime unless explicit env values say otherwise.
+#
+try:
+    _unloved_original_get_config = get_config
+
+    def get_config():
+        import os
+
+        cfg = _unloved_original_get_config()
+
+        provider = os.getenv("LLM_PROVIDER", "ollama") or "ollama"
+        base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1") or "http://localhost:11434/v1"
+        model = os.getenv("LLM_MODEL", "qwen2.5:14b-instruct-q5_K_M") or "qwen2.5:14b-instruct-q5_K_M"
+        api_key = os.getenv("OPENAI_API_KEY", "not-needed") or "not-needed"
+
+        def set_value(target, key, value):
+            if isinstance(target, dict):
+                target[key] = value
+            else:
+                try:
+                    setattr(target, key, value)
+                except Exception:
+                    pass
+
+        # Common names used by ShadowCast config/client code.
+        for key, value in {
+            "provider": provider,
+            "llm_provider": provider,
+            "base_url": base_url,
+            "llm_base_url": base_url,
+            "model": model,
+            "llm_model": model,
+            "api_key": api_key,
+            "openai_api_key": api_key,
+        }.items():
+            set_value(cfg, key, value)
+
+        return cfg
+
+except NameError:
+    pass
+# END UNLOVED_FORCE_OLLAMA_CONFIG
