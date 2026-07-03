@@ -948,31 +948,6 @@ def recommend_bg(content_style: str = "honest_review", hook_type: str = "curiosi
     recommended = get_style_for_content(content_style, hook_type)
     return {"recommended_style": recommended, "all_styles": BG_STYLES}
 
-
-# ── Serve Frontend ────────────────────────────────────────────────────
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-
-if (FRONTEND_DIR / "index.html").exists():
-    assets_dir = FRONTEND_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="static_assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-        return FileResponse(str(FRONTEND_DIR / "index.html"))
-else:
-    @app.get("/")
-    def root():
-        return {"message": "ShadowCast API v4.0 — by Unloved Productions | Forged in Passion"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
 # BEGIN UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS
 # Local APF → ShadowCast direct draft import.
 # This lets APF POST enriched product JSON and open ShadowCast with fields prefilled.
@@ -1129,3 +1104,28 @@ async def unloved_get_apf_direct_import(token: str):
 
     return _unloved_json.loads(path.read_text())
 # END UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS
+
+# ── Serve Frontend ────────────────────────────────────────────────────
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+if (FRONTEND_DIR / "index.html").exists():
+    assets_dir = FRONTEND_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="static_assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = FRONTEND_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
+else:
+    @app.get("/")
+    def root():
+        return {"message": "ShadowCast API v4.0 — by Unloved Productions | Forged in Passion"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
