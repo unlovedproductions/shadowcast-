@@ -163,6 +163,11 @@ class GenerateRequest(BaseModel):
     hook_types: List[str] = ["curiosity"]
     formats: List[str] = ["short_form", "long_form"]
     content_style: str = DEFAULT_CONTENT_STYLE
+    audio_enabled: bool = True
+    audio_mood: str = "auto"
+    use_tts: bool = False
+    tts_provider: str = "auto"
+    tts_voice: Optional[str] = None
 
 
 class BatchGenerateRequest(BaseModel):
@@ -170,6 +175,11 @@ class BatchGenerateRequest(BaseModel):
     hook_types: List[str] = ["curiosity"]
     formats: List[str] = ["short_form", "long_form"]
     content_style: str = DEFAULT_CONTENT_STYLE
+    audio_enabled: bool = True
+    audio_mood: str = "auto"
+    use_tts: bool = False
+    tts_provider: str = "auto"
+    tts_voice: Optional[str] = None
 
 
 # ── CSV Parsing ───────────────────────────────────────────────────────
@@ -225,7 +235,12 @@ def parse_csv_products(csv_text: str) -> List[dict]:
 def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         hook_types: list, formats: list,
                         content_style: str,
-                        step_offset: int, total_steps: int):
+                        step_offset: int, total_steps: int,
+                        audio_enabled: bool = True,
+                        audio_mood: str = "auto",
+                        use_tts: bool = False,
+                        tts_provider: str = "auto",
+                        tts_voice: Optional[str] = None):
     job = jobs[job_id]
     slug = slugify(product["product_name"])
     step = step_offset
@@ -233,6 +248,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     # Use product-level content_style if set, otherwise job-level
     effective_style = normalize_content_style(product.get("content_style") or content_style)
     product["content_style"] = effective_style
+
+    mood_arg = None if audio_mood in (None, "", "auto") else audio_mood
 
     all_scripts = {}
     all_yt_packages = {}
@@ -284,24 +301,22 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             try:
                 fname = f"{slug}_{hook_type}_{fmt_label(fmt)}.mp4"
                 video_path = str(product_dir / fname)
+                render_kwargs = dict(
+                    product_name=product.get('product_name', ''),
+                    price=product.get('price', ''),
+                    series_name=product.get('series_name', ''),
+                    content_style=effective_style,
+                    competitors=product.get('competitors', []),
+                    audio_enabled=audio_enabled,
+                    audio_mood=mood_arg,
+                    use_tts=use_tts,
+                    tts_provider=tts_provider,
+                    tts_voice=tts_voice,
+                )
                 if fmt == "short_form":
-                    render_short_form_video(
-                        scripts_data[fmt], video_path,
-                        product_name=product.get('product_name', ''),
-                        price=product.get('price', ''),
-                        series_name=product.get('series_name', ''),
-                        content_style=effective_style,
-                        competitors=product.get('competitors', []),
-                    )
+                    render_short_form_video(scripts_data[fmt], video_path, **render_kwargs)
                 else:
-                    render_long_form_video(
-                        scripts_data[fmt], video_path,
-                        product_name=product.get('product_name', ''),
-                        price=product.get('price', ''),
-                        series_name=product.get('series_name', ''),
-                        content_style=effective_style,
-                        competitors=product.get('competitors', []),
-                    )
+                    render_long_form_video(scripts_data[fmt], video_path, **render_kwargs)
 
                 if hook_type not in product_results["hooks"]:
                     product_results["hooks"][hook_type] = {}
@@ -409,7 +424,12 @@ def _run_generation(job_id: str):
         product_dir = job_dir
         result, _ = _run_single_product(
             job_id, product, product_dir, hook_types, formats,
-            content_style, 0, total_steps
+            content_style, 0, total_steps,
+            audio_enabled=job.get("audio_enabled", True),
+            audio_mood=job.get("audio_mood", "auto"),
+            use_tts=job.get("use_tts", False),
+            tts_provider=job.get("tts_provider", "auto"),
+            tts_voice=job.get("tts_voice"),
         )
         job["results"] = result.get("hooks", {})
         job["status"] = "complete"
@@ -446,7 +466,12 @@ def _run_batch_generation(job_id: str):
 
             result, step_offset = _run_single_product(
                 job_id, product, product_dir, hook_types, formats,
-                content_style, step_offset, total_steps
+                content_style, step_offset, total_steps,
+                audio_enabled=job.get("audio_enabled", True),
+                audio_mood=job.get("audio_mood", "auto"),
+                use_tts=job.get("use_tts", False),
+                tts_provider=job.get("tts_provider", "auto"),
+                tts_voice=job.get("tts_voice"),
             )
             all_product_results.append(result)
 
@@ -604,6 +629,11 @@ def start_generation(req: GenerateRequest):
         "status": "running", "progress": 0, "current_step": "Starting...",
         "product_info": product, "hook_types": req.hook_types,
         "formats": req.formats, "content_style": product["content_style"],
+        "audio_enabled": req.audio_enabled,
+        "audio_mood": req.audio_mood,
+        "use_tts": req.use_tts,
+        "tts_provider": req.tts_provider,
+        "tts_voice": req.tts_voice,
         "results": {}, "errors": [],
         "created_at": time.time(),
     }
@@ -736,6 +766,11 @@ def batch_generate(req: BatchGenerateRequest):
         "current_step": f"Starting batch: {len(products)} products...",
         "products": products, "hook_types": req.hook_types,
         "formats": req.formats, "content_style": normalize_content_style(req.content_style),
+        "audio_enabled": req.audio_enabled,
+        "audio_mood": req.audio_mood,
+        "use_tts": req.use_tts,
+        "tts_provider": req.tts_provider,
+        "tts_voice": req.tts_voice,
         "product_results": [],
         "errors": [], "created_at": time.time(),
     }
