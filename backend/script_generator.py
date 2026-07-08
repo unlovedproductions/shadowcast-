@@ -6,6 +6,11 @@ never need to physically buy or test products.
 
 import json
 from llm_config import get_config, parse_llm_json
+from content_styles import (
+    CONTENT_STYLES,
+    DEFAULT_CONTENT_STYLE,
+    normalize_content_style,
+)
 
 HOOK_TYPES = [
     "curiosity",
@@ -31,41 +36,15 @@ HOOK_DESCRIPTIONS = {
     "myth_buster": "Challenge conventional wisdom. Example: 'Everyone says you need to spend $300 on [product category]. That's a lie.' Creates engagement through controversy without being negative about a specific product.",
 }
 
-# ── Content style presets ────────────────────────────────────────────
-CONTENT_STYLES = {
-    "honest_review": {
-        "name": "Honest Review (Trust Builder)",
-        "description": "Balanced pros AND cons. Includes 'Who This Is NOT For' section. Builds trust by being transparent about limitations.",
-        "tone": "honest, balanced, trustworthy",
-    },
-    "elimination": {
-        "name": "Elimination Round",
-        "description": "Start by showing products you REJECTED and why, then reveal the winner. Builds massive credibility.",
-        "tone": "critical, analytical, authoritative",
-    },
-    "worth_it_or_waste": {
-        "name": "Worth It or Waste?",
-        "description": "Series format. Test a hyped product against its claims. Verdict: Worth It or Waste of Money?",
-        "tone": "investigative, fair, entertaining",
-    },
-    "budget_challenge": {
-        "name": "Budget Challenge",
-        "description": "Find the best product under a specific price. 'The $50 Challenge' format. Perfect for budget-conscious audiences.",
-        "tone": "enthusiastic, value-focused, relatable",
-    },
-    "vs_battle": {
-        "name": "VS Battle (Comparison)",
-        "description": "Side-by-side comparison of two products. Spec-by-spec breakdown. Clear winner declared.",
-        "tone": "analytical, fair, decisive",
-    },
-    "standard": {
-        "name": "Standard Promo",
-        "description": "Classic affiliate promotion. Features, benefits, CTA. Good for straightforward product showcases.",
-        "tone": "enthusiastic, persuasive, energetic",
-    },
-}
-
-DEFAULT_CONTENT_STYLE = "honest_review"
+LAYOUT_SCHEMA = """
+LAYOUT SEGMENTS (required for comparison styles — use "layout" field on segment objects):
+- vs_split: {"layout":"vs_split","product_a":"<main>","product_b":"<competitor>","text":"..."}
+- spec_compare: {"layout":"spec_compare","spec_name":"Price","value_a":"$79","value_b":"$249","winner":"a","text":"..."}
+- scorecard: {"layout":"scorecard","product_a":"<main>","product_b":"<competitor>","scores":[{"category":"Value","winner":"a"}],"text":"..."}
+- price_compare: {"layout":"price_compare","price_products":[{"name":"<product>","price":"$79","highlight":true}],"text":"..."}
+- winner_reveal: {"layout":"winner_reveal","winner_name":"<product>","text":"..."}
+Use text_style aliases: pro_point/pros, con_point/cons, elimination, verdict, scorecard, comparison.
+"""
 
 
 def _call_llm(prompt: str) -> dict:
@@ -89,6 +68,17 @@ def _build_research_context(product_info: dict) -> str:
     common_complaints = product_info.get("common_complaints", "") or "Research common complaints from Amazon reviews and Reddit"
     common_praises = product_info.get("common_praises", "") or "Research top-rated aspects from user reviews"
     who_not_for = product_info.get("who_not_for", "") or "Determine from specs and reviews who should NOT buy this"
+
+    comparison_block = ""
+    if content_style := product_info.get("content_style"):
+        style_key = normalize_content_style(content_style)
+        if style_key in ("vs_battle", "elimination", "budget_challenge"):
+            comparison_block = f"""
+COMPARISON CONTEXT (use in layout segments):
+- Main product: {product_info['product_name']}
+- Competitors: {competitors}
+- Price comparison notes: {product_info.get('price_comparison', '') or 'Compare against category alternatives'}
+"""
 
     return f"""RESEARCH-BASED APPROACH (IMPORTANT):
 You are creating content based on publicly available information — manufacturer specs,
@@ -116,7 +106,8 @@ PRODUCT RESEARCH DATA:
 - Discount Info: {product_info.get('discount_info', '')}
 - Coupon Code: {product_info.get('coupon_code', '')}
 - Price Comparison Notes: {product_info.get('price_comparison', '')}
-- Series Name: {product_info.get('series_name', '')}"""
+- Series Name: {product_info.get('series_name', '')}
+{comparison_block}"""
 
 
 def _get_style_instructions(content_style: str) -> str:
@@ -189,12 +180,52 @@ SPECIAL INSTRUCTIONS:
 """
 
 
+def _get_short_form_structure(content_style: str) -> str:
+    if content_style == "elimination":
+        return """STRUCTURE (compressed):
+1. Hook: reject bad options fast
+2. Elimination beats: 2-3 rejected products with one reason each (text_style: elimination)
+3. Winner reveal layout segment
+4. Honest pro + con, CTA"""
+    if content_style == "worth_it_or_waste":
+        return """STRUCTURE (compressed):
+1. Hook: hype vs reality
+2. Claim checks (2-3 beats)
+3. Verdict segment (text_style: verdict)
+4. CTA"""
+    if content_style == "vs_battle":
+        return """STRUCTURE (compressed):
+1. vs_split layout opener
+2. 2-3 spec_compare layout segments
+3. scorecard layout segment
+4. winner_reveal layout segment
+5. CTA"""
+    if content_style == "budget_challenge":
+        return """STRUCTURE (compressed):
+1. Price constraint hook
+2. price_compare layout segment
+3. Value winner + CTA"""
+    if content_style == "honest_review":
+        return """STRUCTURE (compressed):
+1. Hook
+2. Pros (text_style: pros) + cons (text_style: cons)
+3. Who it's for / not for
+4. Verdict + CTA"""
+    return """STRUCTURE (compressed):
+1. Hook
+2. Features + benefits
+3. Urgency CTA"""
+
+
 def generate_short_form_script(product_info: dict, hook_type: str, content_style: str = None) -> dict:
     if content_style is None:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
+    content_style = normalize_content_style(content_style)
+    product_info = {**product_info, "content_style": content_style}
 
     research_ctx = _build_research_context(product_info)
     style_instructions = _get_style_instructions(content_style)
+    structure = _get_short_form_structure(content_style)
 
     prompt = f"""You are an expert YouTube Shorts scriptwriter for high-retention, high-converting affiliate product marketing. These are FACELESS TEXT-ONLY videos — all content is animated text overlays on dynamic backgrounds.
 
@@ -204,6 +235,10 @@ HOOK TYPE: {hook_type}
 {HOOK_DESCRIPTIONS[hook_type]}
 
 {style_instructions}
+
+{structure}
+
+{LAYOUT_SCHEMA}
 
 Generate a SHORT-FORM script (30-60 seconds, vertical 9:16).
 
@@ -249,6 +284,8 @@ Generate 12-20 segments. Return ONLY valid JSON."""
 def generate_long_form_script(product_info: dict, hook_type: str, content_style: str = None) -> dict:
     if content_style is None:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
+    content_style = normalize_content_style(content_style)
+    product_info = {**product_info, "content_style": content_style}
 
     research_ctx = _build_research_context(product_info)
     style_instructions = _get_style_instructions(content_style)
@@ -302,6 +339,8 @@ HOOK TYPE: {hook_type}
 {style_instructions}
 
 {structure}
+
+{LAYOUT_SCHEMA}
 
 Generate a LONG-FORM script (5-8 minutes, 16:9 landscape).
 
@@ -358,6 +397,8 @@ def generate_selected_scripts(product_info: dict, hook_type: str,
         formats = ["short_form", "long_form"]
     if content_style is None:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
+    content_style = normalize_content_style(content_style)
+    product_info = {**product_info, "content_style": content_style}
 
     result = {"product_info": product_info, "hook_type": hook_type,
               "content_style": content_style, "scripts": {}}

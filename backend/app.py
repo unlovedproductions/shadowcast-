@@ -30,6 +30,13 @@ from script_generator import (
     generate_selected_scripts, HOOK_TYPES, HOOK_DESCRIPTIONS,
     CONTENT_STYLES, DEFAULT_CONTENT_STYLE,
 )
+from content_styles import (
+    normalize_content_style,
+    style_badge_text,
+    style_requires_competitors,
+)
+from script_postprocessor import enrich_script
+from apf_import import normalize_apf_payload
 from video_renderer import render_short_form_video, render_long_form_video
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
@@ -208,7 +215,7 @@ def parse_csv_products(csv_text: str) -> List[dict]:
             "who_not_for": norm.get("who_not_for", ""),
             "series_name": norm.get("series_name", ""),
             "price_comparison": norm.get("price_comparison", ""),
-            "content_style": norm.get("content_style", DEFAULT_CONTENT_STYLE),
+            "content_style": normalize_content_style(norm.get("content_style", DEFAULT_CONTENT_STYLE)),
         }
         products.append(product)
     return products
@@ -224,7 +231,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     step = step_offset
 
     # Use product-level content_style if set, otherwise job-level
-    effective_style = product.get("content_style") or content_style
+    effective_style = normalize_content_style(product.get("content_style") or content_style)
+    product["content_style"] = effective_style
 
     all_scripts = {}
     all_yt_packages = {}
@@ -238,7 +246,12 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
         try:
             scripts = generate_selected_scripts(product, hook_type, formats, effective_style)
-            all_scripts[hook_type] = scripts.get("scripts", {})
+            script_payload = scripts.get("scripts", {})
+            for fmt in formats:
+                if fmt in script_payload:
+                    script_payload[fmt] = enrich_script(script_payload[fmt], product, effective_style)
+            scripts["scripts"] = script_payload
+            all_scripts[hook_type] = script_payload
 
             fname = f"{slug}_{hook_type}_scripts.json"
             with open(str(product_dir / fname), "w") as f:
@@ -277,6 +290,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         product_name=product.get('product_name', ''),
                         price=product.get('price', ''),
                         series_name=product.get('series_name', ''),
+                        content_style=effective_style,
+                        competitors=product.get('competitors', []),
                     )
                 else:
                     render_long_form_video(
@@ -284,6 +299,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         product_name=product.get('product_name', ''),
                         price=product.get('price', ''),
                         series_name=product.get('series_name', ''),
+                        content_style=effective_style,
+                        competitors=product.get('competitors', []),
                     )
 
                 if hook_type not in product_results["hooks"]:
@@ -337,7 +354,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     job["current_step"] = f"[{product['product_name']}] Generating thumbnails..."
     for hook_type in hook_types:
         try:
-            content_style_name = product.get('content_style', 'honest_review')
+            content_style_name = normalize_content_style(product.get('content_style', 'honest_review'))
             thumb_set = generate_thumbnail_set(
                 product.get('product_name', 'Product'),
                 hook_type,
@@ -345,18 +362,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
             )
             for variant_key, thumb_img in thumb_set.items():
-                # Add badge based on content style
-                badge_text = None
-                if content_style_name == 'honest_review':
-                    badge_text = 'HONEST REVIEW'
-                elif content_style_name == 'elimination_round':
-                    badge_text = 'ELIMINATION'
-                elif content_style_name == 'worth_it_or_waste':
-                    badge_text = 'WORTH IT?'
-                elif content_style_name == 'budget_challenge':
-                    badge_text = 'BUDGET PICK'
-                elif content_style_name == 'vs_battle':
-                    badge_text = 'VS BATTLE'
+                badge_text = style_badge_text(content_style_name)
                 
                 if badge_text:
                     thumb_img = add_badge(thumb_img, badge_text)
@@ -396,7 +402,7 @@ def _run_generation(job_id: str):
     product = job["product_info"]
     hook_types = job["hook_types"]
     formats = job["formats"]
-    content_style = job.get("content_style", DEFAULT_CONTENT_STYLE)
+    content_style = normalize_content_style(job.get("content_style", DEFAULT_CONTENT_STYLE))
     total_steps = _steps_per_product(hook_types, formats)
 
     try:
@@ -422,7 +428,7 @@ def _run_batch_generation(job_id: str):
     products = job["products"]
     hook_types = job["hook_types"]
     formats = job["formats"]
-    content_style = job.get("content_style", DEFAULT_CONTENT_STYLE)
+    content_style = normalize_content_style(job.get("content_style", DEFAULT_CONTENT_STYLE))
 
     steps_per = _steps_per_product(hook_types, formats)
     total_steps = steps_per * len(products)
@@ -580,22 +586,34 @@ def start_generation(req: GenerateRequest):
     product = req.product_info.dict()
     if not product.get("product_category"):
         product["product_category"] = product.get("niche", "General")
-    # Apply content style from request if product doesn't have one
-    if not product.get("content_style") or product["content_style"] == DEFAULT_CONTENT_STYLE:
-        product["content_style"] = req.content_style
+    req_style = normalize_content_style(req.content_style)
+    product_style = normalize_content_style(product.get("content_style") or req_style)
+    if not product.get("content_style") or normalize_content_style(product["content_style"]) == DEFAULT_CONTENT_STYLE:
+        product["content_style"] = req_style
+    else:
+        product["content_style"] = product_style
+
+    warnings = []
+    if style_requires_competitors(product["content_style"]) and not product.get("competitors"):
+        warnings.append(
+            "Competitors recommended for this content style — import from APF or add manually."
+        )
 
     jobs[job_id] = {
         "id": job_id, "mode": "single",
         "status": "running", "progress": 0, "current_step": "Starting...",
         "product_info": product, "hook_types": req.hook_types,
-        "formats": req.formats, "content_style": req.content_style,
+        "formats": req.formats, "content_style": product["content_style"],
         "results": {}, "errors": [],
         "created_at": time.time(),
     }
 
     thread = threading.Thread(target=_run_generation, args=(job_id,), daemon=True)
     thread.start()
-    return {"job_id": job_id, "status": "running", "mode": "single"}
+    response = {"job_id": job_id, "status": "running", "mode": "single"}
+    if warnings:
+        response["warnings"] = warnings
+    return response
 
 
 # ── Batch CSV upload ──────────────────────────────────────────────────
@@ -678,7 +696,7 @@ async def import_apf(file: UploadFile = File(...)):
                 who_not_for=item.get("who_not_for", ""),
                 series_name=item.get("series_name", ""),
                 price_comparison=item.get("price_comparison", ""),
-                content_style=item.get("content_style", DEFAULT_CONTENT_STYLE),
+                content_style=normalize_content_style(item.get("content_style", DEFAULT_CONTENT_STYLE)),
             )
             products.append(product)
         except Exception as e:
@@ -698,10 +716,15 @@ async def import_apf(file: UploadFile = File(...)):
 # ── Batch JSON upload ─────────────────────────────────────────────────
 @app.post("/api/batch-generate")
 def batch_generate(req: BatchGenerateRequest):
-    products = [p.dict() for p in req.products]
-    for p in products:
-        if not p.get("product_category"):
-            p["product_category"] = p.get("niche", "General")
+    products = []
+    for p in req.products:
+        item = p.dict()
+        if not item.get("product_category"):
+            item["product_category"] = item.get("niche", "General")
+        item["content_style"] = normalize_content_style(
+            item.get("content_style") or req.content_style
+        )
+        products.append(item)
 
     job_id = str(uuid.uuid4())[:8]
     job_dir = OUTPUT_BASE / job_id
@@ -712,7 +735,7 @@ def batch_generate(req: BatchGenerateRequest):
         "status": "running", "progress": 0,
         "current_step": f"Starting batch: {len(products)} products...",
         "products": products, "hook_types": req.hook_types,
-        "formats": req.formats, "content_style": req.content_style,
+        "formats": req.formats, "content_style": normalize_content_style(req.content_style),
         "product_results": [],
         "errors": [], "created_at": time.time(),
     }
@@ -950,7 +973,6 @@ def recommend_bg(content_style: str = "honest_review", hook_type: str = "curiosi
 
 # BEGIN UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS
 # Local APF → ShadowCast direct draft import.
-# This lets APF POST enriched product JSON and open ShadowCast with fields prefilled.
 import os as _unloved_os
 import json as _unloved_json
 import secrets as _unloved_secrets
@@ -966,110 +988,14 @@ _UNLOVED_APF_IMPORT_DIR = _UnlovedPath(
 )
 _UNLOVED_APF_IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-def _unloved_clean(value):
-    if value is None:
-        return ""
-    if isinstance(value, list):
-        return "; ".join([_unloved_clean(v) for v in value if _unloved_clean(v)])
-    if isinstance(value, dict):
-        return _unloved_json.dumps(value, ensure_ascii=False)
-    return str(value).strip()
-
-def _unloved_pick(obj, keys):
-    if not isinstance(obj, dict):
-        return ""
-    lowered = {str(k).lower(): k for k in obj.keys()}
-    for key in keys:
-        if key in obj and _unloved_clean(obj[key]):
-            return obj[key]
-        real = lowered.get(str(key).lower())
-        if real and _unloved_clean(obj[real]):
-            return obj[real]
-    return ""
-
-def _unloved_first_product(payload):
-    if isinstance(payload, list):
-        return payload[0] if payload else {}
-    if not isinstance(payload, dict):
-        return {}
-    if isinstance(payload.get("product"), dict):
-        return payload["product"]
-    for key in ["selectedProduct", "apfProduct", "item", "offer"]:
-        if isinstance(payload.get(key), dict):
-            return payload[key]
-    for key in ["products", "items", "data", "results", "offers"]:
-        if isinstance(payload.get(key), list) and payload[key]:
-            return _unloved_first_product(payload[key])
-    return payload
-
-def _unloved_normalize_apf_payload(payload):
-    raw = payload.get("payload") if isinstance(payload, dict) and isinstance(payload.get("payload"), dict) else payload
-    product = _unloved_first_product(raw)
-
-    brief = {}
-    if isinstance(raw, dict):
-        brief = raw.get("review_brief") or raw.get("reviewBrief") or {}
-    if not isinstance(brief, dict):
-        brief = {}
-
-    review_sources = []
-    if isinstance(raw, dict) and isinstance(raw.get("review_sources"), list):
-        review_sources = raw["review_sources"]
-
-    product_name = _unloved_clean(_unloved_pick(product, ["name", "product_name", "productName", "title"]))
-    niche = _unloved_clean(_unloved_pick(product, ["category", "niche", "product_category"])) or "ClickBank"
-    affiliate_link = _unloved_clean(_unloved_pick(product, [
-        "affiliate_url", "affiliateLink", "affiliate_link", "hoplink", "product_url", "url"
-    ]))
-
-    positives = brief.get("positive_signals") or []
-    negatives = brief.get("negative_signals") or []
-    claims = brief.get("common_claims") or []
-    complaints = brief.get("common_complaints") or []
-    angles = brief.get("best_video_angles") or []
-
-    key_features = "\n".join([
-        part for part in [
-            _unloved_clean(brief.get("review_summary")),
-            "Positive signals: " + _unloved_clean(positives) if positives else "",
-            "Common claims: " + _unloved_clean(claims) if claims else "",
-            _unloved_clean(_unloved_pick(product, ["description", "summary", "keyFeatures", "key_features"]))
-        ] if part
-    ])
-
-    common_complaints = "\n".join([
-        part for part in [
-            "Negative signals: " + _unloved_clean(negatives) if negatives else "",
-            "Common complaints: " + _unloved_clean(complaints) if complaints else ""
-        ] if part
-    ])
-
-    return {
-        "productName": product_name,
-        "niche": niche,
-        "keyFeatures": key_features,
-        "price": _unloved_clean(_unloved_pick(product, ["price", "initialPrice", "front_end_price"])),
-        "affiliateLink": affiliate_link,
-        "keywords": _unloved_clean(_unloved_pick(product, ["keywords", "tags"])) or ", ".join(
-            [v for v in [product_name, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"] if v]
-        ),
-        "targetAudience": _unloved_clean(brief.get("target_audience") or brief.get("who_it_may_help")),
-        "uniqueSellingPoint": _unloved_clean((angles[0] if isinstance(angles, list) and angles else "") or brief.get("review_summary")),
-        "commonPraises": _unloved_clean(positives),
-        "commonComplaints": common_complaints,
-        "whoNotFor": _unloved_clean(brief.get("who_should_skip_it")),
-        "cta": _unloved_clean(brief.get("cta_guidance")),
-        "reviewBrief": brief,
-        "reviewSources": review_sources,
-        "apfProduct": product,
-    }
-
 @app.post("/api/import-apf/direct")
 async def unloved_apf_direct_import(request: _UnlovedRequest):
     payload = await request.json()
 
     token = _unloved_secrets.token_urlsafe(18)
-    normalized = _unloved_normalize_apf_payload(payload)
+    import_result = normalize_apf_payload(payload)
+    normalized = import_result["normalized"]
+    recommended_content_style = import_result["recommended_content_style"]
 
     if not normalized.get("productName"):
         raise _UnlovedHTTPException(status_code=400, detail="APF payload did not include a product name.")
@@ -1080,6 +1006,7 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
         "created_at": _unloved_datetime.now(_unloved_timezone.utc).isoformat(),
         "payload": payload,
         "normalized": normalized,
+        "recommended_content_style": recommended_content_style,
     }
 
     path = _UNLOVED_APF_IMPORT_DIR / f"{token}.json"
@@ -1090,6 +1017,8 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
         "ok": True,
         "token": token,
         "productName": normalized.get("productName"),
+        "recommended_content_style": recommended_content_style,
+        "normalized": normalized,
         "open_url": f"{base}/?apf_draft={token}",
     }
 

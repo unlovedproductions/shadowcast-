@@ -2,6 +2,8 @@ import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
 
+from content_styles import human_style_name
+
 # Brand colors
 DARK_PINK = (196, 80, 122)
 NEAR_BLACK = (10, 10, 15)
@@ -249,6 +251,7 @@ def add_badge(image, badge_text, position="top_right", color=DARK_PINK):
 
 def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None):
     variants = {}
+    style_label = human_style_name(content_style)
 
     # Variant A: Bold Text Style
     variants["variant_a"] = generate_thumbnail(
@@ -261,7 +264,7 @@ def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None
     # Variant B: Split Style
     variants["variant_b"] = generate_thumbnail(
         title=f"IS {product_name.upper()} WORTH IT?",
-        subtitle=f"Unbiased {content_style} Analysis",
+        subtitle=f"Unbiased {style_label}",
         style="split",
         accent_color=DARK_PINK
     )
@@ -270,16 +273,15 @@ def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None
     if keywords and len(keywords) > 0:
         variants["variant_c"] = generate_thumbnail(
             title=f"{keywords[0].upper()}",
-            subtitle=f"{product_name} {content_style} Breakdown",
+            subtitle=f"{product_name} {style_label}",
             style="number",
             accent_color=DARK_PINK
         )
     else:
-        # Fallback for Variant C if no keywords
         variants["variant_c"] = generate_thumbnail(
             title=f"TOP {product_name.upper()}",
-            subtitle=f"Why it's the best {content_style}",
-            style="bold_text", # Fallback to bold_text
+            subtitle=f"Why it's the best {style_label}",
+            style="bold_text",
             accent_color=DARK_PINK
         )
 

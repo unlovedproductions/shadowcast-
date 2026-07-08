@@ -1,0 +1,79 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+
+from script_postprocessor import enrich_script
+
+
+PRODUCT = {
+    "product_name": "SoundCore Space A40",
+    "price": "$79.99",
+    "key_features": ["ANC", "50hr battery"],
+    "competitors": ["AirPods Pro 2", "Sony WF-1000XM5"],
+    "price_comparison": "AirPods Pro 2 costs $249 for similar ANC",
+}
+
+
+def _short_script():
+    return {
+        "format": "short_form",
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "duration": 2},
+            {"segment_id": 2, "text": "Bad option", "text_style": "pro_point", "duration": 2},
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button", "duration": 2},
+        ],
+    }
+
+
+def _long_script():
+    return {
+        "format": "long_form",
+        "chapters": [
+            {
+                "chapter_name": "The Verdict",
+                "segments": [
+                    {"segment_id": 1, "text": "Worth it for commuters", "text_style": "subtitle", "duration": 3},
+                ],
+            }
+        ],
+    }
+
+
+def test_text_style_alias_normalization():
+    enriched = enrich_script(_short_script(), PRODUCT, "honest_review")
+    styles = [seg["text_style"] for seg in enriched["segments"]]
+    assert "pros" in styles
+    assert "pro_point" not in styles
+
+
+def test_vs_battle_injects_layout_segments():
+    enriched = enrich_script(_short_script(), PRODUCT, "vs_battle")
+    layouts = [seg.get("layout") for seg in enriched["segments"] if seg.get("layout")]
+    assert "vs_split" in layouts
+    assert "scorecard" in layouts
+    assert "winner_reveal" in layouts
+
+
+def test_elimination_injects_winner_reveal_and_elimination_style():
+    enriched = enrich_script(_short_script(), PRODUCT, "elimination")
+    styles = [seg.get("text_style") for seg in enriched["segments"]]
+    layouts = [seg.get("layout") for seg in enriched["segments"] if seg.get("layout")]
+    assert "elimination" in styles
+    assert "winner_reveal" in layouts
+
+
+def test_budget_challenge_injects_price_compare():
+    enriched = enrich_script(_short_script(), PRODUCT, "budget_challenge")
+    layouts = [seg.get("layout") for seg in enriched["segments"] if seg.get("layout")]
+    assert "price_compare" in layouts
+
+
+def test_worth_it_or_waste_verdict_styling():
+    enriched = enrich_script(_long_script(), PRODUCT, "worth_it_or_waste")
+    verdict_styles = [
+        seg["text_style"]
+        for chapter in enriched["chapters"]
+        for seg in chapter["segments"]
+    ]
+    assert verdict_styles[0] == "verdict"

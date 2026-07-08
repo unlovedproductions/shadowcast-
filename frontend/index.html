@@ -253,6 +253,7 @@
         seriesName: '', priceComparison: '',
         // Content style
         contentStyle: 'honest_review',
+        contentStyleManuallyChanged: false,
         // Batch
         batchProducts: [],
         batchFileName: '',
@@ -373,7 +374,7 @@
                 <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
                 <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
                 <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
-                <div class="form-group full"><label>Competitor Products</label><input id="competitors" value="${esc(state.competitors)}" placeholder="Comma-separated: AirPods Pro 2, Sony WF-1000XM5"><span class="hint">Used for comparisons, eliminations, and VS battles</span></div>
+                <div class="form-group full"><label>Competitor Products</label><input id="competitors" value="${esc(state.competitors)}" placeholder="Comma-separated: AirPods Pro 2, Sony WF-1000XM5"><span class="hint">Used for comparisons, eliminations, and VS battles</span>${(state.contentStyle==='vs_battle'||state.contentStyle==='elimination')&&!String(state.competitors||'').trim()?'<span class="hint" style="color:var(--accent);display:block;margin-top:6px;">Competitors recommended — import from APF or add manually.</span>':''}</div>
                 <div class="form-group full"><label>Unique Selling Point</label><input id="usp" value="${esc(state.usp)}" placeholder="What makes this product stand out from competitors?"></div>
                 <div class="form-group"><label>Current Discount/Deal</label><input id="discountInfo" value="${esc(state.discountInfo)}" placeholder="e.g., 20% off this week only"></div>
                 <div class="form-group"><label>Coupon Code</label><input id="couponCode" value="${esc(state.couponCode)}" placeholder="e.g., SAVE20"></div>
@@ -1172,7 +1173,7 @@
 
     // ── Actions ─────────────────────────────────────────────
     function setMode(m) { state.mode = m; state.batchProducts = []; state.batchFileName = ''; render(); }
-    function setContentStyle(s) { state.contentStyle = s; render(); }
+    function setContentStyle(s) { state.contentStyle = s; state.contentStyleManuallyChanged = true; render(); }
     function toggleHook(id) {
         const i=state.selectedHooks.indexOf(id);
         if(i>=0){if(state.selectedHooks.length>1)state.selectedHooks.splice(i,1);}
@@ -1752,7 +1753,7 @@
       couponCode: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
       priceComparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
       seriesName: "Hidden Gem Review",
-      contentStyle: clean(pick(product, ["content_style", "contentStyle"])) || "trust_first_review",
+      contentStyle: clean(pick(product, ["content_style", "contentStyle"])) || "honest_review",
       cta: cta,
 
       // Snake_case equivalents for backend compatibility
@@ -1856,39 +1857,28 @@
 
   window.normalizeAPFProductForShadowCast = normalizeAPFProduct;
 
-  window.handleAPFFileUpload = function handleAPFFileUpload(input) {
+  window.handleAPFFileUpload = async function handleAPFFileUpload(input) {
     const file = input && input.files && input.files[0];
-
     if (!file) {
       alert("Please choose an APF JSON file.");
       return;
     }
-
-    const reader = new FileReader();
-
-    reader.onload = function (event) {
-      try {
-        const payload = JSON.parse(event.target.result);
-        const mapped = normalizeAPFProduct(payload);
-
-        if (!mapped.productName) {
-          alert("APF JSON was read, but no product name was found. Check the APF export format.");
-          console.warn("[APF JSON normalizer] payload without product name:", payload);
-          return;
-        }
-
-        hydrateShadowCastState(mapped);
-      } catch (err) {
-        console.error("[APF JSON normalizer] JSON import failed:", err);
-        alert("Could not read APF JSON: " + err.message);
+    try {
+      const payload = JSON.parse(await file.text());
+      if (typeof window.importAPFViaBackend === "function") {
+        await window.importAPFViaBackend(payload);
+        return;
       }
-    };
-
-    reader.onerror = function () {
-      alert("Could not read the selected APF JSON file.");
-    };
-
-    reader.readAsText(file);
+      const mapped = normalizeAPFProduct(payload);
+      if (!mapped.productName) {
+        alert("APF JSON was read, but no product name was found. Check the APF export format.");
+        return;
+      }
+      hydrateShadowCastState(mapped);
+    } catch (err) {
+      console.error("[APF JSON normalizer] JSON import failed:", err);
+      alert("Could not read APF JSON: " + err.message);
+    }
   };
 
   console.log("[APF JSON normalizer] enhanced patch installed");
@@ -1984,21 +1974,22 @@
       alert("Imported enriched APF review brief for: " + (mapped.productName || "product"));
     }, 50);
   }
-  window.handleAPFFileUpload = function(input){
+  window.handleAPFFileUpload = async function(input){
     const file = input?.files?.[0];
     if (!file) return alert("Please choose an APF JSON file.");
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const mapped = normalize(JSON.parse(e.target.result));
-        if (!mapped.productName) return alert("APF JSON was read, but no product name was found.");
-        hydrate(mapped);
-      } catch (err) {
-        console.error("[APF review brief importer] failed:", err);
-        alert("Could not read APF JSON: " + err.message);
+    try {
+      const payload = JSON.parse(await file.text());
+      if (typeof window.importAPFViaBackend === "function") {
+        await window.importAPFViaBackend(payload);
+        return;
       }
-    };
-    reader.readAsText(file);
+      const mapped = normalize(payload);
+      if (!mapped.productName) return alert("APF JSON was read, but no product name was found.");
+      hydrate(mapped);
+    } catch (err) {
+      console.error("[APF review brief importer] failed:", err);
+      alert("Could not read APF JSON: " + err.message);
+    }
   };
   console.log("[APF review brief importer] installed");
 })();
@@ -2029,184 +2020,106 @@
     return "";
   }
 
-  function normalizePayload(payload) {
-    const normalized = payload && payload.normalized ? payload.normalized : {};
-    const product =
-      (payload && payload.product) ||
-      normalized.apfProduct ||
-      normalized.rawApfProduct ||
-      {};
-
-    let rich = {};
-    try {
-      if (typeof window.normalizeAPFProductForShadowCast === "function") {
-        rich = window.normalizeAPFProductForShadowCast(payload) || {};
-      }
-    } catch (err) {
-      console.warn("[APF direct import] rich normalizer failed:", err);
-    }
-
-    const productName = clean(
-      normalized.productName ||
-      rich.productName ||
-      pick(product, ["name", "product_name", "title", "productName"])
-    );
-
-    const niche = clean(
-      normalized.niche ||
-      rich.niche ||
-      pick(product, ["category", "niche", "product_category", "marketplace_category"]) ||
-      "Affiliate Product"
-    );
-
-    const keyFeatures = clean(
-      normalized.keyFeatures ||
-      rich.keyFeatures ||
-      pick(product, ["description", "key_features", "keyFeatures", "summary"]) ||
-      `Review ${productName || "this product"} as a trust-first affiliate offer. Explain what it is, who it may help, what to verify, and whether it is worth checking out.`
-    );
-
-    const affiliateLink = clean(
-      normalized.affiliateLink ||
-      rich.affiliateLink ||
-      pick(product, [
-        "affiliate_url",
-        "affiliateLink",
-        "affiliate_link",
-        "affiliateUrl",
-        "product_detail_url",
-        "detail_url",
-        "product_url",
-        "url"
-      ])
-    );
-
-    const keywords = clean(
-      normalized.keywords ||
-      rich.keywords ||
-      pick(product, ["keywords", "tags"]) ||
-      [productName, niche, "review", "worth it", "complaints", "pros and cons"].filter(Boolean).join(", ")
-    );
-
-    const targetAudience = clean(
-      normalized.targetAudience ||
-      normalized.target_audience ||
-      rich.targetAudience ||
-      pick(product, ["target_audience", "targetAudience"]) ||
-      `People researching whether ${productName || "this product"} is worth checking out.`
-    );
-
-    const productCategory = clean(
-      normalized.productCategory ||
-      normalized.product_category ||
-      rich.productCategory ||
-      rich.product_category ||
-      niche
-    );
-
-    const usp = clean(
-      normalized.usp ||
-      normalized.uniqueSellingPoint ||
-      normalized.unique_selling_point ||
-      rich.usp ||
-      rich.uniqueSellingPoint ||
-      rich.unique_selling_point ||
-      (productName ? `${productName} scored as an APF hidden-gem candidate. Present the review honestly, with benefits, limitations, and verification steps.` : "")
-    );
-
-    const commonComplaints = clean(
-      normalized.commonComplaints ||
-      normalized.common_complaints ||
-      rich.commonComplaints ||
-      rich.common_complaints ||
-      "Potential complaints may include unclear fit, price sensitivity, exaggerated marketing claims, or needing to verify the offer before buying."
-    );
-
-    const commonPraises = clean(
-      normalized.commonPraises ||
-      normalized.common_praises ||
-      rich.commonPraises ||
-      rich.common_praises ||
-      "Potential praise may include solving a specific problem, strong marketplace positioning, clear niche appeal, and useful benefits for the right buyer."
-    );
-
-    const whoNotFor = clean(
-      normalized.whoNotFor ||
-      normalized.who_not_for ||
-      rich.whoNotFor ||
-      rich.who_not_for ||
-      "Not for people expecting guaranteed results, instant outcomes, or claims without checking the current product page."
-    );
-
-    const priceComparison = clean(
-      normalized.priceComparison ||
-      normalized.price_comparison ||
-      rich.priceComparison ||
-      rich.price_comparison ||
-      ""
-    );
-
-    const seriesName = clean(
-      normalized.seriesName ||
-      normalized.series_name ||
-      rich.seriesName ||
-      rich.series_name ||
-      "Hidden Gem Review"
-    );
-
-    const discountInfo = clean(
-      normalized.discountInfo ||
-      normalized.discount_info ||
-      rich.discountInfo ||
-      rich.discount_info ||
-      ""
-    );
-
-    const couponCode = clean(
-      normalized.couponCode ||
-      normalized.coupon_code ||
-      rich.couponCode ||
-      rich.coupon_code ||
-      ""
-    );
+  function mapBackendNormalized(doc) {
+    const normalized = (doc && doc.normalized) || {};
+    const competitors = normalized.competitors;
+    const competitorStr = Array.isArray(competitors)
+      ? competitors.join(", ")
+      : clean(competitors || "");
 
     return {
-      ...rich,
-      ...normalized,
-
-      // ShadowCast actual state/input IDs
-      productName,
-      niche,
-      keyFeatures,
-      price: clean(normalized.price || rich.price || pick(product, ["price"])) || "$79.99",
-      affiliateLink,
-      keywords,
-      targetAudience,
-      productCategory,
-      competitors: clean(normalized.competitors || rich.competitors || pick(product, ["vendor"])) || "",
-      usp,
-      discountInfo,
-      couponCode,
-      commonComplaints,
-      commonPraises,
-      whoNotFor,
-      priceComparison,
-      seriesName,
-
-      // Compatibility aliases
-      uniqueSellingPoint: usp,
-      unique_selling_point: usp,
-      product_category: productCategory,
-      affiliate_link: affiliateLink,
-      target_audience: targetAudience,
-      common_complaints: commonComplaints,
-      common_praises: commonPraises,
-      who_not_for: whoNotFor,
-      price_comparison: priceComparison,
-      series_name: seriesName,
-      discount_info: discountInfo,
-      coupon_code: couponCode
+      productName: clean(normalized.productName || normalized.product_name),
+      niche: clean(normalized.niche) || "Affiliate Product",
+      keyFeatures: clean(
+        normalized.keyFeatures ||
+        (Array.isArray(normalized.key_features) ? normalized.key_features.join("\n") : normalized.key_features)
+      ),
+      price: clean(normalized.price) || "Varies",
+      affiliateLink: clean(normalized.affiliateLink || normalized.affiliate_link),
+      keywords: clean(normalized.keywords),
+      targetAudience: clean(normalized.targetAudience || normalized.target_audience),
+      productCategory: clean(normalized.productCategory || normalized.product_category || normalized.niche),
+      competitors: competitorStr,
+      usp: clean(normalized.uniqueSellingPoint || normalized.unique_selling_point),
+      discountInfo: clean(normalized.discountInfo || normalized.discount_info),
+      couponCode: clean(normalized.couponCode || normalized.coupon_code),
+      commonComplaints: clean(normalized.commonComplaints || normalized.common_complaints),
+      commonPraises: clean(normalized.commonPraises || normalized.common_praises),
+      whoNotFor: clean(normalized.whoNotFor || normalized.who_not_for),
+      priceComparison: clean(normalized.priceComparison || normalized.price_comparison),
+      seriesName: clean(normalized.seriesName || normalized.series_name),
+      recommendedContentStyle: clean(
+        doc.recommended_content_style ||
+        normalized.contentStyle ||
+        normalized.content_style ||
+        "honest_review"
+      ),
     };
+  }
+
+  window.hydrateAPFBackendImport = function hydrateAPFBackendImport(doc) {
+    const mapped = mapBackendNormalized(doc);
+    if (!mapped.productName) {
+      alert("ShadowCast received the APF draft, but no product name was found.");
+      return;
+    }
+
+    try {
+      if (typeof state !== "undefined" && state) {
+        if (!state.contentStyleManuallyChanged) {
+          state.contentStyle = mapped.recommendedContentStyle || "honest_review";
+        }
+        Object.assign(state, {
+          mode: "single",
+          page: "form",
+          navPage: "generate",
+          productName: mapped.productName,
+          niche: mapped.niche,
+          keyFeatures: mapped.keyFeatures,
+          price: mapped.price,
+          affiliateLink: mapped.affiliateLink,
+          keywords: mapped.keywords,
+          targetAudience: mapped.targetAudience,
+          productCategory: mapped.productCategory,
+          competitors: mapped.competitors,
+          usp: mapped.usp,
+          discountInfo: mapped.discountInfo,
+          couponCode: mapped.couponCode,
+          commonComplaints: mapped.commonComplaints,
+          commonPraises: mapped.commonPraises,
+          whoNotFor: mapped.whoNotFor,
+          priceComparison: mapped.priceComparison,
+          seriesName: mapped.seriesName,
+        });
+      }
+    } catch (err) {
+      console.warn("[APF direct import] state write skipped:", err);
+    }
+
+    hydrate(mapped);
+  };
+
+  window.importAPFViaBackend = async function importAPFViaBackend(payload) {
+    const postRes = await fetch("/api/import-apf/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const postBody = await postRes.text();
+    if (!postRes.ok) throw new Error(postBody.slice(0, 500));
+
+    const posted = JSON.parse(postBody);
+    const token = posted.token;
+    const getRes = await fetch("/api/import-apf/direct/" + encodeURIComponent(token), {
+      headers: { Accept: "application/json" },
+    });
+    const getBody = await getRes.text();
+    if (!getRes.ok) throw new Error(getBody.slice(0, 500));
+    window.hydrateAPFBackendImport(JSON.parse(getBody));
+  };
+
+  function normalizePayload(payload) {
+    return mapBackendNormalized(payload);
   }
 
   function setInput(id, value) {
@@ -2327,8 +2240,7 @@
   }
 
   window.handleAPFDirectImportPayload = function (payload) {
-    const mapped = normalizePayload(payload);
-    hydrate(mapped);
+    window.hydrateAPFBackendImport(payload);
   };
 
   async function loadDraftFromUrl() {

@@ -52,6 +52,7 @@ from comparison_layouts import (
     render_price_comparison,
     render_winner_reveal,
 )
+from content_styles import normalize_content_style
 
 from kinetic_effects import (
     create_word_by_word_clip,
@@ -97,9 +98,44 @@ STYLE_FONT_MAP = {
     "question": (FONT_BOLD, 1.0),
     "pros": (FONT_BOLD, 0.85),
     "cons": (FONT_BOLD, 0.85),
+    "pro_point": (FONT_BOLD, 0.85),
+    "con_point": (FONT_BOLD, 0.85),
     "comparison": (FONT_BOLD, 0.9),
+    "scorecard": (FONT_BOLD, 0.9),
+    "elimination": (FONT_BOLD, 0.85),
     "verdict": (FONT_BLACK, 1.2),
 }
+
+TEXT_STYLE_ALIASES = {
+    "pro_point": "pros",
+    "con_point": "cons",
+}
+
+
+def normalize_text_style(text_style: str) -> str:
+    return TEXT_STYLE_ALIASES.get(text_style, text_style)
+
+
+def _short_audio_mood(content_style: str) -> str:
+    style = normalize_content_style(content_style)
+    if style in ("vs_battle", "elimination"):
+        return "energetic"
+    if style in ("honest_review", "worth_it_or_waste"):
+        return "chill"
+    if style == "budget_challenge":
+        return "energetic"
+    return "energetic"
+
+
+def _long_audio_mood(content_style: str) -> str:
+    style = normalize_content_style(content_style)
+    if style in ("vs_battle", "elimination"):
+        return "dramatic"
+    if style in ("honest_review", "worth_it_or_waste"):
+        return "chill"
+    if style == "budget_challenge":
+        return "energetic"
+    return "energetic"
 
 # Animation types that use kinetic effects instead of simple fades
 KINETIC_ANIMATIONS = {
@@ -245,8 +281,10 @@ def render_text_frame(
     is_short_form: bool = False,
     accent_color: tuple = None,
     add_glow: bool = True,
-) -> np.ndarray:
+    content_style: str = "honest_review",
+):
     """Render a single text frame with professional styling using PIL."""
+    text_style = normalize_text_style(text_style)
     
     # Use brand palette
     if bg_color is None:
@@ -256,8 +294,8 @@ def render_text_frame(
     
     # Create dynamic background using bg_generator
     try:
-        from bg_generator import generate_background, apply_vignette, apply_film_grain, get_style_for_content
-        bg_style = random.choice(["gradient", "mesh_gradient", "geometric", "bokeh", "wave", "radial", "noise", "grid", "abstract", "circuit"])
+        from bg_generator import generate_background, apply_vignette, get_style_for_content
+        bg_style = get_style_for_content(normalize_content_style(content_style), hook_type="")
         bg_img = generate_background(width, height, style=bg_style, accent_color=accent_color)
         # Bug 2 fix: enforce dark theme — if generated background is too bright, fall back to near-black
         bg_arr_check = np.array(bg_img)
@@ -361,17 +399,22 @@ def render_text_frame(
     elif text_style == "cons":
         indicator_size = font_size // 2
         draw.text((x - indicator_size - 10, y), "✗", font=font, fill=(255, 80, 80, 255))
+    elif text_style == "elimination":
+        indicator_size = font_size // 2
+        draw.text((x - indicator_size - 10, y), "✗", font=font, fill=(255, 60, 60, 255))
+        strike_y = y + text_h // 2
+        draw.line([(x - 8, strike_y), (x + text_w + 8, strike_y)], fill=(255, 60, 60, 200), width=3)
     
     # Convert to RGB numpy array
     result = bg_img.convert("RGB")
     return np.array(result)
 
 
-def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg):
+def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg, content_style="honest_review"):
     """Build a clip for a single segment, using kinetic effects when appropriate."""
     text = seg.get("text", "")
     duration = seg.get("duration", 2.5 if is_short_form else 4.0)
-    text_style = seg.get("text_style", "headline_bold")
+    text_style = normalize_text_style(seg.get("text_style", "headline_bold"))
     animation = seg.get("animation", "fade_in")
     is_interrupt = seg.get("is_pattern_interrupt", False)
     
@@ -463,6 +506,7 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg)
             text_color=text_color, bg_color=bg_color,
             text_style=text_style, is_short_form=is_short_form,
             accent_color=accent_color, add_glow=is_interrupt,
+            content_style=content_style,
         )
         
         if animation == "shake":
@@ -534,8 +578,13 @@ def render_short_form_video(
     product_name: str = "",
     price: str = "",
     series_name: str = "",
+    content_style: str = "honest_review",
+    competitors=None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
+    if competitors is None:
+        competitors = []
+    content_style = normalize_content_style(content_style)
     
     WIDTH, HEIGHT = 1080, 1920  # 9:16 vertical
     FPS = 30
@@ -563,10 +612,9 @@ def render_short_form_video(
     segment_clips = []
     
     for i, seg in enumerate(segments):
-        clip = build_segment_clip(seg, WIDTH, HEIGHT, True, accent_color, base_bg)
+        clip = build_segment_clip(seg, WIDTH, HEIGHT, True, accent_color, base_bg, content_style)
         segment_clips.append(clip)
-        
-        # Render a static frame for transition purposes
+
         frame = render_text_frame(
             text=seg.get("text", ""),
             width=WIDTH, height=HEIGHT,
@@ -575,9 +623,10 @@ def render_short_form_video(
                 base_bg
             ),
             bg_color=base_bg,
-            text_style=seg.get("text_style", "headline_bold"),
+            text_style=normalize_text_style(seg.get("text_style", "headline_bold")),
             is_short_form=True,
             accent_color=accent_color,
+            content_style=content_style,
         )
         rendered_frames.append(frame)
     
@@ -649,7 +698,11 @@ def render_short_form_video(
         video_duration = final.duration
         
         # Generate background music
-        bg_music = generate_background_music(video_duration, mood="energetic", tempo=120)
+        bg_music = generate_background_music(
+            video_duration,
+            mood=_short_audio_mood(content_style),
+            tempo=120 if _short_audio_mood(content_style) == "energetic" else 80,
+        )
         
         # Generate SFX timed to segment transitions
         sfx_list = []
@@ -712,7 +765,12 @@ def render_long_form_video(
     product_name: str = "",
     price: str = "",
     series_name: str = "",
+    content_style: str = "honest_review",
+    competitors=None,
 ) -> str:
+    if competitors is None:
+        competitors = []
+    content_style = normalize_content_style(content_style)
     # UNLOVED_LONG_FORM_FONT_SCALE_WRAP
     with _unloved_scaled_long_form_fonts():
         """Render a long-form (YouTube) video from script JSON."""
@@ -767,6 +825,7 @@ def render_long_form_video(
                 text_style="headline_bold",
                 is_short_form=False,
                 accent_color=accent_color,
+                content_style=content_style,
             )
 
             # Composite section header onto chapter card if applicable
@@ -785,7 +844,7 @@ def render_long_form_video(
             segment_clips_ch = []
 
             for seg in segments:
-                clip = build_segment_clip(seg, WIDTH, HEIGHT, False, accent_color, base_bg)
+                clip = build_segment_clip(seg, WIDTH, HEIGHT, False, accent_color, base_bg, content_style)
                 segment_clips_ch.append(clip)
 
                 frame = render_text_frame(
@@ -796,9 +855,10 @@ def render_long_form_video(
                         base_bg
                     ),
                     bg_color=base_bg,
-                    text_style=seg.get("text_style", "subtitle"),
+                    text_style=normalize_text_style(seg.get("text_style", "subtitle")),
                     is_short_form=False,
                     accent_color=accent_color,
+                    content_style=content_style,
                 )
                 rendered_frames.append(frame)
                 segment_counter += 1
@@ -892,7 +952,11 @@ def render_long_form_video(
             video_duration = final.duration
 
             # Generate background music (chill for long-form)
-            bg_music = generate_background_music(video_duration, mood="chill", tempo=80)
+            bg_music = generate_background_music(
+                video_duration,
+                mood=_long_audio_mood(content_style),
+                tempo=80 if _long_audio_mood(content_style) == "chill" else 110,
+            )
 
             # Generate SFX timed to chapter transitions and key moments
             sfx_list = []
