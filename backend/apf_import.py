@@ -71,20 +71,99 @@ def _infer_style_from_angles(angles):
     return "honest_review"
 
 
-def _commission_discount(product, brief):
-    rate = _pick(product, ["commission_rate", "commissionRate", "commission"])
-    if not rate:
-        rate = brief.get("commission_rate") or brief.get("commissionRate")
-    rate_text = _clean(rate)
-    if not rate_text:
+_AFFILIATE_META_MARKERS = (
+    "commission rate",
+    "affiliate opportunity",
+    "earn significant income promoting",
+    "hop conversion",
+    "epc signal",
+    "marketplace rank",
+    "hidden gem score",
+    "check your transactions",
+    "generate discount codes",
+    "lucrative for affiliates",
+    "promoting this",
+)
+
+
+def _sanitize_product_name(name: str) -> str:
+    text = _clean(name)
+    if not text:
         return ""
-    if "%" in rate_text:
-        return f"Affiliate commission: {rate_text}"
-    try:
-        pct = float(rate_text)
-        return f"Affiliate commission: {pct:g}%"
-    except ValueError:
-        return f"Affiliate commission: {rate_text}"
+
+    text = re.sub(
+        r"(?i)^earn\s+\d+%?\s*commission\s+promoting\s+",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\s*-\s*(health|fitness|digistore\d*|clickbank|marketplace|supplements?)\s*$",
+        "",
+        text,
+    )
+    text = re.sub(r"(?i)\s*\(?\d+%\s+commission\)?", "", text)
+    text = re.sub(r"(?i)\s*affiliate\s+offer", "", text)
+    text = re.sub(r"\s{2,}", " ", text).strip(" -:|")
+
+    if not text:
+        fallback = _clean(name).split(" - ")[0].split(" | ")[0]
+        return fallback[:120]
+    return text[:120]
+
+
+def _buyer_discount_info(product, brief):
+    """Buyer-facing discounts only — never affiliate commission."""
+    coupon = _clean(
+        brief.get("coupon_code")
+        or brief.get("couponCode")
+        or _pick(product, ["coupon_code", "couponCode"])
+    )
+    discount = _clean(
+        brief.get("discount_info")
+        or brief.get("discountInfo")
+        or brief.get("price_discount")
+        or _pick(product, ["discount_info", "discountInfo", "sale_price_note"])
+    )
+    lowered = discount.lower()
+    if discount and ("commission" in lowered or "affiliate" in lowered or "epc" in lowered):
+        discount = ""
+
+    parts = [part for part in (discount, f"Coupon: {coupon}" if coupon else "") if part]
+    return "; ".join(parts)
+
+
+def _is_affiliate_meta_line(text: str) -> bool:
+    lowered = _clean(text).lower()
+    if not lowered:
+        return True
+    return any(marker in lowered for marker in _AFFILIATE_META_MARKERS)
+
+
+def _buyer_key_features(brief, product, key_features_text: str) -> list:
+    lines = [part.strip() for part in key_features_text.split("\n") if part.strip()]
+    cleaned = []
+    for line in lines:
+        if _is_affiliate_meta_line(line):
+            continue
+        if line.startswith("Positive signals:") or line.startswith("Common claims:"):
+            continue
+        cleaned.append(line)
+
+    if cleaned:
+        return cleaned
+
+    claims = brief.get("common_claims") or []
+    positives = brief.get("positive_signals") or []
+    for item in list(claims) + list(positives):
+        line = _clean(item)
+        if line and not _is_affiliate_meta_line(line):
+            cleaned.append(line)
+
+    description = _clean(_pick(product, ["description", "summary"]))
+    if description and not _is_affiliate_meta_line(description):
+        cleaned.append(description)
+
+    return cleaned[:8]
 
 
 def _filter_competitors(candidates, vendor):
@@ -116,7 +195,8 @@ def normalize_apf_payload(payload: dict) -> dict:
     if isinstance(raw, dict) and isinstance(raw.get("review_sources"), list):
         review_sources = raw["review_sources"]
 
-    product_name = _clean(_pick(product, ["name", "product_name", "productName", "title"]))
+    raw_product_name = _clean(_pick(product, ["name", "product_name", "productName", "title"]))
+    product_name = _sanitize_product_name(raw_product_name) or raw_product_name
     vendor = _clean(_pick(product, ["vendor", "vendor_name", "seller", "brand"]))
     niche = _clean(_pick(product, ["category", "niche", "product_category"])) or "ClickBank"
     affiliate_link = _clean(_pick(product, [
@@ -162,19 +242,20 @@ def normalize_apf_payload(payload: dict) -> dict:
     ])
 
     series_name = series_name_for_style(recommended_style)
-    discount_info = _commission_discount(product, brief)
+    discount_info = _buyer_discount_info(product, brief)
+    key_features_list = _buyer_key_features(brief, product, key_features_text)
 
     normalized = {
         "productName": product_name,
         "product_name": product_name,
         "niche": niche,
         "keyFeatures": key_features_text,
-        "key_features": [part.strip() for part in key_features_text.split("\n") if part.strip()],
+        "key_features": key_features_list,
         "price": price,
         "affiliateLink": affiliate_link,
         "affiliate_link": affiliate_link,
         "keywords": _clean(_pick(product, ["keywords", "tags"])) or ", ".join(
-            [v for v in [product_name, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"] if v]
+            [v for v in [product_name, niche, "review", "pros and cons", "worth it", "before you buy"] if v]
         ),
         "targetAudience": _clean(brief.get("target_audience") or brief.get("who_it_may_help")),
         "target_audience": _clean(brief.get("target_audience") or brief.get("who_it_may_help")),

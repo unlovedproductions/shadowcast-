@@ -1,0 +1,31 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_apf_import_module_avoids_commission_discount_mapping():
+    text = (ROOT / "backend" / "apf_import.py").read_text()
+    assert "_buyer_discount_info" in text
+    assert "_commission_discount" not in text
+    assert "_sanitize_product_name" in text
+
+
+def test_script_generator_prompts_are_buyer_focused():
+    text = (ROOT / "backend" / "script_generator.py").read_text()
+    assert "affiliate product marketing" not in text
+    assert "NOT affiliate marketers" in text
+    assert "NEVER mention commission rates" in text
+
+
+def test_youtube_assets_prompt_is_buyer_focused():
+    text = (ROOT / "backend" / "youtube_assets_generator.py").read_text()
+    assert "affiliate marketing strategist" not in text.lower()
+    assert "buyer-focused posting packages" in text
+    assert "Include it 3+ times" not in text
+
+
+def test_frontend_apf_fallback_avoids_affiliate_marketer_copy():
+    text = (ROOT / "frontend" / "index.html").read_text()
+    assert "sanitizeProductName" in text
+    assert "affiliate product" not in text
+    assert "ClickBank product imported from APF" not in text

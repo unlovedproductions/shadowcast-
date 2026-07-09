@@ -122,10 +122,10 @@ SPECIAL INSTRUCTIONS:
 - Include a "Who This Is NOT For" segment — be specific.
 - Include a "Who This IS For" segment — match to target audience.
 - Frame the recommendation honestly: "If [specific need], this is great. If [other need], look elsewhere."
-- Use the TRIPLE-TOUCH CTA strategy:
-  1. Soft mention at ~30% through: "I'll leave a link below if you want to check the price."
-  2. Value-justified CTA at ~60%: "After seeing all these features, link in the description."
-  3. Urgency CTA at ~90%: "This deal won't last — link is pinned in the comments."
+- Use natural purchase-guidance CTAs for shoppers:
+  1. Soft mention at ~30% through: "Check the current price in the description if you want details."
+  2. Value-justified CTA at ~60%: "Link below if this sounds like a fit for you."
+  3. Final CTA at ~90%: "See the link for availability and latest info."
 """
     elif content_style == "elimination":
         return f"""CONTENT STYLE: {style['name']}
@@ -173,10 +173,9 @@ SPECIAL INSTRUCTIONS:
         return f"""CONTENT STYLE: {style['name']}
 TONE: {style['tone']}
 SPECIAL INSTRUCTIONS:
-- Classic affiliate promotion with features, benefits, and CTA.
-- Use power words: SECRET, INSANE, GAME-CHANGER, etc.
-- Focus on benefits over features.
-- Strong urgency-driven CTA at the end.
+- Clear product overview for everyday buyers considering a purchase.
+- Focus on benefits, fit, and tradeoffs rather than hype.
+- End with helpful guidance on where to check price and details if interested.
 """
 
 
@@ -227,7 +226,7 @@ def generate_short_form_script(product_info: dict, hook_type: str, content_style
     style_instructions = _get_style_instructions(content_style)
     structure = _get_short_form_structure(content_style)
 
-    prompt = f"""You are an expert YouTube Shorts scriptwriter for high-retention, high-converting affiliate product marketing. These are FACELESS TEXT-ONLY videos — all content is animated text overlays on dynamic backgrounds.
+    prompt = f"""You are an expert YouTube Shorts scriptwriter creating honest, buyer-focused product review videos for everyday consumers. These are FACELESS TEXT-ONLY videos — all content is animated text overlays on dynamic backgrounds.
 
 {research_ctx}
 
@@ -243,10 +242,12 @@ HOOK TYPE: {hook_type}
 Generate a SHORT-FORM script (30-60 seconds, vertical 9:16).
 
 RULES:
+- Speak to shoppers considering a purchase, NOT affiliate marketers
+- NEVER mention commission rates, EPC, hop conversion, promoting, or earning as an affiliate
 - First 2 seconds: extremely compelling hook text
 - Visual changes every 1-1.5 seconds
 - Each text segment: 3-8 words MAX
-- End with strong CTA
+- End with a helpful CTA to check price/details if the product fits their needs
 - Include emoji strategically
 - For honest/trust styles: include at least ONE con or limitation
 - Use research-based language ("reviewers say", "specs show", "data proves")
@@ -297,28 +298,28 @@ def generate_long_form_script(product_info: dict, hook_type: str, content_style:
 2. The Lineup (5-30s): Show all contenders
 3. Elimination Rounds (30s-5min): Eliminate products one by one with specific reasons
 4. The Winner (5-6min): Reveal and detail the surviving product (with honest pros AND cons)
-5. Verdict + CTA (6-7min): Clear recommendation with affiliate link"""
+5. Verdict + CTA (6-7min): Clear recommendation with link to check price/details"""
     elif content_style == "worth_it_or_waste":
         structure = """STRUCTURE:
 1. Hook (0-5s): "Is [Product] actually worth the hype?"
 2. The Claims (5-30s): What the marketing promises
 3. Claim vs Reality (30s-5min): Test each claim against review data
 4. The Verdict (5-6min): Worth It or Waste? With specific reasoning
-5. Who Should Buy + CTA (6-7min): Specific use cases + affiliate link"""
+5. Who Should Buy + CTA (6-7min): Specific use cases + link to check details"""
     elif content_style == "vs_battle":
         structure = """STRUCTURE:
 1. Hook (0-5s): "[Product A] vs [Product B] — only one survives"
 2. Meet the Contenders (5-30s): Brief intro of both
 3. Round-by-Round (30s-5min): Compare spec by spec (price, features, reviews, build, value)
 4. Scorecard (5-6min): Tally the wins
-5. The Winner + CTA (6-7min): Clear recommendation + affiliate link"""
+5. The Winner + CTA (6-7min): Clear recommendation + link to check details"""
     elif content_style == "budget_challenge":
         structure = """STRUCTURE:
 1. Hook (0-5s): "Best [category] under $[price]?"
 2. The Contenders (5-30s): Show all budget options
 3. Breakdown (30s-5min): Review each option's value proposition
 4. The Winner (5-6min): Crown the budget champion
-5. CTA (6-7min): Where to get the best deal + affiliate link"""
+5. CTA (6-7min): Where to check the best option + link in description"""
     else:  # honest_review or standard
         structure = """STRUCTURE:
 1. Hook (0-5s): Compelling opening
@@ -327,9 +328,9 @@ def generate_long_form_script(product_info: dict, hook_type: str, content_style:
 4. The Bad (2.5-4min): Honest limitations and cons (with review evidence)
 5. Who It's For / Not For (4-5.5min): Specific use case matching
 6. Verdict (5.5-6.5min): Clear, honest recommendation
-7. CTA (6.5-7min): Triple-touch final CTA with affiliate link"""
+7. CTA (6.5-7min): Help viewers check price/details if the product fits their needs"""
 
-    prompt = f"""You are an expert YouTube scriptwriter for high-retention, high-converting affiliate product marketing. FACELESS TEXT-ONLY videos with animated text overlays.
+    prompt = f"""You are an expert YouTube scriptwriter creating honest, buyer-focused product review videos for everyday consumers. FACELESS TEXT-ONLY videos with animated text overlays.
 
 {research_ctx}
 
@@ -345,6 +346,8 @@ HOOK TYPE: {hook_type}
 Generate a LONG-FORM script (5-8 minutes, 16:9 landscape).
 
 RULES:
+- Speak to shoppers considering a purchase, NOT affiliate marketers
+- NEVER mention commission rates, EPC, hop conversion, promoting, or earning as an affiliate
 - Each text segment: 5-15 words
 - Visual changes every 3-5 seconds
 - Pattern interrupts every 15-20 seconds (visual change, question, stat)

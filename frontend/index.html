@@ -1609,32 +1609,49 @@
     return "$" + n.toFixed(2);
   }
 
+  function sanitizeProductName(name) {
+    let text = clean(name);
+    if (!text) return "";
+
+    text = text.replace(/^earn\s+\d+%?\s*commission\s+promoting\s+/i, "");
+    text = text.replace(/\s*-\s*(health|fitness|digistore\d*|clickbank|marketplace|supplements?)\s*$/i, "");
+    text = text.replace(/\s*\(?\d+%\s+commission\)?/gi, "");
+    text = text.replace(/\s*affiliate\s+offer/gi, "");
+    text = text.replace(/\s{2,}/g, " ").trim().replace(/^[ -:|]+|[ -:|]+$/g, "");
+
+    if (!text) {
+      const fallback = clean(name).split(" - ")[0].split(" | ")[0];
+      return fallback.slice(0, 120);
+    }
+    return text.slice(0, 120);
+  }
+
   function inferAudience(category, productName) {
     const c = clean(category).toLowerCase();
 
     if (c.includes("health") || c.includes("fitness") || c.includes("weight")) {
-      return "Health-conscious adults researching practical wellness, energy, fitness, or weight-management solutions before buying.";
+      return "Health-conscious adults comparing supplements, fitness products, or wellness options before they buy.";
     }
 
     if (c.includes("business") || c.includes("marketing") || c.includes("e-business")) {
-      return "Entrepreneurs, side-hustlers, creators, and marketers looking for tools or training that can improve results.";
+      return "People shopping for business tools, training, or software to solve a specific problem.";
     }
 
     if (c.includes("self") || c.includes("education") || c.includes("spiritual")) {
-      return "People interested in self-improvement, personal growth, mindset, learning, or lifestyle transformation.";
+      return "People looking for self-improvement, learning, or lifestyle products that match their goals.";
     }
 
     if (c.includes("home") || c.includes("garden")) {
-      return "Homeowners and DIY buyers comparing practical products that solve everyday home or lifestyle problems.";
+      return "Homeowners and everyday buyers comparing practical products for home or lifestyle needs.";
     }
 
     if (c.includes("software") || c.includes("technology")) {
-      return "Tech-aware buyers comparing digital tools, automation, software, or productivity solutions.";
+      return "Buyers comparing software, apps, or digital tools before choosing what to purchase.";
     }
 
     return productName
-      ? "People researching whether " + productName + " is worth trying before they click or buy."
-      : "Affiliate product buyers researching trusted product recommendations before making a purchase.";
+      ? "Shoppers researching whether " + productName + " is worth buying for their needs."
+      : "People researching a product before deciding whether it is worth buying.";
   }
 
   function inferPainPoints(category) {
@@ -1655,19 +1672,13 @@
     return "Uncertainty about whether the product is legitimate, useful, fairly priced, and worth clicking through to learn more.";
   }
 
-  function inferBenefits(productName, category, vendor, rank, epc, apv, conversion, score) {
+  function inferBenefits(productName, category, vendor) {
     const parts = [];
 
-    if (productName) parts.push(productName + " is a real ClickBank product imported from APF.");
-    if (vendor) parts.push("Vendor: " + vendor + ".");
-    if (category) parts.push("Category/niche: " + category + ".");
-    if (rank) parts.push("Marketplace rank: " + rank + ".");
-    if (epc) parts.push("EPC signal: " + epc + ".");
-    if (apv) parts.push("Average order/purchase value signal: " + apv + ".");
-    if (conversion) parts.push("Hop conversion signal: " + conversion + ".");
-    if (score) parts.push("APF Hidden Gem Score: " + score + "/100.");
-
-    parts.push("Position the video as a trust-first review: explain what it is, who it may help, what to verify, and why viewers should check the link.");
+    if (productName) parts.push(productName + " is positioned for buyers comparing options in this category.");
+    if (category) parts.push("Category: " + category + ".");
+    if (vendor) parts.push("Brand/vendor: " + vendor + ".");
+    parts.push("Focus on what the product claims to do, who it may help, and what buyers should verify before purchasing.");
 
     return parts.join(" ");
   }
@@ -1677,8 +1688,6 @@
       productName,
       vendor,
       category,
-      "ClickBank",
-      "affiliate product",
       "review",
       "worth it",
       "honest review",
@@ -1687,24 +1696,20 @@
     ].filter(Boolean).join(", ");
   }
 
-  function inferHook(productName, category, score) {
-    if (score && Number(score) >= 70) {
-      return "Hidden gem review: why this " + (category || "ClickBank") + " product stood out in APF scoring.";
-    }
-
+  function inferHook(productName, category) {
     if (productName) {
-      return "Is " + productName + " actually worth checking out, or just another affiliate offer?";
+      return "Is " + productName + " actually worth buying, or is the hype overrated?";
     }
 
-    return "Is this ClickBank product worth your attention, or should you skip it?";
+    return "Is this " + (category || "product") + " worth buying for everyday shoppers?";
   }
 
   function normalizeAPFProduct(payload) {
     const product = firstProduct(payload);
 
-    const productName = clean(pick(product, [
+    const productName = sanitizeProductName(clean(pick(product, [
       "product_name", "productName", "name", "title", "product_title", "productTitle"
-    ]));
+    ])));
 
     const vendor = clean(pick(product, [
       "vendor", "vendor_name", "seller", "brand", "author"
@@ -1712,7 +1717,7 @@
 
     const category = clean(pick(product, [
       "niche", "category", "product_category", "marketplace_category", "vertical"
-    ])) || "ClickBank";
+    ])) || "General";
 
     const rank = clean(pick(product, [
       "rank", "product_rank", "gravity_rank"
@@ -1753,12 +1758,7 @@
     const keyFeatures = explicitFeatures || inferBenefits(
       productName,
       category,
-      vendor,
-      rank,
-      epc,
-      apv,
-      conversion,
-      hiddenGemScore
+      vendor
     );
 
     const targetAudience = clean(pick(product, [
@@ -1771,7 +1771,7 @@
 
     const commonPraises = clean(pick(product, [
       "common_praises", "commonPraises", "praises", "positive_reviews"
-    ])) || "Potentially strong marketplace signals based on APF metrics; present claims carefully and encourage viewers to verify details on the product page.";
+    ])) || "Reviewers and product-page details should be checked before assuming the claims are accurate.";
 
     const commonComplaints = clean(pick(product, [
       "common_complaints", "commonComplaints", "complaints", "negative_reviews"
@@ -1779,7 +1779,7 @@
 
     const uniqueSellingPoint = clean(pick(product, [
       "unique_selling_point", "uniqueSellingPoint", "usp"
-    ])) || inferHook(productName, category, numberish(hiddenGemScore));
+    ])) || inferHook(productName, category);
 
     const keywords = clean(pick(product, [
       "keywords", "tags", "search_terms", "searchTerms"

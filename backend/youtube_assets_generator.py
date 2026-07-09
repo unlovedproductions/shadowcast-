@@ -28,13 +28,13 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
     affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
     series_name = product_info.get('series_name', '')
 
-    prompt = f"""You are an expert YouTube SEO specialist and affiliate marketing strategist who builds TRUST-FIRST content. Generate a COMPLETE YouTube posting package that maximizes views, subscribers, and AFFILIATE SALES through credibility and honesty.
+    prompt = f"""You are an expert YouTube SEO specialist creating buyer-focused posting packages for people researching whether to buy a product. Generate a COMPLETE YouTube posting package that helps shoppers decide with honest pros, cons, fit, and practical purchase guidance.
 
 PRODUCT INFORMATION:
 - Product Name: {product_info['product_name']}
 - Niche: {product_info.get('niche', product_info.get('product_category', 'General'))}
 - Keywords: {', '.join(product_info.get('keywords', product_info.get('key_features', [])))}
-- Affiliate Link: {affiliate_link}
+- Product Link: {affiliate_link}
 - Price: {product_info.get('price', 'N/A')}
 - Target Audience: {product_info.get('target_audience', 'General consumers')}
 - Competitor Products: {', '.join(product_info.get('competitors', ['N/A']))}
@@ -48,17 +48,18 @@ PRODUCT INFORMATION:
 VIDEO: {format_label} | Hook: {hook_type} | Style: {content_style} | Title: {title_suggestion}
 Script Preview: {all_text[:400]}
 
-TRUST-BASED APPROACH:
-- Titles should intrigue, NOT clickbait. Use curiosity gaps, not false promises.
-- Description must include HONEST framing — mention that you cover pros AND cons.
-- Pinned comment must handle common purchase objections and include FAQ.
-- Tags should target buyer-intent keywords (people ready to purchase).
-- All CTAs should be value-justified, not pushy.
+BUYER-FOCUSED APPROACH:
+- Titles should help shoppers decide, not hype affiliate earnings
+- Description must include HONEST framing — mention that you cover pros AND cons
+- NEVER mention commission rates, EPC, hop conversion, or promoting the product
+- Pinned comment must answer buyer objections and include the product link once, naturally
+- Tags should target buyer-intent keywords (people ready to research or purchase)
+- CTAs should feel like helpful purchase guidance, not pushy sales copy
 
 PINNED COMMENT STRATEGY (CRITICAL):
 The pinned comment is prime real estate. Use this structure:
-1. Personal take with honest framing
-2. Affiliate link with benefit statement
+1. Personal take with honest framing for shoppers
+2. Product link with a benefit statement for buyers
 3. Quick FAQ answering 2-3 common objections from reviews
 4. Engagement question to drive replies
 
@@ -66,11 +67,11 @@ Return JSON:
 {{
     "seo_title": "<max 70 chars, buyer-intent keyword, curiosity gap — NOT clickbait>",
     "seo_title_alternatives": ["<alt1 - negative framing test>", "<alt2 - question format>", "<alt3 - number/data format>"],
-    "seo_description": "<2000-3000 chars structured as: Hook paragraph mentioning honest review → Product overview → Key Pros (3-4) → Key Cons (2-3) → AFFILIATE LINK with soft CTA → More details → AFFILIATE LINK with value CTA → Timestamps → AFFILIATE LINK with urgency CTA → Disclaimer: 'As an affiliate, I may earn a commission at no extra cost to you. I only recommend products I've thoroughly researched.'>",
+    "seo_description": "<2000-3000 chars structured as: Hook paragraph mentioning honest review → Product overview → Key Pros (3-4) → Key Cons (2-3) → Product link with soft CTA → More details → Timestamps → One brief disclaimer if needed: 'As an affiliate, I may earn a commission at no extra cost to you.'>",
     "tags": ["<30 tags: mix buyer-intent keywords like 'best X 2026', 'X review honest', 'X vs Y', 'should I buy X', 'X pros and cons'>"],
     "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
-    "pinned_comment": "<300-600 chars: Personal honest take → Affiliate link with benefit → Quick FAQ (2-3 common objections answered) → Question for replies>",
-    "pinned_comment_alternatives": ["<alt1 - comparison angle>", "<alt2 - deal/savings angle>"],
+    "pinned_comment": "<300-600 chars: Personal honest take for shoppers → Product link with benefit → Quick FAQ (2-3 common objections answered) → Question for replies>",
+    "pinned_comment_alternatives": ["<alt1 - comparison angle>", "<alt2 - value/savings angle>"],
     "thumbnail_text_primary": "<2-4 words, test negative framing like 'DON'T BUY' or 'HONEST TRUTH'>",
     "thumbnail_text_secondary": "<supporting text>",
     "thumbnail_color_scheme": "<description — suggest signature color consistency>",
@@ -83,17 +84,17 @@ Return JSON:
     "engagement_boosters": ["<tip1>", "<tip2>", "<tip3>", "<tip4>", "<tip5>"],
     "cross_promotion_ideas": ["<idea1 - Shorts teaser>", "<idea2 - Reddit/forum>", "<idea3 - other platform>"],
     "reply_templates": {{
-        "positive_comment": "<grateful + subtle affiliate nudge>",
-        "question_about_product": "<helpful answer + affiliate link naturally>",
+        "positive_comment": "<grateful + helpful purchase guidance>",
+        "question_about_product": "<helpful answer + product link naturally>",
         "comparison_question": "<honest comparison + link to comparison video if applicable>",
         "negative_comment": "<acknowledge concern + provide balanced perspective>",
-        "where_to_buy": "<direct affiliate link + mention any active deals>"
+        "where_to_buy": "<direct product link + mention any active deals>"
     }},
     "series_suggestions": ["<next video idea in same series>", "<related comparison video>", "<follow-up content idea>"]
 }}
 
-Affiliate link: {affiliate_link}
-Include it 3+ times in description with VARIED, value-justified CTAs (not pushy).
+Product link: {affiliate_link}
+Include the product link naturally in the description and pinned comment for shoppers who want to check details.
 Return ONLY valid JSON."""
 
     response = client.chat.completions.create(
