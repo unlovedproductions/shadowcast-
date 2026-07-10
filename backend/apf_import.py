@@ -180,6 +180,25 @@ def _filter_competitors(candidates, vendor):
     return result
 
 
+def extract_apf_product_payloads(payload) -> list:
+    """Return a list of single-product APF payloads from single or batch input."""
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, (dict, list))]
+    if not isinstance(payload, dict):
+        return []
+    if payload.get("batch") and isinstance(payload.get("products"), list):
+        return [item for item in payload["products"] if isinstance(item, (dict, list))]
+    if isinstance(payload.get("products"), list) and payload.get("products") and all(
+        isinstance(item, dict) and (
+            "product" in item or "review_brief" in item or "shadowcast_import" in item
+            or "schema_version" in item
+        )
+        for item in payload["products"]
+    ):
+        return list(payload["products"])
+    return [payload]
+
+
 def normalize_apf_payload(payload: dict) -> dict:
     """Return normalized ProductInfo fields and recommended_content_style."""
     raw = payload.get("payload") if isinstance(payload, dict) and isinstance(payload.get("payload"), dict) else payload

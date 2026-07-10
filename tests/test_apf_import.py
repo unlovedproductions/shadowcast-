@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from apf_import import normalize_apf_payload
+from apf_import import extract_apf_product_payloads, normalize_apf_payload
 
 
 def test_maps_review_brief_fields():
@@ -115,3 +115,19 @@ def test_shadowcast_import_style_from_enriched_brief():
     assert result["recommended_content_style"] == "elimination"
     assert result["normalized"]["competitors"] == ["Alt A", "Alt B"]
     assert result["normalized"]["price"] == "$47.00"
+
+
+def test_extract_apf_product_payloads_batch():
+    payloads = extract_apf_product_payloads({
+        "batch": True,
+        "products": [
+            {"product": {"name": "One"}, "review_brief": {}},
+            {"product": {"name": "Two"}, "review_brief": {}},
+        ],
+    })
+    assert len(payloads) == 2
+    assert payloads[0]["product"]["name"] == "One"
+
+    single = extract_apf_product_payloads({"product": {"name": "Solo"}})
+    assert len(single) == 1
+    assert single[0]["product"]["name"] == "Solo"

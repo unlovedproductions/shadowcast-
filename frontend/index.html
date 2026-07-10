@@ -270,7 +270,7 @@
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
         results: null, batchResults: null, errors: [],
         // Results view
-        activeTab: null, activeFormat: 'short_form', activeProductIdx: 0,
+        activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
         navPage: 'generate',
         // Analytics
@@ -279,9 +279,21 @@
         metricVideoId: '', metricType: 'views', metricValue: '',
         // Social
         socialStatus: null, socialLoading: false,
+        oauthStatus: null, oauthLoading: false,
         postingQueue: [], queueLoading: false,
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
+        publishPlatforms: ['youtube', 'instagram', 'tiktok'],
+        publishLoading: false, publishResults: null,
+        rumbleUsername: '', rumblePassword: '',
     };
+
+    const publishPlatformOptions = [
+        { id: 'youtube', label: 'YouTube' },
+        { id: 'instagram', label: 'Instagram Reels' },
+        { id: 'facebook', label: 'Facebook Page' },
+        { id: 'tiktok', label: 'TikTok' },
+        { id: 'rumble', label: 'Rumble' },
+    ];
 
     const hooks = [
         { id: 'curiosity', name: 'Curiosity', desc: 'Provocative questions, surprising reveals that make viewers click', adv: false },
@@ -350,8 +362,9 @@
         ${renderContentStyleSelection()}
         ${renderHookSelection()}
         ${renderFormatSelection()}
+        ${renderBatchProductPicker()}
         <button class="btn-primary" onclick="startGeneration()">
-            ${state.mode === 'batch' && state.batchProducts.length > 0
+            ${isBatchMode() && state.batchProducts.length > 0
                 ? 'Generate ' + state.batchProducts.length + ' Products'
                 : 'Generate Videos + YouTube Package'}
         </button>`;
@@ -453,10 +466,29 @@
         </div>`;
     }
 
+    function renderBatchProductPicker() {
+        if (!isBatchMode() || state.batchProducts.length < 1) return '';
+        const idx = Math.min(state.activeBatchIdx || 0, state.batchProducts.length - 1);
+        state.activeBatchIdx = idx;
+        const active = state.batchProducts[idx] || {};
+        return `<div class="card">
+            <h2><span class="num">1b</span> Select Product to Edit Options</h2>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Content style is per product. Hooks, formats, and audio below apply to every product in this batch.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                ${state.batchProducts.map((p,i)=>`<button class="tab-btn product-tab ${state.activeBatchIdx===i?'active':''}" onclick="setBatchProduct(${i})">${esc(p.product_name||('Product '+(i+1)))}</button>`).join('')}
+            </div>
+            <p style="font-size:13px;color:var(--green);font-weight:600;">Editing options for: ${esc(active.product_name||('Product '+(idx+1)))} <span class="product-count">${idx+1}/${state.batchProducts.length}</span></p>
+        </div>`;
+    }
+
     function renderContentStyleSelection() {
+        const batchHint = isBatchMode() && state.batchProducts.length
+            ? `<p style="font-size:12px;color:var(--pink);margin-bottom:12px;">Setting content style for <strong>${esc((state.batchProducts[state.activeBatchIdx]||{}).product_name||'selected product')}</strong> only.</p>`
+            : '';
         return `<div class="card">
             <h2><span class="num">2</span> Content Style <span class="badge">DIFFERENTIATOR</span></h2>
             <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Choose how your video is framed. This is what makes you different from generic "Top 10 Best" channels.</p>
+            ${batchHint}
             <div class="style-grid">
                 ${Object.entries(contentStyles).map(([id,s])=>`<div class="style-option ${state.contentStyle===id?'selected':''}" onclick="setContentStyle('${id}')"><h3>${s.name}</h3><p>${s.desc}</p></div>`).join('')}
             </div>
@@ -605,6 +637,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, '')}
+        ${renderPublishCard(ytAssets, '')}
         ${renderYTAssets(ytAssets, '')}`;
     }
 
@@ -637,6 +670,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, slug + '/')}
+        ${renderPublishCard(ytAssets, slug)}
         ${renderYTAssets(ytAssets, slug + '/')}`;
     }
 
@@ -648,6 +682,28 @@
             <h2>Video Preview</h2>
             <video class="video-player" controls src="${API}/download/${state.jobId}/${pathPrefix}${vid}"></video>
             <div style="margin-top:12px;"><button class="btn-sm btn-download" onclick="downloadFile('${pathPrefix}${vid}')">Download ${vid}</button></div>
+        </div>`;
+    }
+
+    function renderPublishCard(ytAssets, productSlug) {
+        if (!state.jobId || !ytAssets || !ytAssets.seo_title) return '';
+        const caption = ytAssets.pinned_comment || ytAssets.seo_description || '';
+        const hashtags = (ytAssets.hashtags || []).join(' ');
+        return `<div class="card" style="border-color:var(--pink);">
+            <h2>Publish to Social</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video.</p>
+            <div class="result-block"><h3>Title Preview</h3><div class="content">${esc(ytAssets.seo_title)}</div></div>
+            <div class="result-block"><h3>Caption Preview</h3><div class="content">${esc(caption.substring(0, 280))}${caption.length>280?'...':''}</div></div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
+                ${publishPlatformOptions.map(p=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" ${state.publishPlatforms.includes(p.id)?'checked':''} onchange="togglePublishPlatform('${p.id}', this.checked)"> ${p.label}
+                </label>`).join('')}
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-primary" style="width:auto;" onclick="publishFromResults(false, '${escJs(productSlug)}')" ${state.publishLoading?'disabled':''}>${state.publishLoading?'Publishing...':'Publish Now'}</button>
+                <button class="btn-sm" onclick="publishFromResults(true, '${escJs(productSlug)}')" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
+            </div>
+            ${state.publishResults?`<div style="margin-top:12px;font-size:12px;color:var(--text2);"><pre style="white-space:pre-wrap;">${esc(JSON.stringify(state.publishResults,null,2))}</pre></div>`:''}
         </div>`;
     }
 
@@ -878,8 +934,25 @@
     function renderSocialPage() {
         return `
         <div class="card">
-            <h2>📱 Social Media Posting</h2>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Post your videos to Instagram Reels and TikTok, or schedule them for later.</p>
+            <h2>Connect Accounts</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Connect platforms via OAuth before publishing. Rumble uses browser login.</p>
+            <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+                <button class="btn-primary" onclick="loadOAuthStatus()" ${state.oauthLoading?'disabled':''}>${state.oauthLoading?'Loading...':'Refresh Status'}</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('youtube')">Connect YouTube</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('meta')">Connect Meta (IG+FB)</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('tiktok')">Connect TikTok</button>
+            </div>
+            ${state.oauthStatus ? renderOAuthStatus() : ''}
+            <div class="form-grid" style="margin-top:16px;">
+                <div class="form-group"><label>Rumble Username</label><input id="rumbleUser" value="${esc(state.rumbleUsername)}" placeholder="Rumble email/username"></div>
+                <div class="form-group"><label>Rumble Password</label><input id="rumblePass" type="password" value="${esc(state.rumblePassword)}" placeholder="Rumble password"></div>
+            </div>
+            <button class="btn-sm btn-template" style="margin-top:10px;" onclick="connectRumble()">Connect Rumble</button>
+        </div>
+
+        <div class="card">
+            <h2>Social Media Posting</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Post from a completed job (recommended) or use manual paths.</p>
             <div style="display:flex;gap:10px;margin-bottom:20px;">
                 <button class="btn-primary" onclick="loadSocialStatus()" ${state.socialLoading?'disabled':''}>${state.socialLoading?'Loading...':'Check Platform Status'}</button>
                 <button class="btn-sm btn-template" onclick="loadPostingQueue()">View Queue</button>
@@ -889,23 +962,25 @@
         ${state.socialStatus ? renderSocialStatus() : ''}
 
         <div class="card">
-            <h2>📤 Post a Video</h2>
+            <h2>Post a Video</h2>
             <div class="form-grid">
                 <div class="form-group"><label>Platform</label>
                     <select id="socialPlatform" onchange="state.socialPostPlatform=this.value">
-                        <option value="instagram" ${state.socialPostPlatform==='instagram'?'selected':''}>Instagram Reels</option>
-                        <option value="tiktok" ${state.socialPostPlatform==='tiktok'?'selected':''}>TikTok</option>
+                        ${publishPlatformOptions.map(p=>`<option value="${p.id}" ${state.socialPostPlatform===p.id?'selected':''}>${p.label}</option>`).join('')}
                     </select>
                 </div>
-                <div class="form-group"><label>Video File Path</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file (from output folder)"></div>
-                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Your post caption with CTA and affiliate link...">${esc(state.socialPostCaption)}</textarea></div>
-                <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review #tech (comma or space separated)"></div>
-                <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"><span class="hint">Leave empty to post immediately</span></div>
+                <div class="form-group"><label>Job ID (optional)</label><input id="socialJobId" value="${esc(state.jobId||'')}" placeholder="From completed generation"></div>
+                <div class="form-group"><label>Hook Type</label><input id="socialHook" value="${esc(state.activeTab||'curiosity')}" placeholder="curiosity"></div>
+                <div class="form-group"><label>Format</label><input id="socialFormat" value="${esc(state.activeFormat||'short_form')}" placeholder="short_form"></div>
+                <div class="form-group"><label>Video File Path (manual fallback)</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file"></div>
+                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Auto-filled when publishing from job results">${esc(state.socialPostCaption)}</textarea></div>
+                <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review"></div>
+                <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"></div>
             </div>
             <div style="display:flex;gap:10px;margin-top:12px;">
                 <button class="btn-primary" onclick="postToSocial(false)">Post Now</button>
                 <button class="btn-sm btn-template" onclick="postToSocial(true)">Schedule Post</button>
-                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run (Test)</button>
+                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
             </div>
         </div>
 
@@ -913,22 +988,28 @@
         `;
     }
 
+    function renderOAuthStatus() {
+        const s = state.oauthStatus || {};
+        const rows = publishPlatformOptions.map(p => {
+            const st = s[p.id] || {};
+            const connected = st.connected;
+            return `<div class="stat-card"><div class="stat-label">${p.label}</div><div class="stat-value" style="font-size:14px;color:${connected?'var(--green)':'var(--red)'}">${connected?'Connected':'Not Connected'}</div></div>`;
+        }).join('');
+        return `<div class="card"><h2>OAuth Status</h2><div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));">${rows}</div></div>`;
+    }
+
     function renderSocialStatus() {
         const s = state.socialStatus;
         if (!s) return '';
+        const platforms = publishPlatformOptions.map(p => p.id);
         return `<div class="card">
             <h2>Platform Status</h2>
-            <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);">
-                <div class="stat-card">
-                    <div class="stat-label">Instagram</div>
-                    <div class="stat-value" style="font-size:16px;color:${s.instagram==='Configured'?'var(--green)':'var(--red)'}">${esc(s.instagram||'Unknown')}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">TikTok</div>
-                    <div class="stat-value" style="font-size:16px;color:${s.tiktok==='Configured'?'var(--green)':'var(--red)'}">${esc(s.tiktok||'Unknown')}</div>
-                </div>
+            <div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));">
+                ${platforms.map(p=>`<div class="stat-card">
+                    <div class="stat-label">${p}</div>
+                    <div class="stat-value" style="font-size:14px;color:${(s[p]==='Connected'||s[p]==='Configured')?'var(--green)':'var(--red)'}">${esc(s[p]||'Unknown')}</div>
+                </div>`).join('')}
             </div>
-            <p style="font-size:11px;color:var(--text2);margin-top:10px;">Set API credentials in your .env file. See SETUP_GUIDE.md for details.</p>
         </div>`;
     }
 
@@ -1173,6 +1254,68 @@
     }
 
     // ── Social Actions ──────────────────────────────────────
+    function togglePublishPlatform(id, checked) {
+        if (checked && !state.publishPlatforms.includes(id)) state.publishPlatforms.push(id);
+        else state.publishPlatforms = state.publishPlatforms.filter(p => p !== id);
+        render();
+    }
+
+    async function loadOAuthStatus() {
+        state.oauthLoading = true; render();
+        try {
+            const res = await fetch(`${API}/oauth/status`);
+            state.oauthStatus = await res.json();
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.oauthLoading = false; render();
+    }
+
+    async function connectOAuth(platform) {
+        try {
+            const res = await fetch(`${API}/oauth/${platform}/authorize`);
+            const data = await res.json();
+            if (data.authorize_url) window.location.href = data.authorize_url;
+            else showToast(data.message || 'OAuth URL not available');
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function connectRumble() {
+        const username = document.getElementById('rumbleUser')?.value?.trim();
+        const password = document.getElementById('rumblePass')?.value?.trim();
+        if (!username || !password) { showToast('Rumble username and password required'); return; }
+        try {
+            const res = await fetch(`${API}/oauth/rumble/login`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (res.ok) { showToast('Rumble connected!'); loadOAuthStatus(); }
+            else showToast('Error: ' + (data.detail || 'Failed'));
+        } catch(e) { showToast('Error: ' + e.message); }
+    }
+
+    async function publishFromResults(dryRun, productSlug) {
+        if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.publishPlatforms.length) { showToast('Select at least one platform'); return; }
+        state.publishLoading = true; state.publishResults = null; render();
+        try {
+            const res = await fetch(`${API}/publish/batch`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    job_id: state.jobId,
+                    hook_type: state.activeTab,
+                    video_format: state.activeFormat,
+                    platforms: state.publishPlatforms,
+                    product_slug: productSlug || null,
+                    dry_run: !!dryRun,
+                })
+            });
+            const data = await res.json();
+            state.publishResults = data;
+            showToast(dryRun ? 'Dry run complete' : 'Publish complete');
+        } catch(e) { showToast('Error: ' + e.message); }
+        state.publishLoading = false; render();
+    }
+
     async function loadSocialStatus() {
         state.socialLoading = true; render();
         try {
@@ -1194,13 +1337,23 @@
 
     async function postToSocial(schedule, dryRun) {
         const platform = document.getElementById('socialPlatform')?.value || 'instagram';
+        const jobId = document.getElementById('socialJobId')?.value?.trim() || state.jobId;
+        const hookType = document.getElementById('socialHook')?.value?.trim();
+        const videoFormat = document.getElementById('socialFormat')?.value?.trim() || 'short_form';
         const videoPath = document.getElementById('socialVideo')?.value?.trim();
         const caption = document.getElementById('socialCaption')?.value?.trim();
-        const hashtags = document.getElementById('socialHashtags')?.value?.trim();
+        const hashtagsRaw = document.getElementById('socialHashtags')?.value?.trim();
         const scheduleTime = document.getElementById('socialSchedule')?.value;
-        if (!videoPath) { showToast('Video file path is required'); return; }
-        if (!caption) { showToast('Caption is required'); return; }
-        const body = { platform, video_path: videoPath, caption, hashtags: hashtags || '', dry_run: !!dryRun };
+        const hashtags = hashtagsRaw ? hashtagsRaw.split(/[,\s]+/).filter(Boolean) : [];
+        if (!jobId && !videoPath) { showToast('Job ID or video path required'); return; }
+        const body = { platform, caption: caption || '', hashtags, dry_run: !!dryRun };
+        if (jobId && hookType) {
+            body.job_id = jobId;
+            body.hook_type = hookType;
+            body.video_format = videoFormat;
+        } else {
+            body.video_path = videoPath;
+        }
         try {
             let endpoint = `${API}/social/post`;
             if (schedule && scheduleTime) {
@@ -1220,7 +1373,7 @@
 
     async function processQueue() {
         try {
-            const res = await fetch(`${API}/social/queue`, { method: 'POST' });
+            const res = await fetch(`${API}/social/queue/process`, { method: 'POST' });
             const data = await res.json();
             showToast('Queue processed! ' + (data.processed || 0) + ' posts sent.');
             loadPostingQueue();
@@ -1228,8 +1381,26 @@
     }
 
     // ── Actions ─────────────────────────────────────────────
-    function setMode(m) { state.mode = m; state.batchProducts = []; state.batchFileName = ''; render(); }
-    function setContentStyle(s) { state.contentStyle = s; state.contentStyleManuallyChanged = true; render(); }
+    function isBatchMode() { return state.mode === 'batch' || state.mode === 'import-apf'; }
+    function setMode(m) { state.mode = m; state.batchProducts = []; state.batchFileName = ''; state.activeBatchIdx = 0; render(); }
+    function setBatchProduct(i) {
+        if (!state.batchProducts.length) return;
+        const idx = Math.max(0, Math.min(Number(i)||0, state.batchProducts.length - 1));
+        state.activeBatchIdx = idx;
+        const p = state.batchProducts[idx] || {};
+        if (p.content_style) state.contentStyle = p.content_style;
+        render();
+    }
+    function setContentStyle(s) {
+        state.contentStyle = s;
+        state.contentStyleManuallyChanged = true;
+        if (isBatchMode() && state.batchProducts.length) {
+            const idx = Math.min(state.activeBatchIdx || 0, state.batchProducts.length - 1);
+            state.activeBatchIdx = idx;
+            if (state.batchProducts[idx]) state.batchProducts[idx].content_style = s;
+        }
+        render();
+    }
     function toggleHook(id) {
         const i=state.selectedHooks.indexOf(id);
         if(i>=0){if(state.selectedHooks.length>1)state.selectedHooks.splice(i,1);}
@@ -1311,6 +1482,8 @@
                 content_style: item.content_style || 'honest_review',
             })).filter(p => p.product_name);
             state.batchProducts = products;
+            state.activeBatchIdx = 0;
+            if (products.length && products[0].content_style) state.contentStyle = products[0].content_style;
             render();
             if (products.length) showToast(`Imported ${products.length} products from APF!`);
             else showToast('No valid products found in JSON.');
@@ -1352,6 +1525,8 @@
             });
         }
         state.batchProducts = products;
+        state.activeBatchIdx = 0;
+        if (products.length && products[0].content_style) state.contentStyle = products[0].content_style;
         render();
         if (products.length) showToast(`Found ${products.length} products!`);
         else showToast('No valid products found. Check your CSV format.');
@@ -1396,7 +1571,7 @@
     }
 
     async function startGeneration() {
-        if (state.mode === 'batch') {
+        if (isBatchMode() && state.batchProducts.length) {
             await startBatchGeneration();
         } else {
             await startSingleGeneration();
@@ -1441,8 +1616,15 @@
     }
 
     async function startBatchGeneration() {
-        if (!state.batchProducts.length) { showToast('Please upload a CSV file with products first'); return; }
-        const body = { products:state.batchProducts, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null };
+        if (!state.batchProducts.length) { showToast('Please upload products first'); return; }
+        if (state.batchProducts[state.activeBatchIdx]) {
+            state.batchProducts[state.activeBatchIdx].content_style = state.contentStyle;
+        }
+        const products = state.batchProducts.map(p => ({
+            ...p,
+            content_style: p.content_style || state.contentStyle,
+        }));
+        const body = { products, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null };
         try {
             const res=await fetch(`${API}/batch-generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             const data=await res.json();
@@ -2115,7 +2297,78 @@
     };
   }
 
+  function mapNormalizedToBatchProduct(normalized, recommendedStyle) {
+    const n = normalized || {};
+    const features = n.key_features || n.keyFeatures || "";
+    const featureList = Array.isArray(features)
+      ? features
+      : String(features || "").split(/\n|,/).map(function (s) { return s.trim(); }).filter(Boolean);
+    const keywords = n.keywords;
+    const keywordList = Array.isArray(keywords)
+      ? keywords
+      : String(keywords || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    const competitors = n.competitors;
+    const competitorList = Array.isArray(competitors)
+      ? competitors
+      : String(competitors || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    return {
+      product_name: clean(n.productName || n.product_name),
+      niche: clean(n.niche) || "General",
+      key_features: featureList,
+      price: clean(n.price) || "Varies",
+      affiliate_link: clean(n.affiliateLink || n.affiliate_link) || "[YOUR_AFFILIATE_LINK]",
+      keywords: keywordList,
+      target_audience: clean(n.targetAudience || n.target_audience) || "General consumers",
+      product_category: clean(n.productCategory || n.product_category || n.niche) || "General",
+      competitors: competitorList,
+      unique_selling_point: clean(n.uniqueSellingPoint || n.unique_selling_point),
+      discount_info: clean(n.discountInfo || n.discount_info),
+      coupon_code: clean(n.couponCode || n.coupon_code),
+      common_complaints: clean(n.commonComplaints || n.common_complaints),
+      common_praises: clean(n.commonPraises || n.common_praises),
+      who_not_for: clean(n.whoNotFor || n.who_not_for),
+      series_name: clean(n.seriesName || n.series_name),
+      price_comparison: clean(n.priceComparison || n.price_comparison),
+      content_style: clean(n.contentStyle || n.content_style || recommendedStyle) || "honest_review",
+    };
+  }
+
   window.hydrateAPFBackendImport = function hydrateAPFBackendImport(doc) {
+    if (doc && doc.batch && Array.isArray(doc.products) && doc.products.length) {
+      const products = doc.products.map(function (item) {
+        const normalized = item.normalized || item;
+        const style = item.recommended_content_style || normalized.content_style || "honest_review";
+        return mapNormalizedToBatchProduct(normalized, style);
+      }).filter(function (p) { return p.product_name; });
+
+      if (!products.length) {
+        alert("ShadowCast received the APF batch draft, but no product names were found.");
+        return;
+      }
+
+      try {
+        if (typeof state !== "undefined" && state) {
+          state.mode = "import-apf";
+          state.page = "form";
+          state.navPage = "generate";
+          state.batchProducts = products;
+          state.batchFileName = "APF batch (" + products.length + " products)";
+          state.activeBatchIdx = 0;
+          state.contentStyle = products[0].content_style || "honest_review";
+          state.contentStyleManuallyChanged = false;
+        }
+      } catch (err) {
+        console.warn("[APF direct import] batch state write skipped:", err);
+      }
+
+      try { if (typeof render === "function") render(); } catch (_) {}
+      try {
+        if (typeof showToast === "function") showToast("Imported " + products.length + " APF products — select each to set content style");
+        else alert("Imported " + products.length + " APF products. Use the product tabs to set each content style.");
+      } catch (_) {}
+      return;
+    }
+
     const mapped = mapBackendNormalized(doc);
     if (!mapped.productName) {
       alert("ShadowCast received the APF draft, but no product name was found.");

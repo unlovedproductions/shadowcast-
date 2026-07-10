@@ -36,13 +36,16 @@ from content_styles import (
     style_requires_competitors,
 )
 from script_postprocessor import enrich_script
-from apf_import import normalize_apf_payload
+from apf_import import extract_apf_product_payloads, normalize_apf_payload
 from video_renderer import render_short_form_video, render_long_form_video
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 from social_poster import SocialPoster, get_platform_status
 from analytics_tracker import AnalyticsTracker, create_tracking_link
+from oauth_manager import OAuthManager
+from publish_service import PublishService, resolve_job_assets
+from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
@@ -92,6 +95,9 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
         "/api/bg-",
         "/api/analytics",
         "/api/social",
+        "/api/oauth",
+        "/api/publish",
+        "/api/media",
         "/api/tracking-link",
     )
     if path in public_paths or any(path.startswith(prefix) for prefix in public_prefixes):
@@ -358,6 +364,9 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 if "youtube_assets" not in product_results["hooks"][hook_type]:
                     product_results["hooks"][hook_type]["youtube_assets"] = {}
                 product_results["hooks"][hook_type]["youtube_assets"][fmt] = assets
+                if "posting_packages" not in product_results["hooks"][hook_type]:
+                    product_results["hooks"][hook_type]["posting_packages"] = {}
+                product_results["hooks"][hook_type]["posting_packages"][fmt] = fname
             except Exception as e:
                 job["errors"].append(f"[{product['product_name']}] YT assets ({hook_type} {fmt}): {str(e)}")
                 traceback.print_exc()
@@ -859,59 +868,205 @@ def list_files(job_id: str):
 # ── Social Posting ───────────────────────────────────────────────────
 social_poster = SocialPoster()
 analytics = AnalyticsTracker(db_path=str(OUTPUT_BASE / "analytics.json"))
+oauth_manager = OAuthManager()
+publish_service = PublishService(jobs=jobs, analytics=analytics)
+rumble_publisher = RumblePublisher()
 
 
 @app.get("/api/social/status")
 def social_status():
-    return get_platform_status()
+    oauth_status = oauth_manager.status()
+    legacy = get_platform_status()
+    merged = {}
+    for platform in ("youtube", "instagram", "facebook", "tiktok", "rumble"):
+        connected = oauth_status.get(platform, {}).get("connected", False)
+        merged[platform] = "Connected" if connected else legacy.get(platform, "Not Configured")
+    return merged
+
+
+@app.get("/api/media/serve")
+def serve_media_for_platforms(path: str):
+    """Serve job output files at a stable URL for Instagram video_url requirements."""
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    parts = Path(path).parts
+    if len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Path must be job_id/relative/file")
+    job_id, rel = parts[0], str(Path(*parts[1:]))
+    candidate = OUTPUT_BASE / job_id / rel
+    if candidate.exists() and candidate.is_file():
+        media_type = "video/mp4" if path.endswith(".mp4") else "image/png" if path.endswith(".png") else "application/octet-stream"
+        return FileResponse(str(candidate), media_type=media_type)
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+# ── OAuth ─────────────────────────────────────────────────────────────
+@app.get("/api/oauth/status")
+def oauth_status():
+    return oauth_manager.status()
+
+
+@app.get("/api/oauth/{platform}/authorize")
+def oauth_authorize(platform: str):
+    try:
+        return oauth_manager.start_authorize(platform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/oauth/{platform}/callback")
+def oauth_callback(platform: str, code: str = "", state: str = "", error: str = ""):
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+    try:
+        return oauth_manager.handle_callback(platform, code, state)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RumbleLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/oauth/rumble/login")
+def oauth_rumble_login(req: RumbleLoginRequest):
+    try:
+        rumble_publisher.login_and_capture_session(req.username, req.password)
+        return {"platform": "rumble", "status": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/oauth/{platform}")
+def oauth_disconnect(platform: str):
+    return oauth_manager.disconnect(platform)
+
+
+# ── Publish ───────────────────────────────────────────────────────────
+class PublishRequest(BaseModel):
+    job_id: str
+    hook_type: str
+    video_format: str = "short_form"
+    platform: str
+    product_slug: Optional[str] = None
+    dry_run: bool = False
+    thumbnail_variant: str = "variant_a"
+    target_page_id: Optional[str] = None
+
+
+class PublishBatchRequest(BaseModel):
+    job_id: str
+    hook_type: str
+    video_format: str = "short_form"
+    platforms: List[str]
+    product_slug: Optional[str] = None
+    dry_run: bool = False
+
+
+@app.post("/api/publish")
+def publish_video(req: PublishRequest):
+    try:
+        return publish_service.publish(
+            req.job_id, req.hook_type, req.video_format, req.platform,
+            product_slug=req.product_slug, dry_run=req.dry_run,
+            thumbnail_variant=req.thumbnail_variant, target_page_id=req.target_page_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/publish/batch")
+def publish_video_batch(req: PublishBatchRequest):
+    try:
+        return {"results": publish_service.publish_batch(
+            req.job_id, req.hook_type, req.video_format, req.platforms,
+            product_slug=req.product_slug, dry_run=req.dry_run,
+        )}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class PostRequest(BaseModel):
-    video_path: str
-    caption: str
-    platform: str  # "instagram" or "tiktok"
+    video_path: Optional[str] = None
+    caption: str = ""
+    platform: str
     hashtags: List[str] = []
-    dry_run: bool = True
+    dry_run: bool = False
+    job_id: Optional[str] = None
+    hook_type: Optional[str] = None
+    video_format: Optional[str] = "short_form"
+    product_slug: Optional[str] = None
 
 
 @app.post("/api/social/post")
 def social_post(req: PostRequest):
     try:
+        if req.job_id and req.hook_type:
+            return publish_service.publish(
+                req.job_id, req.hook_type, req.video_format or "short_form", req.platform,
+                product_slug=req.product_slug, dry_run=req.dry_run,
+            )
+        if not req.video_path:
+            raise HTTPException(status_code=400, detail="video_path or job_id required")
         if req.platform == "instagram":
             result = social_poster.post_to_instagram(
-                req.video_path, req.caption, req.hashtags
+                req.video_path, req.caption, req.hashtags, dry_run=req.dry_run
             )
         elif req.platform == "tiktok":
             result = social_poster.post_to_tiktok(
-                req.video_path, req.caption, req.hashtags
+                req.video_path, req.caption, req.hashtags, dry_run=req.dry_run
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown platform: {req.platform}")
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/social/queue")
 def social_queue():
-    return social_poster.get_queue()
+    return {"queue": social_poster.get_queue()}
 
 
 class SchedulePostRequest(BaseModel):
     platform: str
-    video_path: str
-    caption: str
+    video_path: Optional[str] = None
+    caption: str = ""
     hashtags: List[str] = []
-    scheduled_time: str  # ISO format
+    scheduled_time: str
+    job_id: Optional[str] = None
+    hook_type: Optional[str] = None
+    video_format: Optional[str] = "short_form"
+    product_slug: Optional[str] = None
 
 
 @app.post("/api/social/schedule")
 def schedule_social_post(req: SchedulePostRequest):
+    video_path = req.video_path or ""
+    if req.job_id and req.hook_type:
+        resolved = resolve_job_assets(
+            req.job_id, req.hook_type, req.video_format or "short_form",
+            product_slug=req.product_slug, jobs=jobs,
+        )
+        video_path = resolved["video_path"]
     result = social_poster.schedule_post(
-        req.platform, req.video_path, req.caption,
-        req.hashtags, req.scheduled_time
+        req.platform, video_path, req.caption,
+        req.hashtags, req.scheduled_time,
+        job_id=req.job_id, hook_type=req.hook_type,
+        video_format=req.video_format, product_slug=req.product_slug,
     )
     return result
+
+
+@app.post("/api/social/queue/process")
+def process_social_queue(dry_run: bool = False):
+    processed = social_poster.process_queue(dry_run=dry_run, publish_service=publish_service, jobs=jobs)
+    return {"processed": processed, "queue": social_poster.get_queue()}
 
 
 # ── Analytics ────────────────────────────────────────────────────────
@@ -1026,9 +1181,52 @@ _UNLOVED_APF_IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 @app.post("/api/import-apf/direct")
 async def unloved_apf_direct_import(request: _UnlovedRequest):
     payload = await request.json()
-
     token = _unloved_secrets.token_urlsafe(18)
-    import_result = normalize_apf_payload(payload)
+    product_payloads = extract_apf_product_payloads(payload)
+
+    if len(product_payloads) > 1:
+        products = []
+        for item in product_payloads:
+            import_result = normalize_apf_payload(item if isinstance(item, dict) else {"product": item})
+            normalized = import_result["normalized"]
+            if not normalized.get("productName"):
+                continue
+            products.append({
+                "normalized": normalized,
+                "recommended_content_style": import_result["recommended_content_style"],
+                "payload": item,
+            })
+        if not products:
+            raise _UnlovedHTTPException(status_code=400, detail="APF batch payload did not include product names.")
+
+        doc = {
+            "ok": True,
+            "batch": True,
+            "token": token,
+            "created_at": _unloved_datetime.now(_unloved_timezone.utc).isoformat(),
+            "product_count": len(products),
+            "products": products,
+            "normalized": products[0]["normalized"],
+            "recommended_content_style": products[0]["recommended_content_style"],
+            "payload": payload,
+        }
+        path = _UNLOVED_APF_IMPORT_DIR / f"{token}.json"
+        path.write_text(_unloved_json.dumps(doc, ensure_ascii=False, indent=2))
+        base = _unloved_os.getenv("SHADOWCAST_PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+        return {
+            "ok": True,
+            "batch": True,
+            "token": token,
+            "product_count": len(products),
+            "productName": products[0]["normalized"].get("productName"),
+            "product_names": [p["normalized"].get("productName") for p in products],
+            "recommended_content_style": products[0]["recommended_content_style"],
+            "normalized": products[0]["normalized"],
+            "open_url": f"{base}/?apf_draft={token}",
+        }
+
+    single = product_payloads[0] if product_payloads else payload
+    import_result = normalize_apf_payload(single if isinstance(single, dict) else payload)
     normalized = import_result["normalized"]
     recommended_content_style = import_result["recommended_content_style"]
 
