@@ -603,10 +603,11 @@
     }
 
     function renderProgress() {
+        const pct = Number.isFinite(state.progress) ? state.progress : 0;
         return `<div class="progress-section card">
             <div class="spinner"></div>
-            <div class="progress-pct">${state.progress}%</div>
-            <div class="progress-bar-bg"><div class="progress-bar" style="width:${state.progress}%"></div></div>
+            <div class="progress-pct">${pct}%</div>
+            <div class="progress-bar-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
             <div class="progress-text">${esc(state.currentStep)}</div>
             ${state.errors.length?'<div style="color:var(--red);margin-top:12px;font-size:13px;">Warnings: '+state.errors.join(', ')+'</div>':''}
         </div>`;
@@ -1639,7 +1640,15 @@
         try {
             const res=await fetch(`${API}/status/${state.jobId}`);
             const data=await res.json();
-            state.progress=data.progress; state.currentStep=data.current_step;
+            if (!res.ok) {
+                state.jobStatus='error';
+                state.currentStep=(data&&data.detail)?String(data.detail):'Job not found (server may have restarted).';
+                state.errors=[state.currentStep];
+                state.progress=Number.isFinite(state.progress)?state.progress:0;
+                state.page='results'; render(); return;
+            }
+            state.progress=Number.isFinite(data.progress)?data.progress:(state.progress||0);
+            state.currentStep=data.current_step||state.currentStep||'';
             state.jobStatus=data.status; state.errors=data.errors||[];
 
             if (data.status==='complete') {
