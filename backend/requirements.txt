@@ -10,3 +10,8 @@ python-dotenv
 httpx
 beautifulsoup4
 scipy
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+cryptography
+playwright
