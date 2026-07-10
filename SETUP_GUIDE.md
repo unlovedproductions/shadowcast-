@@ -8,6 +8,14 @@
 
 ---
 
+## Operational docs
+
+- `docs/RECOVERY.md` — disaster-recovery playbook
+- `docs/RUNBOOK.md` — startup/shutdown and operator checks
+- `docs/ARCHITECTURE.md` — system structure and integration points
+
+---
+
 ## Your Machine Specs (Razer Blade 15 Advanced)
 
 | Component | Spec | LLM Capability |
