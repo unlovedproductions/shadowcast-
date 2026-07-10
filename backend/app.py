@@ -113,8 +113,86 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
 OUTPUT_BASE = Path(__file__).parent / "output"
 OUTPUT_BASE.mkdir(exist_ok=True)
 
-# ── In-memory job store ────────────────────────────────────────────────
+# ── Job store (RAM cache + disk persistence) ───────────────────────────
 jobs = {}
+_active_job_threads = set()
+_job_thread_lock = threading.Lock()
+
+
+def _job_path(job_id: str) -> Path:
+    return OUTPUT_BASE / job_id / "job.json"
+
+
+def _artifact_ok(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _save_job(job_id: str) -> None:
+    job = jobs.get(job_id)
+    if not job:
+        return
+    path = _job_path(job_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    with open(tmp, "w") as f:
+        json.dump(job, f, indent=2)
+    tmp.replace(path)
+
+
+def _load_job(job_id: str) -> Optional[dict]:
+    if job_id in jobs:
+        return jobs[job_id]
+    path = _job_path(job_id)
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            job = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    jobs[job_id] = job
+    return job
+
+
+def _start_job_thread(job_id: str, target) -> None:
+    with _job_thread_lock:
+        if job_id in _active_job_threads:
+            return
+        _active_job_threads.add(job_id)
+
+    def _runner():
+        try:
+            target(job_id)
+        finally:
+            with _job_thread_lock:
+                _active_job_threads.discard(job_id)
+
+    threading.Thread(target=_runner, daemon=True).start()
+
+
+def _resume_incomplete_jobs() -> None:
+    if not OUTPUT_BASE.exists():
+        return
+    for job_dir in OUTPUT_BASE.iterdir():
+        if not job_dir.is_dir():
+            continue
+        path = job_dir / "job.json"
+        if not path.exists():
+            continue
+        job_id = job_dir.name
+        job = _load_job(job_id)
+        if not job or job.get("status") != "running":
+            continue
+        mode = job.get("mode", "single")
+        job["current_step"] = f"Resuming after restart: {job.get('current_step', '...')}"
+        _save_job(job_id)
+        if mode == "batch":
+            _start_job_thread(job_id, _run_batch_generation)
+        else:
+            _start_job_thread(job_id, _run_generation)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -264,21 +342,29 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     # Phase 1: Scripts
     for hook_type in hook_types:
         hook_name = hook_type.replace("_", " ").title()
+        fname = f"{slug}_{hook_type}_scripts.json"
+        script_path = product_dir / fname
         job["current_step"] = f"[{product['product_name']}] Generating {hook_name} scripts..."
         job["progress"] = int(step / total_steps * 100)
+        _save_job(job_id)
 
         try:
-            scripts = generate_selected_scripts(product, hook_type, formats, effective_style)
-            script_payload = scripts.get("scripts", {})
-            for fmt in formats:
-                if fmt in script_payload:
-                    script_payload[fmt] = enrich_script(script_payload[fmt], product, effective_style)
-            scripts["scripts"] = script_payload
-            all_scripts[hook_type] = script_payload
-
-            fname = f"{slug}_{hook_type}_scripts.json"
-            with open(str(product_dir / fname), "w") as f:
-                json.dump(scripts, f, indent=2)
+            if _artifact_ok(script_path):
+                with open(script_path) as f:
+                    scripts = json.load(f)
+                script_payload = scripts.get("scripts", {})
+                all_scripts[hook_type] = script_payload
+                job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} scripts..."
+            else:
+                scripts = generate_selected_scripts(product, hook_type, formats, effective_style)
+                script_payload = scripts.get("scripts", {})
+                for fmt in formats:
+                    if fmt in script_payload:
+                        script_payload[fmt] = enrich_script(script_payload[fmt], product, effective_style)
+                scripts["scripts"] = script_payload
+                all_scripts[hook_type] = script_payload
+                with open(str(script_path), "w") as f:
+                    json.dump(scripts, f, indent=2)
 
             if hook_type not in product_results["hooks"]:
                 product_results["hooks"][hook_type] = {}
@@ -289,6 +375,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
         step += len(formats)
         job["progress"] = int(step / total_steps * 100)
+        _save_job(job_id)
 
     # Phase 2: Videos
     for hook_type in hook_types:
@@ -301,28 +388,32 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 continue
 
             fl = fmt_display(fmt)
+            fname = f"{slug}_{hook_type}_{fmt_label(fmt)}.mp4"
+            video_path = product_dir / fname
             job["current_step"] = f"[{product['product_name']}] Rendering {hook_name} {fl} video..."
             job["progress"] = int(step / total_steps * 100)
+            _save_job(job_id)
 
             try:
-                fname = f"{slug}_{hook_type}_{fmt_label(fmt)}.mp4"
-                video_path = str(product_dir / fname)
-                render_kwargs = dict(
-                    product_name=product.get('product_name', ''),
-                    price=product.get('price', ''),
-                    series_name=product.get('series_name', ''),
-                    content_style=effective_style,
-                    competitors=product.get('competitors', []),
-                    audio_enabled=audio_enabled,
-                    audio_mood=mood_arg,
-                    use_tts=use_tts,
-                    tts_provider=tts_provider,
-                    tts_voice=tts_voice,
-                )
-                if fmt == "short_form":
-                    render_short_form_video(scripts_data[fmt], video_path, **render_kwargs)
+                if _artifact_ok(video_path):
+                    job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} {fl} video..."
                 else:
-                    render_long_form_video(scripts_data[fmt], video_path, **render_kwargs)
+                    render_kwargs = dict(
+                        product_name=product.get('product_name', ''),
+                        price=product.get('price', ''),
+                        series_name=product.get('series_name', ''),
+                        content_style=effective_style,
+                        competitors=product.get('competitors', []),
+                        audio_enabled=audio_enabled,
+                        audio_mood=mood_arg,
+                        use_tts=use_tts,
+                        tts_provider=tts_provider,
+                        tts_voice=tts_voice,
+                    )
+                    if fmt == "short_form":
+                        render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
+                    else:
+                        render_long_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
 
                 if hook_type not in product_results["hooks"]:
                     product_results["hooks"][hook_type] = {}
@@ -335,6 +426,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
             step += 1
             job["progress"] = int(step / total_steps * 100)
+            _save_job(job_id)
 
     # Phase 3: YouTube Assets
     for hook_type in hook_types:
@@ -348,16 +440,23 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 continue
 
             fl = fmt_display(fmt)
+            fname = f"{slug}_{hook_type}_{fmt_label(fmt)}_youtube_package.json"
+            yt_path = product_dir / fname
             job["current_step"] = f"[{product['product_name']}] Generating {hook_name} {fl} YouTube package..."
             job["progress"] = int(step / total_steps * 100)
+            _save_job(job_id)
 
             try:
-                assets = generate_youtube_assets(product, scripts_data[fmt], fmt)
-                all_yt_packages[hook_type][fmt] = assets
+                if _artifact_ok(yt_path):
+                    with open(yt_path) as f:
+                        assets = json.load(f)
+                    job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} {fl} YouTube package..."
+                else:
+                    assets = generate_youtube_assets(product, scripts_data[fmt], fmt)
+                    with open(str(yt_path), "w") as f:
+                        json.dump(assets, f, indent=2)
 
-                fname = f"{slug}_{hook_type}_{fmt_label(fmt)}_youtube_package.json"
-                with open(str(product_dir / fname), "w") as f:
-                    json.dump(assets, f, indent=2)
+                all_yt_packages[hook_type][fmt] = assets
 
                 if hook_type not in product_results["hooks"]:
                     product_results["hooks"][hook_type] = {}
@@ -373,32 +472,45 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
             step += 1
             job["progress"] = int(step / total_steps * 100)
+            _save_job(job_id)
 
     # Phase 4: Thumbnails
     job["current_step"] = f"[{product['product_name']}] Generating thumbnails..."
+    _save_job(job_id)
     for hook_type in hook_types:
         try:
             content_style_name = normalize_content_style(product.get('content_style', 'honest_review'))
-            thumb_set = generate_thumbnail_set(
-                product.get('product_name', 'Product'),
-                hook_type,
-                content_style_name,
-                keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
-            )
-            for variant_key, thumb_img in thumb_set.items():
-                badge_text = style_badge_text(content_style_name)
-                
-                if badge_text:
-                    thumb_img = add_badge(thumb_img, badge_text)
-                
-                thumb_fname = f"{slug}_{hook_type}_thumbnail_{variant_key}.png"
-                thumb_img.save(str(product_dir / thumb_fname))
-                
+            variant_keys = ("variant_a", "variant_b", "variant_c")
+            existing = {
+                vk: f"{slug}_{hook_type}_thumbnail_{vk}.png"
+                for vk in variant_keys
+                if _artifact_ok(product_dir / f"{slug}_{hook_type}_thumbnail_{vk}.png")
+            }
+            if len(existing) == len(variant_keys):
                 if hook_type not in product_results["hooks"]:
                     product_results["hooks"][hook_type] = {}
-                if "thumbnails" not in product_results["hooks"][hook_type]:
-                    product_results["hooks"][hook_type]["thumbnails"] = {}
-                product_results["hooks"][hook_type]["thumbnails"][variant_key] = thumb_fname
+                product_results["hooks"][hook_type]["thumbnails"] = existing
+            else:
+                thumb_set = generate_thumbnail_set(
+                    product.get('product_name', 'Product'),
+                    hook_type,
+                    content_style_name,
+                    keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
+                )
+                for variant_key, thumb_img in thumb_set.items():
+                    badge_text = style_badge_text(content_style_name)
+
+                    if badge_text:
+                        thumb_img = add_badge(thumb_img, badge_text)
+
+                    thumb_fname = f"{slug}_{hook_type}_thumbnail_{variant_key}.png"
+                    thumb_img.save(str(product_dir / thumb_fname))
+
+                    if hook_type not in product_results["hooks"]:
+                        product_results["hooks"][hook_type] = {}
+                    if "thumbnails" not in product_results["hooks"][hook_type]:
+                        product_results["hooks"][hook_type]["thumbnails"] = {}
+                    product_results["hooks"][hook_type]["thumbnails"][variant_key] = thumb_fname
         except Exception as e:
             job["errors"].append(f"[{product['product_name']}] Thumbnails ({hook_type}): {str(e)}")
             traceback.print_exc()
@@ -410,6 +522,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     except Exception:
         pass
 
+    _save_job(job_id)
     return product_results, step
 
 
@@ -444,10 +557,12 @@ def _run_generation(job_id: str):
         job["status"] = "complete"
         job["progress"] = 100
         job["current_step"] = "Done!"
+        _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
         job["errors"].append(str(e))
+        _save_job(job_id)
         traceback.print_exc()
 
 
@@ -472,6 +587,7 @@ def _run_batch_generation(job_id: str):
             product_dir.mkdir(exist_ok=True)
 
             job["current_step"] = f"Product {i+1}/{len(products)}: {product['product_name']}"
+            _save_job(job_id)
 
             result, step_offset = _run_single_product(
                 job_id, product, product_dir, hook_types, formats,
@@ -483,6 +599,8 @@ def _run_batch_generation(job_id: str):
                 tts_voice=job.get("tts_voice"),
             )
             all_product_results.append(result)
+            job["product_results"] = all_product_results
+            _save_job(job_id)
 
         job["product_results"] = all_product_results
 
@@ -499,10 +617,12 @@ def _run_batch_generation(job_id: str):
         job["status"] = "complete"
         job["progress"] = 100
         job["current_step"] = f"Done! {len(products)} products processed."
+        _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
         job["errors"].append(str(e))
+        _save_job(job_id)
         traceback.print_exc()
 
 
@@ -646,9 +766,9 @@ def start_generation(req: GenerateRequest):
         "results": {}, "errors": [],
         "created_at": time.time(),
     }
+    _save_job(job_id)
 
-    thread = threading.Thread(target=_run_generation, args=(job_id,), daemon=True)
-    thread.start()
+    _start_job_thread(job_id, _run_generation)
     response = {"job_id": job_id, "status": "running", "mode": "single"}
     if warnings:
         response["warnings"] = warnings
@@ -689,9 +809,9 @@ async def batch_upload(
         "product_results": [],
         "errors": [], "created_at": time.time(),
     }
+    _save_job(job_id)
 
-    thread = threading.Thread(target=_run_batch_generation, args=(job_id,), daemon=True)
-    thread.start()
+    _start_job_thread(job_id, _run_batch_generation)
 
     return {
         "job_id": job_id, "status": "running", "mode": "batch",
@@ -783,9 +903,9 @@ def batch_generate(req: BatchGenerateRequest):
         "product_results": [],
         "errors": [], "created_at": time.time(),
     }
+    _save_job(job_id)
 
-    thread = threading.Thread(target=_run_batch_generation, args=(job_id,), daemon=True)
-    thread.start()
+    _start_job_thread(job_id, _run_batch_generation)
 
     return {
         "job_id": job_id, "status": "running", "mode": "batch",
@@ -797,13 +917,13 @@ def batch_generate(req: BatchGenerateRequest):
 # ── Status & Results ──────────────────────────────────────────────────
 @app.get("/api/status/{job_id}")
 def get_status(job_id: str):
-    if job_id not in jobs:
+    job = _load_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[job_id]
     resp = {
         "id": job["id"], "mode": job.get("mode", "single"),
-        "status": job["status"], "progress": job["progress"],
-        "current_step": job["current_step"], "errors": job["errors"],
+        "status": job["status"], "progress": job.get("progress", 0),
+        "current_step": job.get("current_step", ""), "errors": job.get("errors", []),
     }
     if job.get("mode") == "batch":
         resp["product_count"] = len(job.get("products", []))
@@ -812,13 +932,13 @@ def get_status(job_id: str):
 
 @app.get("/api/results/{job_id}")
 def get_results(job_id: str):
-    if job_id not in jobs:
+    job = _load_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[job_id]
     resp = {
         "id": job["id"], "mode": job.get("mode", "single"),
-        "status": job["status"], "progress": job["progress"],
-        "current_step": job["current_step"], "errors": job["errors"],
+        "status": job["status"], "progress": job.get("progress", 0),
+        "current_step": job.get("current_step", ""), "errors": job.get("errors", []),
     }
     if job.get("mode") == "batch":
         resp["product_results"] = job.get("product_results", [])
@@ -831,6 +951,11 @@ def get_results(job_id: str):
         resp["formats"] = job.get("formats", [])
         resp["results"] = job.get("results", {})
     return resp
+
+
+@app.on_event("startup")
+def _on_startup_resume_jobs():
+    _resume_incomplete_jobs()
 
 
 @app.get("/api/download/{job_id}/{path:path}")
