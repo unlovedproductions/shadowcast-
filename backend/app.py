@@ -123,11 +123,68 @@ def _job_path(job_id: str) -> Path:
     return OUTPUT_BASE / job_id / "job.json"
 
 
-def _artifact_ok(path: Path) -> bool:
+def _script_has_short_form_segments(script: dict) -> bool:
+    segments = script.get("segments")
+    return isinstance(segments, list) and len(segments) > 0
+
+
+def _script_has_long_form_segments(script: dict) -> bool:
+    chapters = script.get("chapters")
+    if not isinstance(chapters, list) or not chapters:
+        return False
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+        segments = chapter.get("segments")
+        if isinstance(segments, list) and len(segments) > 0:
+            return True
+    return False
+
+
+def _validate_script_payload(script_payload: dict, formats: List[str]) -> tuple[bool, str]:
+    if not isinstance(script_payload, dict):
+        return False, "scripts payload is not an object"
+
+    for fmt in formats:
+        script = script_payload.get(fmt)
+        if not isinstance(script, dict):
+            return False, f"{fmt} script missing"
+        if "__raw" in script:
+            return False, f"{fmt} script contains __raw parse fallback"
+        if fmt == "short_form" and not _script_has_short_form_segments(script):
+            return False, "short_form script has no segments"
+        if fmt == "long_form" and not _script_has_long_form_segments(script):
+            return False, "long_form script has no chapter segments"
+
+    return True, ""
+
+
+def _load_cached_script_payload(path: Path) -> Optional[dict]:
     try:
-        return path.is_file() and path.stat().st_size > 0
+        with open(path) as f:
+            scripts = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    payload = scripts.get("scripts", {}) if isinstance(scripts, dict) else {}
+    return payload if isinstance(payload, dict) else None
+
+
+def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[List[str]] = None) -> bool:
+    try:
+        file_ok = path.is_file() and path.stat().st_size > 0
     except OSError:
         return False
+    if not file_ok:
+        return False
+    if artifact_type != "script":
+        return True
+
+    script_payload = _load_cached_script_payload(path)
+    if script_payload is None:
+        return False
+    expected_formats = formats or ["short_form", "long_form"]
+    valid, _ = _validate_script_payload(script_payload, expected_formats)
+    return valid
 
 
 def _save_job(job_id: str) -> None:
@@ -140,6 +197,43 @@ def _save_job(job_id: str) -> None:
     with open(tmp, "w") as f:
         json.dump(job, f, indent=2)
     tmp.replace(path)
+
+
+def _split_job_messages(messages: list) -> tuple[list, list, list]:
+    script_errors = []
+    video_warnings = []
+    other_errors = []
+    for msg in messages or []:
+        text = str(msg)
+        if "] Script (" in text or "No segments found in script" in text:
+            script_errors.append(text)
+        elif "] Video (" in text:
+            video_warnings.append(text)
+        else:
+            other_errors.append(text)
+    return script_errors, video_warnings, other_errors
+
+
+def _generate_scripts_with_retry(
+    product: dict,
+    hook_type: str,
+    formats: List[str],
+    content_style: str,
+    retries: int = 2,
+) -> tuple[dict, dict]:
+    last_reason = "unknown schema issue"
+    for _ in range(retries + 1):
+        scripts = generate_selected_scripts(product, hook_type, formats, content_style)
+        script_payload = scripts.get("scripts", {})
+        for fmt in formats:
+            if fmt in script_payload:
+                script_payload[fmt] = enrich_script(script_payload[fmt], product, content_style)
+        valid, reason = _validate_script_payload(script_payload, formats)
+        if valid:
+            scripts["scripts"] = script_payload
+            return scripts, script_payload
+        last_reason = reason
+    raise ValueError(f"Generated scripts invalid after {retries + 1} attempts: {last_reason}")
 
 
 def _load_job(job_id: str) -> Optional[dict]:
@@ -349,19 +443,19 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
         _save_job(job_id)
 
         try:
-            if _artifact_ok(script_path):
-                with open(script_path) as f:
-                    scripts = json.load(f)
-                script_payload = scripts.get("scripts", {})
+            if _artifact_ok(script_path, artifact_type="script", formats=formats):
+                script_payload = _load_cached_script_payload(script_path) or {}
                 all_scripts[hook_type] = script_payload
                 job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} scripts..."
             else:
-                scripts = generate_selected_scripts(product, hook_type, formats, effective_style)
-                script_payload = scripts.get("scripts", {})
-                for fmt in formats:
-                    if fmt in script_payload:
-                        script_payload[fmt] = enrich_script(script_payload[fmt], product, effective_style)
-                scripts["scripts"] = script_payload
+                try:
+                    if script_path.exists():
+                        script_path.unlink()
+                except OSError:
+                    pass
+                scripts, script_payload = _generate_scripts_with_retry(
+                    product, hook_type, formats, effective_style
+                )
                 all_scripts[hook_type] = script_payload
                 with open(str(script_path), "w") as f:
                     json.dump(scripts, f, indent=2)
@@ -920,10 +1014,15 @@ def get_status(job_id: str):
     job = _load_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    errors = job.get("errors", [])
+    script_errors, video_warnings, other_errors = _split_job_messages(errors)
     resp = {
         "id": job["id"], "mode": job.get("mode", "single"),
         "status": job["status"], "progress": job.get("progress", 0),
-        "current_step": job.get("current_step", ""), "errors": job.get("errors", []),
+        "current_step": job.get("current_step", ""), "errors": errors,
+        "script_errors": script_errors,
+        "video_warnings": video_warnings,
+        "other_errors": other_errors,
     }
     if job.get("mode") == "batch":
         resp["product_count"] = len(job.get("products", []))
@@ -935,10 +1034,15 @@ def get_results(job_id: str):
     job = _load_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    errors = job.get("errors", [])
+    script_errors, video_warnings, other_errors = _split_job_messages(errors)
     resp = {
         "id": job["id"], "mode": job.get("mode", "single"),
         "status": job["status"], "progress": job.get("progress", 0),
-        "current_step": job.get("current_step", ""), "errors": job.get("errors", []),
+        "current_step": job.get("current_step", ""), "errors": errors,
+        "script_errors": script_errors,
+        "video_warnings": video_warnings,
+        "other_errors": other_errors,
     }
     if job.get("mode") == "batch":
         resp["product_results"] = job.get("product_results", [])

@@ -268,7 +268,7 @@
         ttsProviders: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
-        results: null, batchResults: null, errors: [],
+        results: null, batchResults: null, errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
@@ -351,6 +351,26 @@
         </div>`;
     }
 
+    function renderGenerationScopePreview() {
+        const productCount = isBatchMode() ? Math.max(state.batchProducts.length, 1) : 1;
+        const hookCount = Math.max(state.selectedHooks.length, 1);
+        const formatCount = Math.max(state.selectedFormats.length, 1);
+        const totalOutputs = productCount * hookCount * formatCount;
+        const perOutputMinutes = state.useTts ? 1.8 : state.audioEnabled ? 1.5 : 1.2;
+        const etaMinutes = Math.max(1, Math.round(totalOutputs * perOutputMinutes));
+
+        const hookNames = hooks
+            .filter((h) => state.selectedHooks.includes(h.id))
+            .map((h) => h.name);
+        const formatNames = state.selectedFormats.map((f) => (f === "short_form" ? "Shorts" : "Long"));
+        const hookPreview = hookNames.length > 2 ? `${hookNames.slice(0, 2).join(", ")} +${hookNames.length - 2}` : hookNames.join(", ");
+
+        return `<p style="font-size:12px;color:var(--text2);margin-top:8px;">
+            Scope: ${productCount} product${productCount === 1 ? "" : "s"} × ${hookCount} hook${hookCount === 1 ? "" : "s"} × ${formatCount} format${formatCount === 1 ? "" : "s"} = <strong>${totalOutputs}</strong> outputs (est. ~${etaMinutes} min).<br>
+            Hooks: ${esc(hookPreview || "none")} • Formats: ${esc(formatNames.join(", ") || "none")}
+        </p>`;
+    }
+
     function renderForm() {
         return `
         <div class="mode-tabs">
@@ -367,7 +387,8 @@
             ${isBatchMode() && state.batchProducts.length > 0
                 ? 'Generate ' + state.batchProducts.length + ' Products'
                 : 'Generate Videos + YouTube Package'}
-        </button>`;
+        </button>
+        ${renderGenerationScopePreview()}`;
     }
 
     function renderSingleForm() {
@@ -602,14 +623,53 @@
         }
     }
 
+    function splitJobMessages(messages) {
+        const scriptErrors = [];
+        const videoWarnings = [];
+        const otherErrors = [];
+        (messages || []).forEach((msg) => {
+            const text = String(msg || '');
+            if (!text) return;
+            if (
+                text.includes('] Script (') ||
+                text.includes('No segments found in script') ||
+                text.includes('Generated scripts invalid')
+            ) {
+                scriptErrors.push(text);
+                return;
+            }
+            if (text.includes('] Video (')) {
+                videoWarnings.push(text);
+                return;
+            }
+            otherErrors.push(text);
+        });
+        return { scriptErrors, videoWarnings, otherErrors };
+    }
+
     function renderProgress() {
         const pct = Number.isFinite(state.progress) ? state.progress : 0;
+        const scriptIssueBlock = state.scriptErrors.length
+            ? `<div style="color:var(--red);margin-top:12px;font-size:13px;">
+                <strong>Script Errors:</strong>
+                ${state.scriptErrors.map(err => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+                <div style="margin-top:8px;color:var(--text2);">If this came from cached output, delete the cached <code>*_curiosity_scripts.json</code> for this job and rerun.</div>
+              </div>`
+            : '';
+        const warningRows = [...state.videoWarnings, ...state.otherErrors];
+        const warningBlock = warningRows.length
+            ? `<div style="color:var(--red);margin-top:12px;font-size:13px;">
+                <strong>Warnings:</strong>
+                ${warningRows.map(err => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+              </div>`
+            : '';
         return `<div class="progress-section card">
             <div class="spinner"></div>
             <div class="progress-pct">${pct}%</div>
             <div class="progress-bar-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
             <div class="progress-text">${esc(state.currentStep)}</div>
-            ${state.errors.length?'<div style="color:var(--red);margin-top:12px;font-size:13px;">Warnings: '+state.errors.join(', ')+'</div>':''}
+            ${scriptIssueBlock}
+            ${warningBlock}
         </div>`;
     }
 
@@ -1414,7 +1474,11 @@
     function setFormat(f) { state.activeFormat=f; render(); }
     function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
     function toggleSettings() { state.showSettings=!state.showSettings; render(); }
-    function resetToForm() { state.page='form'; state.results=null; state.batchResults=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0; render(); }
+    function resetToForm() {
+        state.page='form'; state.results=null; state.batchResults=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
+        state.errors=[]; state.scriptErrors=[]; state.videoWarnings=[]; state.otherErrors=[];
+        render();
+    }
 
     function onProviderChange(p) {
         state.llmProvider=p;
@@ -1644,12 +1708,20 @@
                 state.jobStatus='error';
                 state.currentStep=(data&&data.detail)?String(data.detail):'Job not found (server may have restarted).';
                 state.errors=[state.currentStep];
+                const split = splitJobMessages(state.errors);
+                state.scriptErrors=split.scriptErrors;
+                state.videoWarnings=split.videoWarnings;
+                state.otherErrors=split.otherErrors;
                 state.progress=Number.isFinite(state.progress)?state.progress:0;
                 state.page='results'; render(); return;
             }
             state.progress=Number.isFinite(data.progress)?data.progress:(state.progress||0);
             state.currentStep=data.current_step||state.currentStep||'';
             state.jobStatus=data.status; state.errors=data.errors||[];
+            const split = splitJobMessages(state.errors);
+            state.scriptErrors=data.script_errors || split.scriptErrors;
+            state.videoWarnings=data.video_warnings || split.videoWarnings;
+            state.otherErrors=data.other_errors || split.otherErrors;
 
             if (data.status==='complete') {
                 const rres=await fetch(`${API}/results/${state.jobId}`);

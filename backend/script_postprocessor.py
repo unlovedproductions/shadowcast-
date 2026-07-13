@@ -19,6 +19,15 @@ def _as_list(value):
     return []
 
 
+def _clean_comparison_value(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.lower() in {"n/a", "na", "none", "unknown", "tbd", "varies", "comparable"}:
+        return ""
+    return text
+
+
 def _normalize_segment(seg: dict) -> dict:
     style = seg.get("text_style", "")
     if style in TEXT_STYLE_ALIASES:
@@ -86,10 +95,11 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
 
     product_name = product_info.get("product_name", "Our Pick")
     competitors = _as_list(product_info.get("competitors"))
-    competitor = competitors[0] if competitors else "Top Alternative"
-    features = _as_list(product_info.get("key_features"))
-    price = product_info.get("price", "N/A")
-    price_notes = product_info.get("price_comparison", "")
+    competitor = _clean_comparison_value(competitors[0]) if competitors else ""
+    if not competitor:
+        return
+    price = _clean_comparison_value(product_info.get("price", ""))
+    price_notes = _clean_comparison_value(product_info.get("price_comparison", ""))
 
     segments = _target_segments(script)
     if not segments:
@@ -110,11 +120,20 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
     sid += 1
 
     spec_pairs = []
-    if price_notes:
-        spec_pairs.append(("Price / Value", price, "See competitor", "a"))
-    spec_pairs.append(("Price", price, "Varies", "a"))
-    for idx, feature in enumerate(features[:2]):
-        spec_pairs.append((f"Feature {idx + 1}", feature, "Comparable", "a"))
+    if price and price_notes:
+        spec_pairs.append(("Price / Value", price, price_notes, "none"))
+
+    for row in product_info.get("comparison_specs", []) or []:
+        if not isinstance(row, dict):
+            continue
+        spec_name = _clean_comparison_value(row.get("spec_name") or row.get("name"))
+        value_a = _clean_comparison_value(row.get("value_a"))
+        value_b = _clean_comparison_value(row.get("value_b"))
+        winner = str(row.get("winner", "none")).strip().lower()
+        if winner not in {"a", "b", "none"}:
+            winner = "none"
+        if spec_name and value_a and value_b:
+            spec_pairs.append((spec_name, value_a, value_b, winner))
 
     for spec_name, value_a, value_b, winner in spec_pairs[:3]:
         injected.append(
@@ -132,34 +151,40 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
         )
         sid += 1
 
-    injected.append(
-        _layout_segment(
-            sid,
-            2.5,
-            "scorecard",
-            product_a=product_name,
-            product_b=competitor,
-            scores=[
-                {"category": "Value", "winner": "a"},
-                {"category": "Features", "winner": "a"},
-                {"category": "Reviews", "winner": "b"},
-            ],
-            text="Final Scorecard",
-            text_style="scorecard",
+    winners = [winner for _, _, _, winner in spec_pairs if winner in {"a", "b"}]
+    if winners:
+        score_rows = [
+            {"category": f"Round {idx + 1}", "winner": winner}
+            for idx, winner in enumerate(winners[:3])
+        ]
+        injected.append(
+            _layout_segment(
+                sid,
+                2.5,
+                "scorecard",
+                product_a=product_name,
+                product_b=competitor,
+                scores=score_rows,
+                text="Final Scorecard",
+                text_style="scorecard",
+            )
         )
-    )
-    sid += 1
+        sid += 1
 
-    injected.append(
-        _layout_segment(
-            sid,
-            2.5,
-            "winner_reveal",
-            winner_name=product_name,
-            text=f"Winner: {product_name}",
-            text_style="verdict",
-        )
-    )
+        a_wins = winners.count("a")
+        b_wins = winners.count("b")
+        if a_wins != b_wins:
+            winner_name = product_name if a_wins > b_wins else competitor
+            injected.append(
+                _layout_segment(
+                    sid,
+                    2.5,
+                    "winner_reveal",
+                    winner_name=winner_name,
+                    text=f"Winner: {winner_name}",
+                    text_style="verdict",
+                )
+            )
 
     insert_at = min(1, len(segments))
     segments[insert_at:insert_at] = injected
