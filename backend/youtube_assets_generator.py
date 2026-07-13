@@ -9,6 +9,33 @@ import os
 from llm_config import get_config, parse_llm_json
 
 
+def _collect_script_context(script: dict) -> str:
+    parts = []
+    if "chapters" in script:
+        for chapter in script.get("chapters", []):
+            chapter_name = str(chapter.get("chapter_name", "")).strip()
+            if chapter_name:
+                parts.append(f"[{chapter_name}]")
+            for seg in chapter.get("segments", []):
+                text = str(seg.get("text", "")).strip()
+                if text:
+                    parts.append(text)
+    else:
+        for seg in script.get("segments", []):
+            text = str(seg.get("text", "")).strip()
+            if text:
+                parts.append(text)
+    return " | ".join(parts)
+
+
+def _fit_script_context(context: str, max_chars: int = 3600) -> str:
+    if len(context) <= max_chars:
+        return context
+    head = max_chars // 2
+    tail = max_chars - head
+    return f"{context[:head]} | ... | {context[-tail:]}"
+
+
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
     cfg = get_config()
     client = cfg.get_client()
@@ -17,12 +44,7 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
     content_style = script.get("content_style", "honest_review")
     title_suggestion = script.get("title_suggestion", "")
 
-    if "chapters" in script:
-        all_text = " | ".join(
-            seg.get("text", "") for ch in script.get("chapters", []) for seg in ch.get("segments", [])[:5]
-        )
-    else:
-        all_text = " | ".join(seg.get("text", "") for seg in script.get("segments", [])[:8])
+    all_text = _fit_script_context(_collect_script_context(script))
 
     format_label = "YouTube Shorts (vertical, short-form)" if video_format == "short_form" else "YouTube (landscape, long-form)"
     affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
@@ -46,7 +68,7 @@ PRODUCT INFORMATION:
 - Series Name: {series_name}
 
 VIDEO: {format_label} | Hook: {hook_type} | Style: {content_style} | Title: {title_suggestion}
-Script Preview: {all_text[:400]}
+Script Context: {all_text}
 
 BUYER-FOCUSED APPROACH:
 - Titles should help shoppers decide, not hype affiliate earnings
