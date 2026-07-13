@@ -28,6 +28,17 @@ def _clean_comparison_value(value) -> str:
     return text
 
 
+def _clean_competitors(product_info: dict, limit: int = None) -> list:
+    cleaned = []
+    for comp in _as_list(product_info.get("competitors")):
+        cc = _clean_comparison_value(comp)
+        if cc:
+            cleaned.append(cc)
+    if limit is not None:
+        return cleaned[:limit]
+    return cleaned
+
+
 def _normalize_segment(seg: dict) -> dict:
     style = seg.get("text_style", "")
     if style in TEXT_STYLE_ALIASES:
@@ -192,7 +203,9 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
 
 def _inject_elimination(script: dict, product_info: dict) -> None:
     product_name = product_info.get("product_name", "Our Pick")
-    competitors = _as_list(product_info.get("competitors")) or ["Overhyped Option", "Overpriced Pick"]
+    competitors = _clean_competitors(product_info, limit=2)
+    if not competitors:
+        return
 
     for segments in _iter_segment_lists(script):
         for seg in segments:
@@ -238,14 +251,14 @@ def _inject_budget_challenge(script: dict, product_info: dict) -> None:
         return
 
     product_name = product_info.get("product_name", "Our Pick")
-    price = product_info.get("price", "N/A")
-    competitors = _as_list(product_info.get("competitors"))
+    price = _clean_comparison_value(product_info.get("price")) or "Check current listing"
+    competitors = _clean_competitors(product_info, limit=3)
+    if not competitors:
+        return
 
     price_products = [{"name": product_name, "price": price, "highlight": True}]
-    for comp in competitors[:3]:
-        price_products.append({"name": comp, "price": "Budget option", "highlight": False})
-    if len(price_products) < 2:
-        price_products.append({"name": "Generic Alternative", "price": "Lower", "highlight": False})
+    for comp in competitors:
+        price_products.append({"name": comp, "price": "Check current listing", "highlight": False})
 
     segments = _target_segments(script)
     if not segments:
@@ -279,6 +292,56 @@ def _ensure_verdict_styling(script: dict) -> None:
                 seg["text_style"] = "verdict"
 
 
+def _ensure_honest_review_balance(script: dict, product_info: dict) -> None:
+    has_pro = False
+    has_con = False
+    con_re = re.compile(r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for)\b")
+
+    for segments in _iter_segment_lists(script):
+        for seg in segments:
+            style = str(seg.get("text_style", "")).strip().lower()
+            text = str(seg.get("text", "")).strip().lower()
+            if style in {"pros", "pro_point"}:
+                has_pro = True
+            if style in {"cons", "con_point", "elimination"} or con_re.search(text):
+                has_con = True
+            if has_pro and has_con:
+                return
+
+    segments = _target_segments(script)
+    if not segments:
+        script.setdefault("segments", [])
+        segments = script["segments"]
+
+    sid = _next_segment_id(script)
+    product_name = product_info.get("product_name", "This product")
+
+    if not has_pro:
+        segments.append(
+            {
+                "segment_id": sid,
+                "duration": 2.4,
+                "text": f"Based on available specs and buyer feedback, {product_name} shows practical strengths for the right use case.",
+                "text_style": "pros",
+                "animation": "fade_in",
+                "transition_to_next": "fade",
+            }
+        )
+        sid += 1
+
+    if not has_con:
+        segments.append(
+            {
+                "segment_id": sid,
+                "duration": 2.6,
+                "text": "Limitations: fit and expectations vary by use case, so check recent buyer feedback before purchasing.",
+                "text_style": "cons",
+                "animation": "fade_in",
+                "transition_to_next": "fade",
+            }
+        )
+
+
 def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     """Inject layout segments and fix text_style aliases after LLM generation."""
     enriched = copy.deepcopy(script)
@@ -296,5 +359,7 @@ def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
         _inject_budget_challenge(enriched, product_info)
     elif style == "worth_it_or_waste":
         _ensure_verdict_styling(enriched)
+    elif style == "honest_review":
+        _ensure_honest_review_balance(enriched, product_info)
 
     return enriched

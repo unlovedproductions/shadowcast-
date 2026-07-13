@@ -6,7 +6,20 @@ engagement, and affiliate conversions.
 
 import json
 import os
+import re
 from llm_config import get_config, parse_llm_json
+
+
+def _iter_script_segments(script: dict):
+    if "chapters" in script:
+        for chapter in script.get("chapters", []):
+            for seg in chapter.get("segments", []):
+                if isinstance(seg, dict):
+                    yield seg
+    else:
+        for seg in script.get("segments", []):
+            if isinstance(seg, dict):
+                yield seg
 
 
 def _collect_script_context(script: dict) -> str:
@@ -36,6 +49,48 @@ def _fit_script_context(context: str, max_chars: int = 3600) -> str:
     return f"{context[:head]} | ... | {context[-tail:]}"
 
 
+def _extract_signal_lines(script: dict, max_each: int = 4) -> dict:
+    cons = []
+    ctas = []
+    verdicts = []
+    con_re = re.compile(r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for|avoid)\b", re.I)
+    cta_re = re.compile(r"\b(link|description|check (the )?(price|details)|availability|fit for you|if this sounds)\b", re.I)
+    verdict_re = re.compile(r"\b(verdict|worth it|waste|bottom line|winner)\b", re.I)
+
+    for seg in _iter_script_segments(script):
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        style = str(seg.get("text_style", "")).strip().lower()
+        lowered = text.lower()
+
+        if style in {"cons", "con_point", "elimination"} or con_re.search(lowered):
+            cons.append(text)
+        if cta_re.search(lowered):
+            ctas.append(text)
+        if style in {"verdict", "scorecard"} or verdict_re.search(lowered):
+            verdicts.append(text)
+
+    def _dedupe_limit(lines):
+        seen = set()
+        out = []
+        for line in lines:
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(line)
+            if len(out) >= max_each:
+                break
+        return out
+
+    return {
+        "cons": _dedupe_limit(cons),
+        "ctas": _dedupe_limit(ctas),
+        "verdicts": _dedupe_limit(verdicts),
+    }
+
+
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
     cfg = get_config()
     client = cfg.get_client()
@@ -45,6 +100,10 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
     title_suggestion = script.get("title_suggestion", "")
 
     all_text = _fit_script_context(_collect_script_context(script))
+    signals = _extract_signal_lines(script)
+    cons_lines = _fit_script_context(" | ".join(signals["cons"]), max_chars=900) if signals["cons"] else "N/A"
+    cta_lines = _fit_script_context(" | ".join(signals["ctas"]), max_chars=900) if signals["ctas"] else "N/A"
+    verdict_lines = _fit_script_context(" | ".join(signals["verdicts"]), max_chars=900) if signals["verdicts"] else "N/A"
 
     format_label = "YouTube Shorts (vertical, short-form)" if video_format == "short_form" else "YouTube (landscape, long-form)"
     affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
@@ -69,6 +128,10 @@ PRODUCT INFORMATION:
 
 VIDEO: {format_label} | Hook: {hook_type} | Style: {content_style} | Title: {title_suggestion}
 Script Context: {all_text}
+Buyer Signal Lines:
+- Cons / Limitations: {cons_lines}
+- CTA Guidance: {cta_lines}
+- Conclusion / Verdict: {verdict_lines}
 
 BUYER-FOCUSED APPROACH:
 - Titles should help shoppers decide, not hype affiliate earnings

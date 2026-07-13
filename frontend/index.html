@@ -324,6 +324,7 @@
         if (state.navPage === 'generate') {
             if (state.page === 'form') html += renderForm();
             else if (state.page === 'progress') html += renderProgress();
+            else if (state.page === 'error') html += renderGenerationError();
             else html += renderResults();
         } else if (state.navPage === 'analytics') {
             html += renderAnalyticsPage();
@@ -649,6 +650,7 @@
 
     function renderProgress() {
         const pct = Number.isFinite(state.progress) ? state.progress : 0;
+        const phase = getProgressPhase(state.currentStep, state.jobStatus);
         const scriptIssueBlock = state.scriptErrors.length
             ? `<div style="color:var(--red);margin-top:12px;font-size:13px;">
                 <strong>Script Errors:</strong>
@@ -667,9 +669,54 @@
             <div class="spinner"></div>
             <div class="progress-pct">${pct}%</div>
             <div class="progress-bar-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Phase: <strong style="color:var(--pink);">${esc(phase)}</strong></div>
+            ${renderProgressPhaseTrail(phase)}
             <div class="progress-text">${esc(state.currentStep)}</div>
             ${scriptIssueBlock}
             ${warningBlock}
+        </div>`;
+    }
+
+    function getProgressPhase(step, status='') {
+        if ((status || '').toLowerCase() === 'error') return 'Error';
+        const s = String(step || '').toLowerCase();
+        if (s.includes('script')) return 'Script';
+        if (s.includes('render') || s.includes('video')) return 'Render';
+        if (s.includes('youtube package') || s.includes('yt assets') || s.includes('package')) return 'Package';
+        if (s.includes('thumbnail') || s.includes('done') || s.includes('final')) return 'Finalize';
+        return 'Starting';
+    }
+
+    function renderProgressPhaseTrail(activePhase) {
+        const phases = ['Script', 'Render', 'Package', 'Finalize'];
+        return `<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            ${phases.map((phase) => {
+                const isActive = phase === activePhase;
+                const style = isActive
+                    ? 'background:rgba(255,45,149,.18);border-color:var(--pink);color:var(--pink);'
+                    : 'background:var(--bg);border-color:#2a2a2a;color:var(--text2);';
+                return `<span style="font-size:11px;padding:4px 9px;border:1px solid;border-radius:999px;${style}">${phase}</span>`;
+            }).join('')}
+        </div>`;
+    }
+
+    function renderGenerationError() {
+        const phase = getProgressPhase(state.currentStep, 'error');
+        const details = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors];
+        const detailBlock = details.length
+            ? details.map((err) => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')
+            : '<div style="margin-top:6px;">No additional details provided.</div>';
+        return `<div class="card" style="border-color:var(--red);">
+            <h2 style="color:var(--red);justify-content:center;">Generation Stopped</h2>
+            <p style="color:var(--text2);font-size:14px;text-align:center;">The run hit an issue during <strong>${esc(phase)}</strong>.</p>
+            <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
+                <div><strong>Current step:</strong> ${esc(state.currentStep || 'Unknown')}</div>
+                ${detailBlock}
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;">
+                <button class="btn-primary" onclick="retryStatusPoll()">Retry Status</button>
+                <button class="settings-btn" onclick="resetToForm()">Back to Generator</button>
+            </div>
         </div>`;
     }
 
@@ -1713,7 +1760,7 @@
                 state.videoWarnings=split.videoWarnings;
                 state.otherErrors=split.otherErrors;
                 state.progress=Number.isFinite(state.progress)?state.progress:0;
-                state.page='results'; render(); return;
+                state.page='error'; render(); return;
             }
             state.progress=Number.isFinite(data.progress)?data.progress:(state.progress||0);
             state.currentStep=data.current_step||state.currentStep||'';
@@ -1737,9 +1784,21 @@
                 state.activeFormat=state.selectedFormats[0];
                 state.page='results'; render(); return;
             }
-            if (data.status==='error') { state.page='results'; render(); return; }
+            if (data.status==='error') { state.page='error'; render(); return; }
             render(); setTimeout(pollStatus,2000);
         } catch(e) { setTimeout(pollStatus,3000); }
+    }
+
+    function retryStatusPoll() {
+        if (!state.jobId) {
+            resetToForm();
+            return;
+        }
+        state.page = 'progress';
+        state.jobStatus = 'running';
+        state.currentStep = state.currentStep || 'Retrying status...';
+        render();
+        pollStatus();
     }
 
     function attachEvents() {

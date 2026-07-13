@@ -73,6 +73,13 @@ from kinetic_effects import (
 # ── Paths ──────────────────────────────────────────────────────────────
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+_VALID_VIDEO_PRESETS = {
+    "ultrafast", "superfast", "veryfast", "faster", "fast",
+    "medium", "slow", "slower", "veryslow",
+}
+VIDEO_RENDER_PRESET = os.getenv("SHADOWCAST_VIDEO_PRESET", "medium").strip().lower()
+if VIDEO_RENDER_PRESET not in _VALID_VIDEO_PRESETS:
+    VIDEO_RENDER_PRESET = "medium"
 
 FONT_BOLD = os.path.join(ASSETS_DIR, "Montserrat-Bold.ttf")
 FONT_EXTRABOLD = os.path.join(ASSETS_DIR, "Montserrat-ExtraBold.ttf")
@@ -707,7 +714,7 @@ def render_short_form_video(
         fps=FPS,
         codec="libx264",
         audio=False,
-        preset="ultrafast",
+        preset=VIDEO_RENDER_PRESET,
         threads=4,
         logger=None,
     )
@@ -975,7 +982,7 @@ def render_long_form_video(
             fps=FPS,
             codec="libx264",
             audio=False,
-            preset="ultrafast",
+            preset=VIDEO_RENDER_PRESET,
             threads=4,
             logger=None,
         )
