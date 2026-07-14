@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import shutil
 import time
 import uuid
 import threading
@@ -22,6 +23,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 import llm_config
 from amazon_scraper import scrape_amazon_product
@@ -37,7 +40,7 @@ from content_styles import (
 )
 from script_postprocessor import enrich_script
 from apf_import import extract_apf_product_payloads, normalize_apf_payload
-from video_renderer import render_short_form_video, render_long_form_video
+from video_renderer import render_short_form_video, render_long_form_video, resolve_video_preset
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
@@ -346,6 +349,7 @@ class GenerateRequest(BaseModel):
     use_tts: bool = False
     tts_provider: str = "auto"
     tts_voice: Optional[str] = None
+    video_preset: str = "medium"
 
 
 class BatchGenerateRequest(BaseModel):
@@ -358,6 +362,7 @@ class BatchGenerateRequest(BaseModel):
     use_tts: bool = False
     tts_provider: str = "auto"
     tts_voice: Optional[str] = None
+    video_preset: str = "medium"
 
 
 # ── CSV Parsing ───────────────────────────────────────────────────────
@@ -418,7 +423,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         audio_mood: str = "auto",
                         use_tts: bool = False,
                         tts_provider: str = "auto",
-                        tts_voice: Optional[str] = None):
+                        tts_voice: Optional[str] = None,
+                        video_preset: str = "medium"):
     job = jobs[job_id]
     slug = slugify(product["product_name"])
     step = step_offset
@@ -428,6 +434,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     product["content_style"] = effective_style
 
     mood_arg = None if audio_mood in (None, "", "auto") else audio_mood
+    render_preset = resolve_video_preset(video_preset)
 
     all_scripts = {}
     all_yt_packages = {}
@@ -503,6 +510,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         use_tts=use_tts,
                         tts_provider=tts_provider,
                         tts_voice=tts_voice,
+                        video_preset=render_preset,
                     )
                     if fmt == "short_form":
                         render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
@@ -646,6 +654,7 @@ def _run_generation(job_id: str):
             use_tts=job.get("use_tts", False),
             tts_provider=job.get("tts_provider", "auto"),
             tts_voice=job.get("tts_voice"),
+            video_preset=job.get("video_preset", "medium"),
         )
         job["results"] = result.get("hooks", {})
         job["status"] = "complete"
@@ -691,6 +700,7 @@ def _run_batch_generation(job_id: str):
                 use_tts=job.get("use_tts", False),
                 tts_provider=job.get("tts_provider", "auto"),
                 tts_voice=job.get("tts_voice"),
+                video_preset=job.get("video_preset", "medium"),
             )
             all_product_results.append(result)
             job["product_results"] = all_product_results
@@ -725,6 +735,70 @@ def _run_batch_generation(job_id: str):
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "app": "ShadowCast", "version": "4.0"}
+
+
+def _check_llm_reachable() -> tuple[bool, str]:
+    cfg = llm_config.get_config()
+    base_url = (cfg.base_url or "").rstrip("/")
+    if not base_url:
+        return False, "LLM base URL is not configured."
+    headers = {}
+    if cfg.api_key:
+        headers["Authorization"] = f"Bearer {cfg.api_key}"
+    try:
+        req = urllib_request.Request(f"{base_url}/models", headers=headers)
+        with urllib_request.urlopen(req, timeout=4) as resp:
+            if resp.status == 200:
+                return True, ""
+    except urllib_error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return False, f"LLM auth failed ({exc.code}). Check API key or provider settings."
+        return False, f"LLM HTTP {exc.code} at {base_url}."
+    except Exception as exc:
+        return False, f"LLM unreachable at {base_url}: {exc}"
+    return False, f"LLM unreachable at {base_url}."
+
+
+@app.get("/api/readiness")
+def get_readiness():
+    blockers: List[str] = []
+    warnings: List[str] = []
+
+    ffmpeg_ok = shutil.which("ffmpeg") is not None
+    if not ffmpeg_ok:
+        blockers.append("ffmpeg is not installed or not on PATH.")
+
+    llm_ok, llm_detail = _check_llm_reachable()
+    cfg = llm_config.get_config()
+    if not llm_ok:
+        blockers.append(llm_detail or "LLM provider is unreachable.")
+
+    providers = get_tts_providers()
+    best_tts = get_best_tts()
+    quality_tts = best_tts in ("kokoro", "openai", "piper")
+    if not quality_tts:
+        warnings.append(
+            "Only basic Google TTS is available. Install Kokoro/Piper or configure OpenAI TTS for better voice quality."
+        )
+
+    return {
+        "ready": len(blockers) == 0,
+        "blockers": blockers,
+        "warnings": warnings,
+        "checks": {
+            "ffmpeg": ffmpeg_ok,
+            "llm": llm_ok,
+            "llm_provider": cfg.provider,
+            "llm_model": cfg.model,
+            "tts_best": best_tts,
+            "tts_quality": quality_tts,
+            "tts_providers": {
+                key: bool(info.get("available"))
+                for key, info in providers.items()
+            },
+        },
+        "default_video_preset": resolve_video_preset(None),
+    }
 
 
 @app.get("/api/providers")
@@ -857,6 +931,7 @@ def start_generation(req: GenerateRequest):
         "use_tts": req.use_tts,
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
+        "video_preset": resolve_video_preset(req.video_preset),
         "results": {}, "errors": [],
         "created_at": time.time(),
     }
@@ -994,6 +1069,7 @@ def batch_generate(req: BatchGenerateRequest):
         "use_tts": req.use_tts,
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
+        "video_preset": resolve_video_preset(req.video_preset),
         "product_results": [],
         "errors": [], "created_at": time.time(),
     }
