@@ -217,6 +217,53 @@ def _split_job_messages(messages: list) -> tuple[list, list, list]:
     return script_errors, video_warnings, other_errors
 
 
+def _count_hook_outputs(hooks: dict) -> tuple[int, int]:
+    videos = 0
+    packages = 0
+    for hook_data in (hooks or {}).values():
+        if not isinstance(hook_data, dict):
+            continue
+        videos += len(hook_data.get("videos") or {})
+        packages += len(hook_data.get("youtube_assets") or {})
+    return videos, packages
+
+
+def _summarize_job_output(job: dict) -> dict:
+    hook_types = job.get("hook_types") or []
+    formats = job.get("formats") or []
+    expected_per_product = len(hook_types) * len(formats)
+
+    if job.get("mode") == "batch":
+        products = job.get("product_results") or []
+        total_expected = expected_per_product * max(len(products), 1)
+        videos = 0
+        packages = 0
+        for product_result in products:
+            v, p = _count_hook_outputs(product_result.get("hooks") or {})
+            videos += v
+            packages += p
+    else:
+        total_expected = expected_per_product
+        videos, packages = _count_hook_outputs(job.get("results") or {})
+
+    errors = job.get("errors") or []
+    script_errors, video_warnings, other_errors = _split_job_messages(errors)
+    warning_count = len(script_errors) + len(video_warnings) + len(other_errors)
+
+    return {
+        "videos_ready": videos,
+        "videos_expected": total_expected,
+        "packages_ready": packages,
+        "packages_expected": total_expected,
+        "warning_count": warning_count,
+        "is_partial": (
+            videos < total_expected
+            or packages < total_expected
+            or warning_count > 0
+        ),
+    }
+
+
 def _generate_scripts_with_retry(
     product: dict,
     hook_type: str,
@@ -1130,6 +1177,7 @@ def get_results(job_id: str):
         resp["hook_types"] = job.get("hook_types", [])
         resp["formats"] = job.get("formats", [])
         resp["results"] = job.get("results", {})
+    resp["summary"] = _summarize_job_output(job)
     return resp
 
 
