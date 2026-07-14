@@ -81,6 +81,13 @@ VIDEO_RENDER_PRESET = os.getenv("SHADOWCAST_VIDEO_PRESET", "medium").strip().low
 if VIDEO_RENDER_PRESET not in _VALID_VIDEO_PRESETS:
     VIDEO_RENDER_PRESET = "medium"
 
+
+def resolve_video_preset(preset: str | None = None) -> str:
+    candidate = (preset or VIDEO_RENDER_PRESET or "medium").strip().lower()
+    if candidate not in _VALID_VIDEO_PRESETS:
+        return VIDEO_RENDER_PRESET
+    return candidate
+
 FONT_BOLD = os.path.join(ASSETS_DIR, "Montserrat-Bold.ttf")
 FONT_EXTRABOLD = os.path.join(ASSETS_DIR, "Montserrat-ExtraBold.ttf")
 FONT_BLACK = os.path.join(ASSETS_DIR, "Montserrat-Black.ttf")
@@ -606,11 +613,13 @@ def render_short_form_video(
     audio_mood: str | None = None,
     tts_provider: str = "auto",
     tts_voice: str | None = None,
+    video_preset: str | None = None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
     if competitors is None:
         competitors = []
     content_style = normalize_content_style(content_style)
+    render_preset = resolve_video_preset(video_preset)
     
     WIDTH, HEIGHT = 1080, 1920  # 9:16 vertical
     FPS = 30
@@ -714,7 +723,7 @@ def render_short_form_video(
         fps=FPS,
         codec="libx264",
         audio=False,
-        preset=VIDEO_RENDER_PRESET,
+        preset=render_preset,
         threads=4,
         logger=None,
     )
@@ -807,10 +816,12 @@ def render_long_form_video(
     audio_mood: str | None = None,
     tts_provider: str = "auto",
     tts_voice: str | None = None,
+    video_preset: str | None = None,
 ) -> str:
     if competitors is None:
         competitors = []
     content_style = normalize_content_style(content_style)
+    render_preset = resolve_video_preset(video_preset)
     # UNLOVED_LONG_FORM_FONT_SCALE_WRAP
     with _unloved_scaled_long_form_fonts():
         """Render a long-form (YouTube) video from script JSON."""
@@ -982,7 +993,7 @@ def render_long_form_video(
             fps=FPS,
             codec="libx264",
             audio=False,
-            preset=VIDEO_RENDER_PRESET,
+            preset=render_preset,
             threads=4,
             logger=None,
         )

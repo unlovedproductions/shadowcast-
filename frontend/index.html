@@ -263,9 +263,12 @@
         audioMood: 'chill',
         audioEnabled: true,
         useTts: false,
+        useTtsUserSet: false,
         ttsProvider: 'auto',
         ttsVoice: '',
         ttsProviders: null,
+        videoPreset: 'medium',
+        readiness: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
         results: null, batchResults: null, errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
@@ -358,7 +361,8 @@
         const formatCount = Math.max(state.selectedFormats.length, 1);
         const totalOutputs = productCount * hookCount * formatCount;
         const perOutputMinutes = state.useTts ? 1.8 : state.audioEnabled ? 1.5 : 1.2;
-        const etaMinutes = Math.max(1, Math.round(totalOutputs * perOutputMinutes));
+        const presetFactor = state.videoPreset === 'best' ? 1.35 : state.videoPreset === 'fast' ? 0.85 : 1;
+        const etaMinutes = Math.max(1, Math.round(totalOutputs * perOutputMinutes * presetFactor));
 
         const hookNames = hooks
             .filter((h) => state.selectedHooks.includes(h.id))
@@ -368,8 +372,31 @@
 
         return `<p style="font-size:12px;color:var(--text2);margin-top:8px;">
             Scope: ${productCount} product${productCount === 1 ? "" : "s"} × ${hookCount} hook${hookCount === 1 ? "" : "s"} × ${formatCount} format${formatCount === 1 ? "" : "s"} = <strong>${totalOutputs}</strong> outputs (est. ~${etaMinutes} min).<br>
-            Hooks: ${esc(hookPreview || "none")} • Formats: ${esc(formatNames.join(", ") || "none")}
+            Hooks: ${esc(hookPreview || "none")} • Formats: ${esc(formatNames.join(", ") || "none")}${!state.useTts && !state.audioEnabled ? '<br><span style="color:var(--accent);">Warning: no voiceover or background audio selected.</span>' : ''}
         </p>`;
+    }
+
+    function mapVideoPreset(uiPreset) {
+        if (uiPreset === 'fast') return 'veryfast';
+        if (uiPreset === 'best') return 'slow';
+        return 'medium';
+    }
+
+    function renderReadinessBanner() {
+        const r = state.readiness;
+        if (!r) return '';
+        let html = '';
+        if (r.blockers && r.blockers.length) {
+            html += `<div style="font-size:12px;color:var(--red);margin-top:8px;border:1px solid var(--red);border-radius:8px;padding:10px;">
+                <strong>Preflight blocked:</strong><br>${r.blockers.map((b) => esc(b)).join('<br>')}
+            </div>`;
+        } else if (r.ready) {
+            html += `<p style="font-size:12px;color:#6f6;margin-top:8px;">Preflight OK — LLM, ffmpeg, and TTS checks passed.</p>`;
+        }
+        if (r.warnings && r.warnings.length) {
+            html += `<p style="font-size:12px;color:var(--accent);margin-top:8px;">${r.warnings.map((w) => esc(w)).join(' ')}</p>`;
+        }
+        return html;
     }
 
     function renderForm() {
@@ -389,6 +416,7 @@
                 ? 'Generate ' + state.batchProducts.length + ' Products'
                 : 'Generate Videos + YouTube Package'}
         </button>
+        ${renderReadinessBanner()}
         ${renderGenerationScopePreview()}`;
     }
 
@@ -554,9 +582,17 @@
                     <span style="font-size:13px;">Enable Background Music & SFX</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-                    <input type="checkbox" ${state.useTts?'checked':''} onchange="state.useTts=this.checked;if(this.checked)loadTtsProviders();render()">
+                    <input type="checkbox" ${state.useTts?'checked':''} onchange="state.useTtsUserSet=true;state.useTts=this.checked;if(this.checked)loadTtsProviders();render()">
                     <span style="font-size:13px;">Enable Voiceover (TTS)</span>
                 </label>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;max-width:320px;">
+                <label>Export Quality</label>
+                <select class="input-field" onchange="state.videoPreset=this.value;render()">
+                    <option value="fast" ${state.videoPreset==='fast'?'selected':''}>Fast (lower quality, quicker)</option>
+                    <option value="medium" ${state.videoPreset==='medium'?'selected':''}>Balanced (recommended)</option>
+                    <option value="best" ${state.videoPreset==='best'?'selected':''}>Best quality (slower)</option>
+                </select>
             </div>
             ${state.audioEnabled ? `
             <div class="format-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px;">
@@ -610,18 +646,75 @@
         return voices.map(v => `<option value="${esc(v)}" ${state.ttsVoice===v?'selected':''}>${esc(v)}</option>`).join('');
     }
 
-    async function loadTtsProviders() {
-        if (state.ttsProviders) return;
+    async function loadTtsProviders(force=false) {
+        if (state.ttsProviders && !force) {
+            applySmartTtsDefault();
+            return;
+        }
         try {
             const res = await fetch(`${API}/tts-providers`);
             state.ttsProviders = await res.json();
             if (!state.ttsProvider || state.ttsProvider === 'auto') {
                 state.ttsProvider = 'auto';
             }
+            applySmartTtsDefault();
             render();
         } catch (e) {
             console.warn('TTS providers unavailable', e);
         }
+    }
+
+    function applySmartTtsDefault() {
+        if (state.useTtsUserSet || !state.ttsProviders) return;
+        const best = state.ttsProviders.best || 'gtts';
+        if (['kokoro', 'openai', 'piper'].includes(best)) {
+            state.useTts = true;
+        }
+    }
+
+    async function loadReadiness() {
+        try {
+            const res = await fetch(`${API}/readiness`);
+            state.readiness = await res.json();
+        } catch (e) {
+            state.readiness = {
+                ready: false,
+                blockers: ['Could not reach backend readiness check.'],
+                warnings: [],
+            };
+        }
+    }
+
+    async function ensurePreflight() {
+        await loadReadiness();
+        const r = state.readiness || {};
+        if (r.blockers && r.blockers.length) {
+            showToast('Fix preflight blockers before generating.');
+            render();
+            return false;
+        }
+        if (!state.useTts && !state.audioEnabled) {
+            showToast('Enable voiceover or background audio — silent videos underperform.');
+            return false;
+        }
+        return true;
+    }
+
+    function getErrorRecoveryHints(phase) {
+        const hints = [];
+        if (phase === 'Script' || phase === 'Starting') {
+            hints.push('Confirm Ollama/LM Studio is running and the configured model is loaded.');
+            hints.push('Delete cached *_scripts.json for this product if a bad script keeps replaying.');
+        }
+        if (phase === 'Render') {
+            hints.push('Verify ffmpeg is installed (`ffmpeg -version`).');
+            hints.push('Try Export Quality = Fast if renders time out on long batches.');
+        }
+        if (phase === 'Package') {
+            hints.push('YouTube package generation uses the same LLM — recheck provider/model in Settings.');
+        }
+        hints.push('Use Retry Status if the server restarted mid-run; completed artifacts are skipped on rerun.');
+        return hints;
     }
 
     function splitJobMessages(messages) {
@@ -706,12 +799,19 @@
         const detailBlock = details.length
             ? details.map((err) => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')
             : '<div style="margin-top:6px;">No additional details provided.</div>';
+        const recoveryHints = getErrorRecoveryHints(phase)
+            .map((hint) => `<div style="margin-top:6px;">• ${esc(hint)}</div>`)
+            .join('');
         return `<div class="card" style="border-color:var(--red);">
             <h2 style="color:var(--red);justify-content:center;">Generation Stopped</h2>
             <p style="color:var(--text2);font-size:14px;text-align:center;">The run hit an issue during <strong>${esc(phase)}</strong>.</p>
             <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
                 <div><strong>Current step:</strong> ${esc(state.currentStep || 'Unknown')}</div>
                 ${detailBlock}
+            </div>
+            <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
+                <div><strong>Recovery steps:</strong></div>
+                ${recoveryHints}
             </div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;">
                 <button class="btn-primary" onclick="retryStatusPoll()">Retry Status</button>
@@ -1695,6 +1795,7 @@
         if (!state.productName||!state.keyFeatures||!state.affiliateLink) {
             showToast('Please fill in Product Name, Key Features, and Affiliate Link'); return;
         }
+        if (!(await ensurePreflight())) return;
         const body = {
             product_info: {
                 product_name:state.productName, niche:state.niche||'General',
@@ -1717,6 +1818,7 @@
             audio_enabled:state.audioEnabled, audio_mood:state.audioMood,
             use_tts:state.useTts, tts_provider:state.ttsProvider,
             tts_voice:state.ttsVoice || null,
+            video_preset:mapVideoPreset(state.videoPreset),
         };
         try {
             const res=await fetch(`${API}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1729,6 +1831,7 @@
 
     async function startBatchGeneration() {
         if (!state.batchProducts.length) { showToast('Please upload products first'); return; }
+        if (!(await ensurePreflight())) return;
         if (state.batchProducts[state.activeBatchIdx]) {
             state.batchProducts[state.activeBatchIdx].content_style = state.contentStyle;
         }
@@ -1736,7 +1839,7 @@
             ...p,
             content_style: p.content_style || state.contentStyle,
         }));
-        const body = { products, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null };
+        const body = { products, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null, video_preset:mapVideoPreset(state.videoPreset) };
         try {
             const res=await fetch(`${API}/batch-generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             const data=await res.json();
@@ -1840,7 +1943,7 @@
                 custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any OpenAI-compatible API endpoint.'},
             };
         }
-        // Also fetch content styles from backend
+        await Promise.all([loadReadiness(), loadTtsProviders()]);
         try {
             const sres=await fetch(`${API}/content-styles`);
             const sdata=await sres.json();
