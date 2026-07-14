@@ -93,6 +93,7 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
     public_prefixes = (
         "/api/status/",
         "/api/results/",
+        "/api/retry-missing/",
         "/api/download/",
         "/api/files/",
         "/api/bg-",
@@ -261,6 +262,38 @@ def _summarize_job_output(job: dict) -> dict:
             or packages < total_expected
             or warning_count > 0
         ),
+    }
+
+
+def _trust_field_status(value: str, ai_fallback_hints: list) -> str:
+    text = (value or "").strip()
+    if not text:
+        return "missing"
+    lowered = text.lower()
+    for hint in ai_fallback_hints:
+        if hint.lower() in lowered:
+            return "ai_guidance"
+    return "provided"
+
+
+def _summarize_trust_inputs(product: dict) -> dict:
+    product = product or {}
+    competitors = product.get("competitors") or []
+    return {
+        "common_complaints": _trust_field_status(
+            product.get("common_complaints", ""),
+            ["research common complaints", "from amazon reviews and reddit"],
+        ),
+        "common_praises": _trust_field_status(
+            product.get("common_praises", ""),
+            ["research", "from reviews"],
+        ),
+        "who_not_for": _trust_field_status(
+            product.get("who_not_for", ""),
+            ["determine from specs", "who should not buy"],
+        ),
+        "competitors": "provided" if competitors else "missing",
+        "price_comparison": _trust_field_status(product.get("price_comparison", ""), []),
     }
 
 
@@ -1178,7 +1211,52 @@ def get_results(job_id: str):
         resp["formats"] = job.get("formats", [])
         resp["results"] = job.get("results", {})
     resp["summary"] = _summarize_job_output(job)
+    if job.get("mode") == "batch":
+        resp["trust_inputs"] = [
+            {
+                "product_name": product.get("product_name", ""),
+                "signals": _summarize_trust_inputs(product),
+            }
+            for product in job.get("products", [])
+        ]
+    else:
+        resp["trust_inputs"] = _summarize_trust_inputs(job.get("product_info") or {})
     return resp
+
+
+@app.post("/api/retry-missing/{job_id}")
+def retry_missing_outputs(job_id: str):
+    job = _load_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") == "running":
+        raise HTTPException(status_code=409, detail="Job is already running")
+
+    summary = _summarize_job_output(job)
+    if job.get("status") == "complete" and not summary.get("is_partial"):
+        return {
+            "job_id": job_id,
+            "status": "complete",
+            "message": "All expected outputs are already present.",
+            "summary": summary,
+        }
+
+    job["status"] = "running"
+    job["current_step"] = "Resuming missing outputs..."
+    job["progress"] = max(int(job.get("progress") or 0), 0)
+    _save_job(job_id)
+
+    if job.get("mode") == "batch":
+        _start_job_thread(job_id, _run_batch_generation)
+    else:
+        _start_job_thread(job_id, _run_generation)
+
+    return {
+        "job_id": job_id,
+        "status": "running",
+        "message": "Retry started. Existing artifacts will be skipped.",
+        "summary": summary,
+    }
 
 
 @app.on_event("startup")
