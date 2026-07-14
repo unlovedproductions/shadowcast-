@@ -271,7 +271,7 @@
         readiness: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
-        results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null,
+        results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null, trustInputs: null,
         errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
@@ -822,6 +822,7 @@
                 ${recoveryHints}
             </div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;">
+                <button class="btn-primary" onclick="retryMissingOutputs()">Retry Missing Outputs</button>
                 <button class="btn-primary" onclick="retryStatusPoll()">Retry Status</button>
                 <button class="settings-btn" onclick="resetToForm()">Back to Generator</button>
             </div>
@@ -893,15 +894,54 @@
                 <button class="btn-sm btn-copy" onclick="copyPostingKit('${escJs(affiliateLink)}')">Copy Full Posting Kit</button>
             </div>
         </div>`;
+        const retryBtn = partial
+            ? `<button class="btn-primary" style="width:auto;margin-top:12px;" onclick="retryMissingOutputs()">Retry Missing Outputs</button>`
+            : '';
         const batchZip = isBatch
             ? `<button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;margin-top:12px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>`
             : '';
         return `<div class="card" style="text-align:center;border-color:${borderColor};">
             <h2 style="color:${titleColor};justify-content:center;">${title}</h2>
             <p style="color:var(--text2);font-size:14px;">${esc(counts)}${partial ? ' — some outputs may need a rerun.' : ' — ready to publish.'}</p>
+            ${retryBtn}
             ${batchZip}
             ${checklist}
             ${issueBlock}
+        </div>`;
+    }
+
+    function trustSignalLabel(status) {
+        if (status === 'provided') return { text: 'Your input', color: '#6f6' };
+        if (status === 'ai_guidance') return { text: 'AI inferred', color: 'var(--accent)' };
+        return { text: 'Missing', color: 'var(--red)' };
+    }
+
+    function renderTrustSignalsCard(isBatch) {
+        const fields = [
+            { key: 'common_complaints', label: 'Complaints' },
+            { key: 'common_praises', label: 'Praises' },
+            { key: 'who_not_for', label: 'Who NOT to buy' },
+            { key: 'competitors', label: 'Competitors' },
+            { key: 'price_comparison', label: 'Price comparison' },
+        ];
+        let signals = state.trustInputs || {};
+        if (isBatch) {
+            const products = Array.isArray(state.trustInputs) ? state.trustInputs : [];
+            const active = products[state.activeProductIdx] || products[0] || {};
+            signals = active.signals || {};
+        }
+        if (!signals || !Object.keys(signals).length) return '';
+        const rows = fields.map(({ key, label }) => {
+            const meta = trustSignalLabel(signals[key] || 'missing');
+            return `<div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;">
+                <span>${label}</span>
+                <span style="color:${meta.color};font-weight:600;">${meta.text}</span>
+            </div>`;
+        }).join('');
+        return `<div class="card" style="border-color:#2a2a2a;">
+            <h2>Trust Input Signals</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:8px;">Shows whether this run used your research fields or AI fallbacks.</p>
+            ${rows}
         </div>`;
     }
 
@@ -915,6 +955,7 @@
         return `
         <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
         ${renderResultsSummary(false)}
+        ${renderTrustSignalsCard(false)}
         <div class="results-tabs">
             ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
         </div>
@@ -943,6 +984,7 @@
         <div class="results-tabs">
             ${state.batchResults.map((p,i)=>`<button class="tab-btn product-tab ${state.activeProductIdx===i?'active':''}" onclick="setProduct(${i})">${esc(p.product_name||'Product '+(i+1))}</button>`).join('')}
         </div></div>
+        ${renderTrustSignalsCard(true)}
 
         <div class="results-tabs">
             ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
@@ -1695,7 +1737,7 @@
     function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
     function toggleSettings() { state.showSettings=!state.showSettings; render(); }
     function resetToForm() {
-        state.page='form'; state.results=null; state.batchResults=null; state.resultsSummary=null; state.resultsProductInfo=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
+        state.page='form'; state.results=null; state.batchResults=null; state.resultsSummary=null; state.resultsProductInfo=null; state.trustInputs=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
         state.errors=[]; state.scriptErrors=[]; state.videoWarnings=[]; state.otherErrors=[];
         render();
     }
@@ -1950,6 +1992,7 @@
                 const rres=await fetch(`${API}/results/${state.jobId}`);
                 const rdata=await rres.json();
                 state.resultsSummary=rdata.summary||null;
+                state.trustInputs=rdata.trust_inputs||null;
                 if (state.jobMode==='batch') {
                     state.batchResults=rdata.product_results||[];
                     state.activeProductIdx=0; state.activeTab=null;
@@ -1966,6 +2009,36 @@
             if (data.status==='error') { state.page='error'; render(); return; }
             render(); setTimeout(pollStatus,2000);
         } catch(e) { setTimeout(pollStatus,3000); }
+    }
+
+    async function retryMissingOutputs() {
+        if (!state.jobId) {
+            showToast('No job to retry.');
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/retry-missing/${state.jobId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast((data && data.detail) ? String(data.detail) : 'Retry failed.');
+                return;
+            }
+            if (data.status === 'complete') {
+                showToast(data.message || 'Nothing missing to retry.');
+                return;
+            }
+            state.page = 'progress';
+            state.jobStatus = 'running';
+            state.currentStep = data.message || 'Resuming missing outputs...';
+            state.errors = [];
+            state.scriptErrors = [];
+            state.videoWarnings = [];
+            state.otherErrors = [];
+            render();
+            pollStatus();
+        } catch (e) {
+            showToast('Retry failed: ' + e.message);
+        }
     }
 
     function retryStatusPoll() {
