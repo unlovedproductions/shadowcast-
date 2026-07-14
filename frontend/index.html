@@ -271,7 +271,8 @@
         readiness: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
-        results: null, batchResults: null, errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
+        results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null,
+        errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
@@ -773,6 +774,13 @@
     function getProgressPhase(step, status='') {
         if ((status || '').toLowerCase() === 'error') return 'Error';
         const s = String(step || '').toLowerCase();
+        if (s.includes('starting batch') || s.includes('starting...')) return 'Starting';
+        if (s.includes('cached') || s.includes('using cached')) {
+            if (s.includes('script')) return 'Script';
+            if (s.includes('youtube') || s.includes('package')) return 'Package';
+            if (s.includes('video')) return 'Render';
+            if (s.includes('thumbnail')) return 'Finalize';
+        }
         if (s.includes('script')) return 'Script';
         if (s.includes('render') || s.includes('video')) return 'Render';
         if (s.includes('youtube package') || s.includes('yt assets') || s.includes('package')) return 'Package';
@@ -825,6 +833,78 @@
         return renderSingleResults();
     }
 
+    function buildPostingKit(ytAssets, affiliateLink) {
+        const parts = [];
+        if (ytAssets.seo_title) parts.push(`TITLE:\n${ytAssets.seo_title}`);
+        if (ytAssets.pinned_comment) parts.push(`\nPINNED COMMENT:\n${ytAssets.pinned_comment}`);
+        if (ytAssets.seo_description) parts.push(`\nDESCRIPTION:\n${ytAssets.seo_description}`);
+        if ((ytAssets.hashtags || []).length) parts.push(`\nHASHTAGS:\n${ytAssets.hashtags.join(' ')}`);
+        if (affiliateLink) parts.push(`\nAFFILIATE LINK:\n${affiliateLink}`);
+        return parts.join('\n').trim();
+    }
+
+    function copyPostingKit(affiliateLink) {
+        let ytAssets = {};
+        if (state.jobMode === 'batch') {
+            const pr = (state.batchResults || [])[state.activeProductIdx] || {};
+            const data = (pr.hooks || {})[state.activeTab] || {};
+            ytAssets = (data.youtube_assets || {})[state.activeFormat] || {};
+            if (!affiliateLink) affiliateLink = pr.affiliate_link || '';
+        } else {
+            const hookKeys = Object.keys(state.results || {});
+            const data = (state.results || {})[state.activeTab || hookKeys[0]] || {};
+            ytAssets = (data.youtube_assets || {})[state.activeFormat] || {};
+        }
+        const kit = buildPostingKit(ytAssets, affiliateLink);
+        if (!kit) {
+            showToast('No posting assets available for this tab.');
+            return;
+        }
+        copyText(kit);
+    }
+
+    function renderResultsSummary(isBatch) {
+        const s = state.resultsSummary || {};
+        const partial = !!s.is_partial;
+        const borderColor = partial ? 'var(--accent)' : 'var(--green)';
+        const titleColor = partial ? 'var(--accent)' : 'var(--green)';
+        const title = partial
+            ? (isBatch ? 'Batch Complete (Review Warnings)' : 'Generation Complete (Review Warnings)')
+            : (isBatch ? `Batch Complete — ${state.batchResults.length} Products` : 'Generation Complete');
+        const counts = `Videos ${s.videos_ready || 0}/${s.videos_expected || 0} • Packages ${s.packages_ready || 0}/${s.packages_expected || 0}`;
+        const issueLines = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors];
+        const issueBlock = issueLines.length
+            ? `<div style="font-size:13px;color:var(--text2);margin-top:12px;text-align:left;border-top:1px solid #2a2a2a;padding-top:10px;">
+                <strong style="color:var(--accent);">Issues logged during run:</strong>
+                ${issueLines.slice(0, 5).map((err) => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+                ${issueLines.length > 5 ? `<div style="margin-top:6px;color:var(--text2);">+ ${issueLines.length - 5} more</div>` : ''}
+              </div>`
+            : '';
+        const affiliateLink = (state.resultsProductInfo && state.resultsProductInfo.affiliate_link) || state.affiliateLink || '';
+        const checklist = `<div style="margin-top:12px;padding:12px;border:1px solid #2a2a2a;border-radius:10px;text-align:left;font-size:13px;color:var(--text2);">
+            <strong style="color:var(--pink);">Post-publish checklist</strong>
+            <div style="margin-top:8px;">1. Upload video and paste SEO title</div>
+            <div>2. Paste description with affiliate link above the fold</div>
+            <div>3. Pin the generated comment with your link</div>
+            <div>4. Reply early using the templates below</div>
+            ${affiliateLink ? `<div style="margin-top:10px;"><strong>Affiliate link:</strong> ${esc(affiliateLink)}</div>` : ''}
+            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+                ${affiliateLink ? `<button class="btn-sm btn-copy" onclick="copyText('${escJs(affiliateLink)}')">Copy Link</button>` : ''}
+                <button class="btn-sm btn-copy" onclick="copyPostingKit('${escJs(affiliateLink)}')">Copy Full Posting Kit</button>
+            </div>
+        </div>`;
+        const batchZip = isBatch
+            ? `<button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;margin-top:12px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>`
+            : '';
+        return `<div class="card" style="text-align:center;border-color:${borderColor};">
+            <h2 style="color:${titleColor};justify-content:center;">${title}</h2>
+            <p style="color:var(--text2);font-size:14px;">${esc(counts)}${partial ? ' — some outputs may need a rerun.' : ' — ready to publish.'}</p>
+            ${batchZip}
+            ${checklist}
+            ${issueBlock}
+        </div>`;
+    }
+
     function renderSingleResults() {
         if (!state.results) return '<div class="card">No results yet.</div>';
         const hookKeys = Object.keys(state.results);
@@ -834,10 +914,7 @@
 
         return `
         <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
-        <div class="card" style="text-align:center;border-color:var(--green);">
-            <h2 style="color:var(--green);justify-content:center;">Generation Complete!</h2>
-            <p style="color:var(--text2);font-size:14px;">Your videos and YouTube posting packages are ready.</p>
-        </div>
+        ${renderResultsSummary(false)}
         <div class="results-tabs">
             ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
         </div>
@@ -860,11 +937,7 @@
 
         return `
         <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
-        <div class="card" style="text-align:center;border-color:var(--green);">
-            <h2 style="color:var(--green);justify-content:center;">Batch Complete! ${state.batchResults.length} Products</h2>
-            <p style="color:var(--text2);font-size:14px;margin-bottom:12px;">All videos and YouTube posting packages are ready.</p>
-            <button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>
-        </div>
+        ${renderResultsSummary(true)}
 
         <div class="card"><h2>Select Product</h2>
         <div class="results-tabs">
@@ -1622,7 +1695,7 @@
     function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
     function toggleSettings() { state.showSettings=!state.showSettings; render(); }
     function resetToForm() {
-        state.page='form'; state.results=null; state.batchResults=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
+        state.page='form'; state.results=null; state.batchResults=null; state.resultsSummary=null; state.resultsProductInfo=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
         state.errors=[]; state.scriptErrors=[]; state.videoWarnings=[]; state.otherErrors=[];
         render();
     }
@@ -1876,12 +1949,15 @@
             if (data.status==='complete') {
                 const rres=await fetch(`${API}/results/${state.jobId}`);
                 const rdata=await rres.json();
+                state.resultsSummary=rdata.summary||null;
                 if (state.jobMode==='batch') {
                     state.batchResults=rdata.product_results||[];
                     state.activeProductIdx=0; state.activeTab=null;
                     state.selectedFormats=rdata.formats||state.selectedFormats;
+                    state.resultsProductInfo=null;
                 } else {
                     state.results=rdata.results;
+                    state.resultsProductInfo=rdata.product_info||null;
                     state.activeTab=Object.keys(state.results||{})[0]||null;
                 }
                 state.activeFormat=state.selectedFormats[0];
