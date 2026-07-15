@@ -52,10 +52,19 @@ class YouTubePublisher:
         service = self._get_service()
         from googleapiclient.http import MediaFileUpload
 
+        from posting_package_adapter import _sanitize_youtube_text, YOUTUBE_DESC_MAX_BYTES, YOUTUBE_TITLE_MAX
+
+        title = _sanitize_youtube_text(payload.get("title", "Video"))
+        title = title[:YOUTUBE_TITLE_MAX].rstrip() or "Video"
+        description = _sanitize_youtube_text(
+            payload.get("description", ""),
+            max_bytes=YOUTUBE_DESC_MAX_BYTES,
+        ) or title
+
         body = {
             "snippet": {
-                "title": payload.get("title", "Video"),
-                "description": payload.get("description", ""),
+                "title": title,
+                "description": description,
                 "tags": payload.get("tags", []),
                 "categoryId": "22",
             },
@@ -81,6 +90,7 @@ class YouTubePublisher:
         pinned = payload.get("pinned_comment")
         if pinned:
             try:
+                pinned = _sanitize_youtube_text(pinned, max_bytes=YOUTUBE_DESC_MAX_BYTES)
                 service.commentThreads().insert(
                     part="snippet",
                     body={

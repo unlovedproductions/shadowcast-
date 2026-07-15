@@ -41,6 +41,17 @@ def test_youtube_build_includes_shorts_tag():
     assert len(payload["title"]) <= 100
 
 
+def test_youtube_build_sanitizes_angle_brackets():
+    assets = {
+        **SAMPLE_ASSETS,
+        "seo_description": "Not recommended for < 50 years old. Ages > 45 may benefit.",
+    }
+    payload = build("youtube", assets, {"format": "short_form"})
+    assert "<" not in payload["description"]
+    assert ">" not in payload["description"]
+    assert "( 50 years old" in payload["description"]
+
+
 def test_instagram_caption_truncation():
     assets = {**SAMPLE_ASSETS, "pinned_comment": "x" * 3000}
     payload = build("instagram", assets)
