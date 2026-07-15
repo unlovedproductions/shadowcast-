@@ -87,3 +87,19 @@ cd shadowcast-
 ```
 
 Expected: all tests pass (12 total).
+
+## Video Claim Audit
+
+Run the artifact audit to verify rendered MP4 files against code-level claims (resolution, format pairing, layout requirements, duration drift, and unsupported animation/transition tokens):
+
+```bash
+cd shadowcast-
+.venv/bin/python backend/video_claim_audit.py
+```
+
+Optional strict mode (fail on warnings too):
+
+```bash
+cd shadowcast-
+.venv/bin/python backend/video_claim_audit.py --fail-on warn --require-videos
+```
