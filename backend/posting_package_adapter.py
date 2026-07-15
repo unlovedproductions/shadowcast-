@@ -9,6 +9,8 @@ PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "rumble")
 VERTICAL_PLATFORMS = frozenset({"instagram", "tiktok", "rumble"})
 
 YOUTUBE_TAG_MAX_CHARS = 500
+YOUTUBE_DESC_MAX_BYTES = 5000
+YOUTUBE_TITLE_MAX = 100
 INSTAGRAM_CAPTION_MAX = 2200
 TIKTOK_TITLE_MAX = 150
 TIKTOK_HASHTAG_MAX = 5
@@ -34,6 +36,25 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _sanitize_youtube_text(text: str, *, max_bytes: int | None = None) -> str:
+    """YouTube rejects < and > in snippet text; descriptions are limited to 5000 bytes."""
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    text = "".join(ch for ch in text if ch in "\n\r\t" or ord(ch) >= 32)
+    text = text.replace("<", "(").replace(">", ")").strip()
+    if not max_bytes:
+        return text
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    trimmed = encoded[:max_bytes].decode("utf-8", errors="ignore").rstrip()
+    if len(trimmed) > 3:
+        return trimmed[:-3].rstrip() + "..."
+    return trimmed
 
 
 def _truncate_youtube_tags(tags: list[str], max_chars: int = YOUTUBE_TAG_MAX_CHARS) -> list[str]:
@@ -78,15 +99,19 @@ def build(platform: str, assets: dict[str, Any], script_meta: dict[str, Any] | N
     if platform == "youtube":
         fmt = script_meta.get("format", "long_form")
         yt_tags = _truncate_youtube_tags(tags if isinstance(tags, list) else [])
-        desc = description
+        desc = _sanitize_youtube_text(description, max_bytes=YOUTUBE_DESC_MAX_BYTES)
         if fmt == "short_form" and "#shorts" not in desc.lower():
-            desc = f"{desc}\n\n#Shorts"
+            desc = _sanitize_youtube_text(f"{desc}\n\n#Shorts", max_bytes=YOUTUBE_DESC_MAX_BYTES)
+        if not desc:
+            desc = _sanitize_youtube_text(title, max_bytes=YOUTUBE_DESC_MAX_BYTES) or "Video description."
+        safe_title = _truncate(_sanitize_youtube_text(title), YOUTUBE_TITLE_MAX)
+        safe_pinned = _sanitize_youtube_text(pinned, max_bytes=YOUTUBE_DESC_MAX_BYTES)
         return {
             "platform": "youtube",
-            "title": _truncate(title, 100),
+            "title": safe_title,
             "description": desc,
             "tags": yt_tags,
-            "pinned_comment": pinned,
+            "pinned_comment": safe_pinned,
             "is_short": fmt == "short_form",
             "privacy": "public",
         }
