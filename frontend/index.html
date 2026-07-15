@@ -129,6 +129,10 @@
         .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag { background: var(--bg3); padding: 3px 10px; border-radius: 20px; font-size: 11px; color: var(--text2); }
         .video-player { width: 100%; max-width: 480px; border-radius: var(--radius); background: #000; }
+        .social-preview-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-top: 16px; }
+        .social-preview-meta { flex: 1; min-width: 220px; font-size: 13px; color: var(--text2); }
+        .social-preview-meta h3 { font-size: 15px; color: var(--text); margin-bottom: 8px; }
+        .social-preview-thumb { width: 120px; border-radius: 8px; border: 1px solid var(--bg3); }
 
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
         .modal { background: var(--bg2); border: 1px solid var(--bg3); border-radius: 12px; padding: 28px; width: 90%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
@@ -285,6 +289,9 @@
         socialStatus: null, socialLoading: false,
         oauthStatus: null, oauthLoading: false, oauthConfig: null, oauthConnecting: null,
         postingQueue: [], queueLoading: false,
+        postableJobs: [], postableJobsLoading: false,
+        socialSelectedJobId: '', socialSelectedProductSlug: '', socialSelectedVariantKey: '',
+        socialShowManualPath: false,
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
@@ -1297,31 +1304,168 @@
 
         ${state.socialStatus ? renderSocialStatus() : ''}
 
-        <div class="card">
+        ${renderSocialPostCard()}
+
+        ${state.postingQueue.length ? renderPostingQueue() : ''}
+        `;
+    }
+
+    function socialVariantKey(v) {
+        return `${v.hook_type}|${v.video_format}|${v.product_slug || ''}`;
+    }
+
+    function getSocialSelectedJob() {
+        return state.postableJobs.find(j => j.job_id === state.socialSelectedJobId) || null;
+    }
+
+    function getSocialFilteredVariants() {
+        const job = getSocialSelectedJob();
+        if (!job) return [];
+        if (job.mode === 'batch' && state.socialSelectedProductSlug) {
+            return (job.variants || []).filter(v => v.product_slug === state.socialSelectedProductSlug);
+        }
+        return job.variants || [];
+    }
+
+    function getSocialSelectedVariant() {
+        const variants = getSocialFilteredVariants();
+        return variants.find(v => socialVariantKey(v) === state.socialSelectedVariantKey) || variants[0] || null;
+    }
+
+    function applySocialVariantSelection() {
+        const job = getSocialSelectedJob();
+        const variant = getSocialSelectedVariant();
+        if (!job || !variant) {
+            state.socialPostCaption = '';
+            state.socialPostHashtags = '';
+            return;
+        }
+        state.jobId = job.job_id;
+        state.activeTab = variant.hook_type;
+        state.activeFormat = variant.video_format;
+        state.socialPostCaption = variant.caption_hint || '';
+        state.socialPostHashtags = (variant.hashtags || []).join(' ');
+        if (!state.socialSelectedVariantKey) {
+            state.socialSelectedVariantKey = socialVariantKey(variant);
+        }
+    }
+
+    function onSocialJobSelect(jobId) {
+        state.socialSelectedJobId = jobId;
+        const job = getSocialSelectedJob();
+        if (job?.mode === 'batch' && job.batch_products?.length) {
+            state.socialSelectedProductSlug = job.batch_products[0].slug;
+        } else {
+            state.socialSelectedProductSlug = '';
+        }
+        const variants = getSocialFilteredVariants();
+        state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+        applySocialVariantSelection();
+        render();
+    }
+
+    function onSocialProductSelect(slug) {
+        state.socialSelectedProductSlug = slug;
+        const variants = getSocialFilteredVariants();
+        state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+        applySocialVariantSelection();
+        render();
+    }
+
+    function onSocialVariantSelect(key) {
+        state.socialSelectedVariantKey = key;
+        applySocialVariantSelection();
+        render();
+    }
+
+    function renderSocialPostCard() {
+        const job = getSocialSelectedJob();
+        const variant = getSocialSelectedVariant();
+        const variants = getSocialFilteredVariants();
+        const canPost = !!(variant && (variant.video_file || state.socialPostVideo));
+        const previewUrl = variant
+            ? `${API}/download/${job.job_id}/${variant.path_prefix || ''}${variant.video_file}`
+            : '';
+        const thumbUrl = variant?.thumbnail_file
+            ? `${API}/download/${job.job_id}/${variant.path_prefix || ''}${variant.thumbnail_file}`
+            : '';
+
+        let jobOptions = '<option value="">Select a completed job...</option>';
+        for (const j of state.postableJobs) {
+            const label = `${(j.product_name || j.job_id).slice(0, 45)} (${j.job_id.slice(0, 8)})`;
+            jobOptions += `<option value="${esc(j.job_id)}" ${state.socialSelectedJobId === j.job_id ? 'selected' : ''}>${esc(label)}</option>`;
+        }
+
+        let productSelect = '';
+        if (job?.mode === 'batch' && job.batch_products?.length) {
+            productSelect = `<div class="form-group"><label>Product</label>
+                <select onchange="onSocialProductSelect(this.value)">
+                    ${job.batch_products.map(p => `<option value="${esc(p.slug)}" ${state.socialSelectedProductSlug === p.slug ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                </select></div>`;
+        }
+
+        let variantOptions = variants.length
+            ? variants.map(v => `<option value="${esc(socialVariantKey(v))}" ${state.socialSelectedVariantKey === socialVariantKey(v) ? 'selected' : ''}>${esc(v.label)}</option>`).join('')
+            : '<option value="">No videos available</option>';
+
+        const emptyHint = state.postableJobsLoading
+            ? '<p style="color:var(--text2);font-size:13px;">Loading completed jobs...</p>'
+            : !state.postableJobs.length
+                ? '<p style="color:var(--text2);font-size:13px;">No completed jobs with videos yet. Generate a video first, then return here to post.</p>'
+                : '';
+
+        return `<div class="card">
             <h2>Post a Video</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Choose a completed job, preview the video, then post.</p>
+            ${emptyHint}
             <div class="form-grid">
                 <div class="form-group"><label>Platform</label>
                     <select id="socialPlatform" onchange="state.socialPostPlatform=this.value">
                         ${publishPlatformOptions.map(p=>`<option value="${p.id}" ${state.socialPostPlatform===p.id?'selected':''}>${p.label}</option>`).join('')}
                     </select>
                 </div>
-                <div class="form-group"><label>Job ID (optional)</label><input id="socialJobId" value="${esc(state.jobId||'')}" placeholder="From completed generation"></div>
-                <div class="form-group"><label>Hook Type</label><input id="socialHook" value="${esc(state.activeTab||'curiosity')}" placeholder="curiosity"></div>
-                <div class="form-group"><label>Format</label><input id="socialFormat" value="${esc(state.activeFormat||'short_form')}" placeholder="short_form"></div>
-                <div class="form-group"><label>Video File Path (manual fallback)</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file"></div>
-                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Auto-filled when publishing from job results">${esc(state.socialPostCaption)}</textarea></div>
+                <div class="form-group"><label>Completed Job</label>
+                    <select id="socialJobSelect" onchange="onSocialJobSelect(this.value)" ${state.postableJobsLoading ? 'disabled' : ''}>
+                        ${jobOptions}
+                    </select>
+                </div>
+                ${productSelect}
+                <div class="form-group"><label>Video</label>
+                    <select id="socialVariantSelect" onchange="onSocialVariantSelect(this.value)" ${!variants.length ? 'disabled' : ''}>
+                        ${variantOptions}
+                    </select>
+                </div>
+                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Auto-filled from posting package">${esc(state.socialPostCaption)}</textarea></div>
                 <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review"></div>
                 <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"></div>
             </div>
+            <input type="hidden" id="socialJobId" value="${esc(state.socialSelectedJobId || state.jobId || '')}">
+            <input type="hidden" id="socialHook" value="${esc(variant?.hook_type || state.activeTab || 'curiosity')}">
+            <input type="hidden" id="socialFormat" value="${esc(variant?.video_format || state.activeFormat || 'short_form')}">
+            <details style="margin-top:12px;" ${state.socialShowManualPath ? 'open' : ''} ontoggle="state.socialShowManualPath=this.open">
+                <summary style="cursor:pointer;font-size:13px;color:var(--text2);">Advanced: manual video path</summary>
+                <div class="form-group" style="margin-top:10px;"><label>Video File Path</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file"></div>
+            </details>
+            ${variant && previewUrl ? `<div class="card" style="margin-top:16px;background:var(--bg);">
+                <h2>Video Preview</h2>
+                <div class="social-preview-row">
+                    <video class="video-player" controls src="${previewUrl}"></video>
+                    <div class="social-preview-meta">
+                        <h3>${esc(variant.seo_title || variant.label)}</h3>
+                        <div>Job: <code>${esc(job.job_id)}</code></div>
+                        <div>Style: ${esc(job.content_style || '—')}</div>
+                        <div>Hook: ${esc(variant.hook_type)} · ${esc(variant.video_format === 'short_form' ? 'Short-Form' : 'Long-Form')}</div>
+                        ${thumbUrl ? `<img class="social-preview-thumb" src="${thumbUrl}" alt="Thumbnail preview" style="margin-top:10px;">` : ''}
+                    </div>
+                </div>
+            </div>` : ''}
             <div style="display:flex;gap:10px;margin-top:12px;">
-                <button class="btn-primary" onclick="postToSocial(false)">Post Now</button>
-                <button class="btn-sm btn-template" onclick="postToSocial(true)">Schedule Post</button>
-                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
+                <button class="btn-primary" onclick="postToSocial(false)" ${!canPost ? 'disabled' : ''}>Post Now</button>
+                <button class="btn-sm btn-template" onclick="postToSocial(true)" ${!canPost ? 'disabled' : ''}>Schedule Post</button>
+                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);" ${!canPost ? 'disabled' : ''}>Dry Run</button>
+                <button class="btn-sm" onclick="loadPostableJobs()" ${state.postableJobsLoading ? 'disabled' : ''}>Refresh Jobs</button>
             </div>
-        </div>
-
-        ${state.postingQueue.length ? renderPostingQueue() : ''}
-        `;
+        </div>`;
     }
 
     function renderOAuthStatus() {
@@ -1541,6 +1685,7 @@
         if (p === 'social') {
             loadOAuthConfig();
             loadOAuthStatus();
+            loadPostableJobs();
         }
     }
 
@@ -1710,6 +1855,38 @@
         state.socialLoading = false; render();
     }
 
+    async function loadPostableJobs() {
+        state.postableJobsLoading = true;
+        render();
+        try {
+            const res = await fetch(`${API}/jobs/postable`);
+            const data = await res.json();
+            state.postableJobs = data.jobs || [];
+            const preferId = state.socialSelectedJobId || state.jobId;
+            if (preferId && state.postableJobs.find(j => j.job_id === preferId)) {
+                state.socialSelectedJobId = preferId;
+            } else if (!state.socialSelectedJobId && state.postableJobs.length) {
+                state.socialSelectedJobId = state.postableJobs[0].job_id;
+            }
+            const job = getSocialSelectedJob();
+            if (job?.mode === 'batch' && job.batch_products?.length && !state.socialSelectedProductSlug) {
+                state.socialSelectedProductSlug = job.batch_products[0].slug;
+            }
+            if (!state.socialSelectedVariantKey) {
+                const variants = getSocialFilteredVariants();
+                state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+            } else if (state.socialSelectedJobId && !state.postableJobs.find(j => j.job_id === state.socialSelectedJobId)) {
+                state.socialSelectedJobId = state.postableJobs[0]?.job_id || '';
+                state.socialSelectedVariantKey = '';
+            }
+            applySocialVariantSelection();
+        } catch (e) {
+            showToast('Error loading jobs: ' + e.message);
+        }
+        state.postableJobsLoading = false;
+        render();
+    }
+
     async function loadPostingQueue() {
         state.queueLoading = true; render();
         try {
@@ -1722,20 +1899,22 @@
 
     async function postToSocial(schedule, dryRun) {
         const platform = document.getElementById('socialPlatform')?.value || 'instagram';
-        const jobId = document.getElementById('socialJobId')?.value?.trim() || state.jobId;
-        const hookType = document.getElementById('socialHook')?.value?.trim();
-        const videoFormat = document.getElementById('socialFormat')?.value?.trim() || 'short_form';
+        const variant = getSocialSelectedVariant();
+        const jobId = document.getElementById('socialJobId')?.value?.trim() || state.socialSelectedJobId || state.jobId;
+        const hookType = document.getElementById('socialHook')?.value?.trim() || variant?.hook_type;
+        const videoFormat = document.getElementById('socialFormat')?.value?.trim() || variant?.video_format || 'short_form';
         const videoPath = document.getElementById('socialVideo')?.value?.trim();
         const caption = document.getElementById('socialCaption')?.value?.trim();
         const hashtagsRaw = document.getElementById('socialHashtags')?.value?.trim();
         const scheduleTime = document.getElementById('socialSchedule')?.value;
         const hashtags = hashtagsRaw ? hashtagsRaw.split(/[,\s]+/).filter(Boolean) : [];
-        if (!jobId && !videoPath) { showToast('Job ID or video path required'); return; }
+        if (!jobId && !videoPath) { showToast('Select a completed job or enter a video path'); return; }
         const body = { platform, caption: caption || '', hashtags, dry_run: !!dryRun };
         if (jobId && hookType) {
             body.job_id = jobId;
             body.hook_type = hookType;
             body.video_format = videoFormat;
+            if (variant?.product_slug) body.product_slug = variant.product_slug;
         } else {
             body.video_path = videoPath;
         }
@@ -2176,7 +2355,7 @@
         } catch(e) {}
         render();
         if (state.navPage === 'social') {
-            await Promise.all([loadOAuthConfig(), loadOAuthStatus()]);
+            await Promise.all([loadOAuthConfig(), loadOAuthStatus(), loadPostableJobs()]);
         }
     }
     init();

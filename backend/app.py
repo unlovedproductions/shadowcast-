@@ -15,6 +15,7 @@ import uuid
 import threading
 import traceback
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -108,6 +109,7 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
         "/api/publish",
         "/api/media",
         "/api/tracking-link",
+        "/api/jobs/",
     )
     if path in public_paths or any(path.startswith(prefix) for prefix in public_prefixes):
         return await call_next(request)
@@ -267,6 +269,209 @@ def _summarize_job_output(job: dict) -> dict:
             or packages < total_expected
             or warning_count > 0
         ),
+    }
+
+
+_VARIANT_MP4_RE = re.compile(r"_(?P<hook>[^_/]+)_(?P<fmt>short_form|long_form)\.mp4$")
+
+
+def _caption_hint_from_assets(assets: dict | None) -> str:
+    if not assets:
+        return ""
+    return str(assets.get("pinned_comment") or assets.get("seo_description") or "").strip()
+
+
+def _build_postable_variant(
+    *,
+    hook_type: str,
+    video_format: str,
+    video_file: str,
+    product_slug: str | None,
+    product_name: str,
+    content_style: str,
+    assets: dict | None,
+    thumbnail_file: str | None,
+) -> dict:
+    slug_prefix = f"{product_slug}/" if product_slug else ""
+    label_name = (product_name or "Product")[:50]
+    style = content_style or hook_type.replace("_", " ")
+    fmt_label = fmt_display(video_format)
+    hashtags = (assets or {}).get("hashtags") or []
+    return {
+        "hook_type": hook_type,
+        "video_format": video_format,
+        "video_file": video_file,
+        "path_prefix": slug_prefix,
+        "thumbnail_file": thumbnail_file,
+        "product_slug": product_slug,
+        "label": f"{label_name} — {style} — {fmt_label}",
+        "caption_hint": _caption_hint_from_assets(assets),
+        "hashtags": hashtags if isinstance(hashtags, list) else [],
+        "seo_title": str((assets or {}).get("seo_title") or ""),
+    }
+
+
+def _variants_from_hooks(
+    hooks: dict,
+    job_dir: Path,
+    *,
+    product_slug: str | None,
+    product_name: str,
+    content_style: str,
+) -> list[dict]:
+    variants: list[dict] = []
+    base_dir = job_dir / product_slug if product_slug else job_dir
+    prefix = f"{product_slug}/" if product_slug else ""
+
+    for hook_type, hook_data in (hooks or {}).items():
+        if not isinstance(hook_data, dict):
+            continue
+        videos = hook_data.get("videos") or {}
+        assets_map = hook_data.get("youtube_assets") or {}
+        thumbs = hook_data.get("thumbnails") or {}
+
+        for video_format, video_fname in videos.items():
+            if not video_fname:
+                continue
+            video_path = base_dir / video_fname
+            if not _artifact_ok(video_path):
+                continue
+
+            assets = assets_map.get(video_format)
+            if not assets:
+                pkg_matches = sorted(base_dir.glob(f"*_{hook_type}_{video_format}_youtube_package.json"))
+                if pkg_matches:
+                    try:
+                        assets = json.loads(pkg_matches[0].read_text())
+                    except (OSError, json.JSONDecodeError):
+                        assets = None
+            if not assets:
+                continue
+
+            thumb_fname = thumbs.get("variant_a") or next(iter(thumbs.values()), None)
+            if not thumb_fname:
+                thumb_matches = sorted(base_dir.glob(f"*_{hook_type}_thumbnail_*.png"))
+                thumb_fname = thumb_matches[0].name if thumb_matches else None
+
+            variants.append(
+                _build_postable_variant(
+                    hook_type=hook_type,
+                    video_format=video_format,
+                    video_file=video_fname,
+                    product_slug=product_slug,
+                    product_name=product_name,
+                    content_style=content_style,
+                    assets=assets,
+                    thumbnail_file=thumb_fname,
+                )
+            )
+    return variants
+
+
+def _glob_postable_variants(job_dir: Path, existing_keys: set[tuple]) -> list[dict]:
+    variants: list[dict] = []
+    for mp4 in sorted(job_dir.rglob("*.mp4")):
+        if "video_only" in mp4.name:
+            continue
+        match = _VARIANT_MP4_RE.search(mp4.name)
+        if not match:
+            continue
+
+        hook_type = match.group("hook")
+        video_format = match.group("fmt")
+        rel = mp4.relative_to(job_dir)
+        product_slug = rel.parts[0] if len(rel.parts) > 1 else None
+        key = (hook_type, video_format, product_slug)
+        if key in existing_keys:
+            continue
+
+        pkg_path = mp4.with_name(f"{mp4.stem}_youtube_package.json")
+        if not pkg_path.exists():
+            continue
+
+        try:
+            assets = json.loads(pkg_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        thumb_matches = sorted(mp4.parent.glob(f"*_{hook_type}_thumbnail_*.png"))
+        thumb_fname = thumb_matches[0].name if thumb_matches else None
+        product_name = product_slug.replace("_", " ") if product_slug else job_dir.name
+
+        variants.append(
+            _build_postable_variant(
+                hook_type=hook_type,
+                video_format=video_format,
+                video_file=mp4.name if len(rel.parts) == 1 else str(Path(*rel.parts[1:])),
+                product_slug=product_slug,
+                product_name=product_name,
+                content_style=hook_type,
+                assets=assets,
+                thumbnail_file=thumb_fname,
+            )
+        )
+        existing_keys.add(key)
+    return variants
+
+
+def _postable_job_entry(job_id: str, job_dir: Path) -> dict | None:
+    job = _load_job(job_id)
+    if not job:
+        return None
+
+    variants: list[dict] = []
+    batch_products: list[dict] = []
+    content_style = str(job.get("content_style") or job.get("product_info", {}).get("content_style") or "")
+
+    if job.get("mode") == "batch":
+        for product_result in job.get("product_results") or []:
+            product_name = str(product_result.get("product_name") or "Product")
+            product_slug = slugify(product_name)
+            batch_products.append({"slug": product_slug, "name": product_name})
+            variants.extend(
+                _variants_from_hooks(
+                    product_result.get("hooks") or {},
+                    job_dir,
+                    product_slug=product_slug,
+                    product_name=product_name,
+                    content_style=str(product_result.get("content_style") or content_style),
+                )
+            )
+    else:
+        product_name = str(job.get("product_info", {}).get("product_name") or job_id)
+        variants.extend(
+            _variants_from_hooks(
+                job.get("results") or {},
+                job_dir,
+                product_slug=None,
+                product_name=product_name,
+                content_style=content_style,
+            )
+        )
+
+    existing_keys = {
+        (v["hook_type"], v["video_format"], v.get("product_slug"))
+        for v in variants
+    }
+    variants.extend(_glob_postable_variants(job_dir, existing_keys))
+    if not variants:
+        return None
+
+    job_path = _job_path(job_id)
+    updated_at = datetime.fromtimestamp(job_path.stat().st_mtime, tz=timezone.utc).isoformat()
+    product_name = str(job.get("product_info", {}).get("product_name") or "")
+    if not product_name and batch_products:
+        product_name = batch_products[0]["name"]
+
+    return {
+        "job_id": job_id,
+        "status": job.get("status", "unknown"),
+        "mode": job.get("mode", "single"),
+        "product_name": product_name,
+        "content_style": content_style,
+        "updated_at": updated_at,
+        "batch_products": batch_products,
+        "variants": variants,
     }
 
 
@@ -1299,6 +1504,24 @@ def list_files(job_id: str):
                 "type": "video" if fn.endswith(".mp4") else "text" if fn.endswith(".txt") else "json" if fn.endswith(".json") else "zip" if fn.endswith(".zip") else "other",
             })
     return {"job_id": job_id, "files": files}
+
+
+@app.get("/api/jobs/postable")
+def list_postable_jobs():
+    entries: list[dict] = []
+    if not OUTPUT_BASE.exists():
+        return {"jobs": []}
+
+    job_dirs = sorted(
+        (p for p in OUTPUT_BASE.iterdir() if p.is_dir() and (p / "job.json").exists()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for job_dir in job_dirs:
+        entry = _postable_job_entry(job_dir.name, job_dir)
+        if entry:
+            entries.append(entry)
+    return {"jobs": entries}
 
 
 # ── Social Posting ───────────────────────────────────────────────────
