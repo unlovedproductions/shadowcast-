@@ -207,6 +207,7 @@ class PublishService:
                     format_type=effective_format,
                     video_path=video_path,
                     youtube_url=result.get("url") if platform == "youtube" else None,
+                    youtube_video_id=result.get("post_id") if platform == "youtube" else None,
                 )
             except Exception:
                 pass
