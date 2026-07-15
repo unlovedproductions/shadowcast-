@@ -16,10 +16,14 @@ import threading
 import traceback
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+
+load_dotenv(Path(__file__).parent / ".env")
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -46,6 +50,7 @@ from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 from social_poster import SocialPoster, get_platform_status
 from analytics_tracker import AnalyticsTracker, create_tracking_link
+from youtube_analytics import YouTubeAnalyticsClient, extract_youtube_video_id
 from oauth_manager import OAuthManager
 from publish_service import PublishService, resolve_job_assets
 from publishers.rumble_publisher import RumblePublisher
@@ -1300,6 +1305,7 @@ def list_files(job_id: str):
 social_poster = SocialPoster()
 analytics = AnalyticsTracker(db_path=str(OUTPUT_BASE / "analytics.json"))
 oauth_manager = OAuthManager()
+youtube_analytics_client = YouTubeAnalyticsClient()
 publish_service = PublishService(jobs=jobs, analytics=analytics)
 rumble_publisher = RumblePublisher()
 
@@ -1332,9 +1338,19 @@ def serve_media_for_platforms(path: str):
 
 
 # ── OAuth ─────────────────────────────────────────────────────────────
+def _frontend_redirect(path: str) -> RedirectResponse:
+    base = os.getenv("OAUTH_REDIRECT_BASE_URL", "http://localhost:8000").rstrip("/")
+    return RedirectResponse(url=f"{base}{path}", status_code=302)
+
+
 @app.get("/api/oauth/status")
 def oauth_status():
     return oauth_manager.status()
+
+
+@app.get("/api/oauth/config")
+def oauth_config():
+    return oauth_manager.config_status()
 
 
 @app.get("/api/oauth/{platform}/authorize")
@@ -1348,13 +1364,14 @@ def oauth_authorize(platform: str):
 @app.get("/api/oauth/{platform}/callback")
 def oauth_callback(platform: str, code: str = "", state: str = "", error: str = ""):
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        return _frontend_redirect(f"/?page=social&oauth_error={quote(error)}")
     if not code:
-        raise HTTPException(status_code=400, detail="Missing authorization code")
+        return _frontend_redirect("/?page=social&oauth_error=Missing+authorization+code")
     try:
-        return oauth_manager.handle_callback(platform, code, state)
+        oauth_manager.handle_callback(platform, code, state)
+        return _frontend_redirect(f"/?page=social&connected={platform}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return _frontend_redirect(f"/?page=social&oauth_error={quote(str(e))}")
 
 
 class RumbleLoginRequest(BaseModel):
@@ -1525,6 +1542,32 @@ class MetricRequest(BaseModel):
 def record_metric(req: MetricRequest):
     analytics.record_metric(req.video_id, req.metric_type, req.value)
     return {"status": "recorded"}
+
+
+@app.post("/api/analytics/sync-youtube")
+def sync_youtube_analytics():
+    yt_ids: list[str] = []
+    for video_info in analytics.data.get("videos", {}).values():
+        yt_id = video_info.get("youtube_video_id") or extract_youtube_video_id(video_info.get("youtube_url"))
+        if yt_id:
+            yt_ids.append(yt_id)
+    if not yt_ids:
+        raise HTTPException(status_code=400, detail="No tracked videos with YouTube URLs. Publish or track videos first.")
+    try:
+        stats = youtube_analytics_client.fetch_video_stats(list(dict.fromkeys(yt_ids)))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        msg = str(e)
+        if "insufficient" in msg.lower() or "403" in msg:
+            raise HTTPException(
+                status_code=403,
+                detail="YouTube Analytics access denied. Reconnect YouTube on the Social page to grant analytics scopes.",
+            )
+        raise HTTPException(status_code=500, detail=msg)
+    result = analytics.sync_youtube_stats(stats)
+    result["fetched"] = len(stats)
+    return result
 
 
 @app.get("/api/analytics/dashboard")

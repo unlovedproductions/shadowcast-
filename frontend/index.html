@@ -278,12 +278,12 @@
         // Navigation
         navPage: 'generate',
         // Analytics
-        analyticsData: null, analyticsLoading: false,
+        analyticsData: null, analyticsLoading: false, youtubeSyncLoading: false,
         trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: '',
         metricVideoId: '', metricType: 'views', metricValue: '',
         // Social
         socialStatus: null, socialLoading: false,
-        oauthStatus: null, oauthLoading: false,
+        oauthStatus: null, oauthLoading: false, oauthConfig: null, oauthConnecting: null,
         postingQueue: [], queueLoading: false,
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
@@ -1106,8 +1106,10 @@
             <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Track video performance, compare hook types, and find your top converters.</p>
             <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
                 <button class="btn-primary" onclick="loadDashboard()" ${state.analyticsLoading?'disabled':''}>${state.analyticsLoading?'Loading...':'Load Dashboard'}</button>
+                <button class="btn-sm btn-template" onclick="syncYouTubeAnalytics()" ${state.youtubeSyncLoading?'disabled':''}>${state.youtubeSyncLoading?'Syncing...':'Sync YouTube Stats'}</button>
                 <button class="btn-sm btn-template" onclick="exportAnalytics()">Export CSV</button>
             </div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Sync pulls views, watch time, likes, and subscribers from YouTube Analytics for tracked/published videos. Reconnect YouTube if you enabled analytics after first connect.</p>
         </div>
 
         ${state.analyticsData ? renderDashboardData() : ''}
@@ -1255,15 +1257,26 @@
     }
 
     function renderSocialPage() {
+        const cfg = state.oauthConfig || {};
+        const ytConnecting = state.oauthConnecting === 'youtube';
+        const metaConnecting = state.oauthConnecting === 'meta';
+        const tiktokConnecting = state.oauthConnecting === 'tiktok';
+        const configWarnings = [];
+        if (state.oauthConfig) {
+            if (!cfg.youtube) configWarnings.push('YouTube OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env, then restart the server.');
+            if (!cfg.meta) configWarnings.push('Meta OAuth not configured. Set META_APP_ID and META_APP_SECRET in backend/.env, then restart the server.');
+            if (!cfg.tiktok) configWarnings.push('TikTok OAuth not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in backend/.env, then restart the server.');
+        }
         return `
         <div class="card">
             <h2>Connect Accounts</h2>
             <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Connect platforms via OAuth before publishing. Rumble uses browser login.</p>
+            ${configWarnings.length ? `<div style="margin-bottom:16px;padding:12px;border-radius:8px;background:rgba(255,180,0,0.1);border:1px solid var(--pink);font-size:13px;color:var(--text2);">${configWarnings.map(m=>`<div style="margin-bottom:6px;">${esc(m)}</div>`).join('')}</div>` : ''}
             <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
                 <button class="btn-primary" onclick="loadOAuthStatus()" ${state.oauthLoading?'disabled':''}>${state.oauthLoading?'Loading...':'Refresh Status'}</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('youtube')">Connect YouTube</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('meta')">Connect Meta (IG+FB)</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('tiktok')">Connect TikTok</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('youtube')" ${ytConnecting?'disabled':''}>${ytConnecting?'Connecting...':'Connect YouTube'}</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('meta')" ${metaConnecting?'disabled':''}>${metaConnecting?'Connecting...':'Connect Meta (IG+FB)'}</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('tiktok')" ${tiktokConnecting?'disabled':''}>${tiktokConnecting?'Connecting...':'Connect TikTok'}</button>
             </div>
             ${state.oauthStatus ? renderOAuthStatus() : ''}
             <div class="form-grid" style="margin-top:16px;">
@@ -1522,7 +1535,14 @@
     function downloadFile(filename) { window.open(`${API}/download/${state.jobId}/${filename}`,'_blank'); }
 
     // ── Navigation ──────────────────────────────────────────
-    function setNavPage(p) { state.navPage = p; render(); }
+    function setNavPage(p) {
+        state.navPage = p;
+        render();
+        if (p === 'social') {
+            loadOAuthConfig();
+            loadOAuthStatus();
+        }
+    }
 
     // ── Analytics Actions ───────────────────────────────────
     async function loadDashboard() {
@@ -1533,6 +1553,21 @@
             state.analyticsData = data;
         } catch(e) { showToast('Error loading dashboard: ' + e.message); }
         state.analyticsLoading = false; render();
+    }
+
+    async function syncYouTubeAnalytics() {
+        state.youtubeSyncLoading = true; render();
+        try {
+            const res = await fetch(`${API}/analytics/sync-youtube`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast('Error: ' + (data.detail || 'YouTube sync failed'));
+                return;
+            }
+            showToast(`YouTube synced: ${data.synced || 0} video(s), ${data.fetched || 0} fetched`);
+            await loadDashboard();
+        } catch(e) { showToast('Error: ' + e.message); }
+        finally { state.youtubeSyncLoading = false; render(); }
     }
 
     async function trackVideo() {
@@ -1583,6 +1618,14 @@
         render();
     }
 
+    async function loadOAuthConfig() {
+        try {
+            const res = await fetch(`${API}/oauth/config`);
+            if (res.ok) state.oauthConfig = await res.json();
+        } catch(e) { /* config check optional */ }
+        render();
+    }
+
     async function loadOAuthStatus() {
         state.oauthLoading = true; render();
         try {
@@ -1593,12 +1636,31 @@
     }
 
     async function connectOAuth(platform) {
+        state.oauthConnecting = platform;
+        render();
         try {
             const res = await fetch(`${API}/oauth/${platform}/authorize`);
             const data = await res.json();
-            if (data.authorize_url) window.location.href = data.authorize_url;
-            else showToast(data.message || 'OAuth URL not available');
-        } catch(e) { showToast('Error: ' + e.message); }
+            if (!res.ok) {
+                state.oauthConnecting = null;
+                render();
+                const detail = data.detail;
+                const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || d).join(', ') : 'OAuth authorize failed';
+                showToast('Error: ' + msg);
+                return;
+            }
+            if (data.authorize_url) {
+                window.location.href = data.authorize_url;
+                return;
+            }
+            state.oauthConnecting = null;
+            render();
+            showToast(data.message || 'OAuth URL not available');
+        } catch(e) {
+            state.oauthConnecting = null;
+            render();
+            showToast('Error: ' + e.message);
+        }
     }
 
     async function connectRumble() {
@@ -2071,8 +2133,22 @@
         }
     }
 
+    function initOAuthFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const page = params.get('page');
+        const connected = params.get('connected');
+        const oauthError = params.get('oauth_error');
+        if (page === 'social') state.navPage = 'social';
+        if (connected) showToast(connected + ' connected!');
+        if (oauthError) showToast('OAuth error: ' + oauthError);
+        if (page || connected || oauthError) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     // ── Init ────────────────────────────────────────────────
     async function init() {
+        initOAuthFromUrl();
         try {
             const res=await fetch(`${API}/providers`);
             const data=await res.json();
@@ -2099,6 +2175,9 @@
             if(sdata.default) state.contentStyle=sdata.default;
         } catch(e) {}
         render();
+        if (state.navPage === 'social') {
+            await Promise.all([loadOAuthConfig(), loadOAuthStatus()]);
+        }
     }
     init();
     </script>

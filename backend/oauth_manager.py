@@ -14,6 +14,8 @@ from credentials_store import CredentialsStore
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.force-ssl",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 META_SCOPES = [
     "instagram_basic",
@@ -232,6 +234,13 @@ class OAuthManager:
         else:
             self.store.delete(platform)
         return {"platform": platform, "status": "disconnected"}
+
+    def config_status(self) -> dict[str, bool]:
+        return {
+            "youtube": bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")),
+            "meta": bool(os.getenv("META_APP_ID") and os.getenv("META_APP_SECRET")),
+            "tiktok": bool(os.getenv("TIKTOK_CLIENT_KEY") and os.getenv("TIKTOK_CLIENT_SECRET")),
+        }
 
     def status(self) -> dict[str, Any]:
         platforms = ("youtube", "instagram", "facebook", "tiktok", "rumble", "meta")

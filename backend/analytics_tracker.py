@@ -44,7 +44,7 @@ class AnalyticsTracker:
         with open(self.db_path, 'w') as f:
             json.dump(self.data, f, indent=4)
 
-    def track_video(self, product_name, hook_type, format_type, video_path, youtube_url=None):
+    def track_video(self, product_name, hook_type, format_type, video_path, youtube_url=None, youtube_video_id=None):
         """
         Registers a video for tracking.
 
@@ -54,17 +54,22 @@ class AnalyticsTracker:
             format_type (str): The video format (e.g., "short_form", "long_form").
             video_path (str): Local path to the video file.
             youtube_url (str, optional): The YouTube URL of the video, if uploaded.
+            youtube_video_id (str, optional): YouTube video ID, if known.
 
         Returns:
             str: The unique video ID generated for this video.
         """
+        from youtube_analytics import extract_youtube_video_id
+
         video_id = str(uuid.uuid4())
+        yt_id = youtube_video_id or extract_youtube_video_id(youtube_url)
         self.data["videos"][video_id] = {
             "product_name": product_name,
             "hook_type": hook_type,
             "format_type": format_type,
             "video_path": video_path,
             "youtube_url": youtube_url,
+            "youtube_video_id": yt_id,
             "created_at": datetime.now().isoformat()
         }
         self._save_data()
@@ -117,7 +122,8 @@ class AnalyticsTracker:
             "comments": 0,
             "ctr": 0.0,
             "affiliate_clicks": 0,
-            "revenue": 0.0
+            "revenue": 0.0,
+            "subscribers_gained": 0,
         }
 
         for metric in metrics:
@@ -130,6 +136,14 @@ class AnalyticsTracker:
                 else:
                     aggregated_metrics[m_type] += m_value
 
+        yt_stats = video_info.get("youtube_stats") or {}
+        if yt_stats:
+            aggregated_metrics["views"] = yt_stats.get("views", aggregated_metrics["views"])
+            aggregated_metrics["likes"] = yt_stats.get("likes", aggregated_metrics["likes"])
+            aggregated_metrics["comments"] = yt_stats.get("comments", aggregated_metrics["comments"])
+            if yt_stats.get("subscribers_gained") is not None:
+                aggregated_metrics["subscribers_gained"] = yt_stats.get("subscribers_gained", 0)
+
         # Calculate derived metrics
         total_views = aggregated_metrics["views"]
         total_affiliate_clicks = aggregated_metrics["affiliate_clicks"]
@@ -141,6 +155,12 @@ class AnalyticsTracker:
         video_info["latest_ctr"] = aggregated_metrics["ctr"]
         video_info["total_affiliate_clicks"] = total_affiliate_clicks
         video_info["total_revenue"] = total_revenue
+        video_info["total_subscribers_gained"] = aggregated_metrics["subscribers_gained"]
+
+        if yt_stats:
+            video_info["youtube_watch_minutes"] = yt_stats.get("estimated_minutes_watched", 0)
+            video_info["youtube_avg_view_duration"] = yt_stats.get("average_view_duration", 0)
+            video_info["youtube_synced_at"] = yt_stats.get("synced_at")
 
         video_info["conversion_rate"] = (total_affiliate_clicks / total_views) if total_views > 0 else 0.0
         video_info["revenue_per_view"] = (total_revenue / total_views) if total_views > 0 else 0.0
@@ -391,6 +411,26 @@ class AnalyticsTracker:
                 "conversion_rate": v["conversion_rate"]
             } for v in top_conversion_videos]
         }
+
+    def sync_youtube_stats(self, yt_stats_by_id: dict) -> dict:
+        from youtube_analytics import extract_youtube_video_id
+
+        synced = 0
+        missing = 0
+        for video_id, video_info in self.data["videos"].items():
+            yt_id = video_info.get("youtube_video_id") or extract_youtube_video_id(video_info.get("youtube_url"))
+            if not yt_id:
+                missing += 1
+                continue
+            stats = yt_stats_by_id.get(yt_id)
+            if not stats:
+                missing += 1
+                continue
+            video_info["youtube_video_id"] = yt_id
+            video_info["youtube_stats"] = {**stats, "synced_at": datetime.now().isoformat()}
+            synced += 1
+        self._save_data()
+        return {"synced": synced, "missing": missing, "tracked_videos": len(self.data["videos"])}
 
 def create_tracking_link(affiliate_url, video_id, platform="youtube"):
     """
