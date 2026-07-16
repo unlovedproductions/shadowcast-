@@ -259,3 +259,13 @@ class OAuthManager:
         if platform in ("instagram", "facebook"):
             return self.store.load(platform) or self.store.load("meta")
         return self.store.load(platform)
+
+    def persist_google_tokens(self, creds, platform: str = "youtube") -> None:
+        """Save refreshed Google OAuth access token back to the credential store."""
+        stored = self.store.load(platform) or {}
+        if getattr(creds, "token", None):
+            stored["access_token"] = creds.token
+        expiry = getattr(creds, "expiry", None)
+        if expiry is not None:
+            stored["expires_at"] = expiry.isoformat()
+        self.store.save(platform, stored)

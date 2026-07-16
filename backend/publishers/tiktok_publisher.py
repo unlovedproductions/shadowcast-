@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from credentials_store import CredentialsStore
 from oauth_manager import OAuthManager
 
 TIKTOK_API = "https://open.tiktokapis.com/v2"
+TIKTOK_PUBLISH_POLL_SECONDS = 5
+TIKTOK_PUBLISH_MAX_POLLS = 60
 
 
 class TikTokPublisher:
@@ -70,13 +73,25 @@ class TikTokPublisher:
                 upload = client.put(upload_url, content=f.read(), headers={"Content-Type": "video/mp4"})
             upload.raise_for_status()
 
-            publish = client.post(
-                f"{TIKTOK_API}/post/publish/status/fetch/",
-                headers=headers,
-                json={"publish_id": publish_id},
-            )
-            publish.raise_for_status()
-            result = publish.json().get("data", publish.json())
+            result = {}
+            for _ in range(TIKTOK_PUBLISH_MAX_POLLS):
+                publish = client.post(
+                    f"{TIKTOK_API}/post/publish/status/fetch/",
+                    headers=headers,
+                    json={"publish_id": publish_id},
+                )
+                publish.raise_for_status()
+                result = publish.json().get("data", publish.json())
+                status = str(result.get("status", "")).upper()
+                if status in ("PUBLISH_COMPLETE", "PUBLISHED", "SUCCESS"):
+                    break
+                if status in ("FAILED", "FAIL"):
+                    raise RuntimeError(
+                        f"TikTok publish failed: {result.get('fail_reason', result)}"
+                    )
+                time.sleep(TIKTOK_PUBLISH_POLL_SECONDS)
+            else:
+                raise TimeoutError("TikTok publish did not complete within polling window")
 
         post_id = result.get("publish_id") or publish_id
         return {

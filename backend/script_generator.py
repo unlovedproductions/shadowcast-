@@ -269,7 +269,7 @@ Return JSON:
             "text_color": "<hex>",
             "bg_color": "<hex>",
             "animation": "<pop_in|slide_up|fade_in|zoom_in|shake|typewriter|bounce>",
-            "transition_to_next": "<cut|whip_pan|fade|zoom_through|glitch>",
+            "transition_to_next": "<cut|fade|glitch|flash|swipe|zoom>",
             "visual_note": "<background description>"
         }}
     ],
@@ -377,7 +377,7 @@ Return JSON:
                     "text_color": "<hex>",
                     "bg_color": "<hex>",
                     "animation": "<pop_in|slide_up|slide_left|fade_in|zoom_in|shake|typewriter|bounce|wipe>",
-                    "transition_to_next": "<cut|whip_pan|fade|zoom_through|glitch|dissolve>",
+                    "transition_to_next": "<cut|fade|glitch|flash|swipe|zoom>",
                     "is_pattern_interrupt": <true|false>,
                     "visual_note": "<background description>"
                 }}

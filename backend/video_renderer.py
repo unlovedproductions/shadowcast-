@@ -132,12 +132,14 @@ def normalize_text_style(text_style: str) -> str:
     return TEXT_STYLE_ALIASES.get(text_style, text_style)
 
 
-def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: str | None):
+def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: str | None, render_warnings=None):
     """Generate TTS for script segments and return a float32 numpy array, or None."""
     try:
         vo_dir = os.path.dirname(output_path) or "."
         vo_path = generate_voiceover_for_script(script, vo_dir, provider=provider, voice=voice)
         if not vo_path or not os.path.exists(vo_path):
+            if render_warnings is not None:
+                render_warnings.append("TTS voiceover file was not produced")
             return None
         rate, data = read_wav(vo_path) if vo_path.endswith(".wav") else (None, None)
         if data is None:
@@ -163,6 +165,8 @@ def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: 
         return arr
     except Exception as e:
         print(f"Warning: TTS voiceover failed ({e})")
+        if render_warnings is not None:
+            render_warnings.append(f"TTS voiceover failed: {e}")
         return None
 
 
@@ -614,6 +618,7 @@ def render_short_form_video(
     tts_provider: str = "auto",
     tts_voice: str | None = None,
     video_preset: str | None = None,
+    render_warnings: list | None = None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
     if competitors is None:
@@ -774,8 +779,10 @@ def render_short_form_video(
             voiceover_array = None
             if use_tts:
                 voiceover_array = _load_voiceover_array(
-                    script, output_path, tts_provider, tts_voice
+                    script, output_path, tts_provider, tts_voice, render_warnings
                 )
+                if voiceover_array is None and render_warnings is not None:
+                    render_warnings.append("Video rendered without TTS voiceover")
 
             audio_path = output_path.replace(".mp4", "_audio.wav")
             mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
@@ -788,6 +795,8 @@ def render_short_form_video(
                 os.remove(audio_path)
         except Exception as e:
             print(f"Warning: Audio generation failed ({e}), using video without audio")
+            if render_warnings is not None:
+                render_warnings.append(f"Audio generation failed, using silent video: {e}")
             if os.path.exists(video_only_path):
                 os.rename(video_only_path, output_path)
     
@@ -817,6 +826,7 @@ def render_long_form_video(
     tts_provider: str = "auto",
     tts_voice: str | None = None,
     video_preset: str | None = None,
+    render_warnings: list | None = None,
 ) -> str:
     if competitors is None:
         competitors = []
@@ -1053,8 +1063,10 @@ def render_long_form_video(
                 voiceover_array = None
                 if use_tts:
                     voiceover_array = _load_voiceover_array(
-                        script, output_path, tts_provider, tts_voice
+                        script, output_path, tts_provider, tts_voice, render_warnings
                     )
+                    if voiceover_array is None and render_warnings is not None:
+                        render_warnings.append("Video rendered without TTS voiceover")
 
                 audio_path = output_path.replace(".mp4", "_audio.wav")
                 mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
@@ -1067,6 +1079,8 @@ def render_long_form_video(
                     os.remove(audio_path)
             except Exception as e:
                 print(f"Warning: Audio generation failed ({e}), using video without audio")
+                if render_warnings is not None:
+                    render_warnings.append(f"Audio generation failed, using silent video: {e}")
                 if os.path.exists(video_only_path):
                     os.rename(video_only_path, output_path)
 

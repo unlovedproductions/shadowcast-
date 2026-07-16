@@ -75,6 +75,10 @@ class MetaPublisher:
                 if code == "ERROR":
                     raise RuntimeError("Instagram media processing failed")
                 time.sleep(5)
+            else:
+                raise TimeoutError(
+                    "Instagram media processing did not finish within 5 minutes"
+                )
 
             publish = client.post(
                 f"{GRAPH}/{ig_id}/media_publish",

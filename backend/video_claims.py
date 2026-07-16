@@ -56,6 +56,8 @@ TRANSITION_DURATIONS = {
     "flash": 0.10,
     "swipe": 0.30,
     "zoom": 0.20,
+    "fade": 0.0,
+    "cut": 0.0,
 }
 
 REQUIRED_LAYOUTS_BY_STYLE: dict[str, set[str]] = {

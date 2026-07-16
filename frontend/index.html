@@ -276,7 +276,8 @@
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
         results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null, trustInputs: null,
-        errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [],
+        errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [], jobWarnings: [],
+        auditResult: null,
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
@@ -880,7 +881,7 @@
             ? (isBatch ? 'Batch Complete (Review Warnings)' : 'Generation Complete (Review Warnings)')
             : (isBatch ? `Batch Complete — ${state.batchResults.length} Products` : 'Generation Complete');
         const counts = `Videos ${s.videos_ready || 0}/${s.videos_expected || 0} • Packages ${s.packages_ready || 0}/${s.packages_expected || 0}`;
-        const issueLines = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors];
+        const issueLines = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors, ...(state.jobWarnings || [])];
         const issueBlock = issueLines.length
             ? `<div style="font-size:13px;color:var(--text2);margin-top:12px;text-align:left;border-top:1px solid #2a2a2a;padding-top:10px;">
                 <strong style="color:var(--accent);">Issues logged during run:</strong>
@@ -904,6 +905,14 @@
         const retryBtn = partial
             ? `<button class="btn-primary" style="width:auto;margin-top:12px;" onclick="retryMissingOutputs()">Retry Missing Outputs</button>`
             : '';
+        const audit = state.auditResult || {};
+        const auditBlock = (audit.fail_count || audit.warn_count)
+            ? `<div style="font-size:13px;color:var(--text2);margin-top:12px;text-align:left;border-top:1px solid #2a2a2a;padding-top:10px;">
+                <strong style="color:var(--pink);">Video claim audit:</strong>
+                <div style="margin-top:6px;">FAIL ${audit.fail_count || 0} • WARN ${audit.warn_count || 0} • checked ${audit.videos_checked || 0} videos</div>
+                <button class="btn-sm btn-copy" style="margin-top:8px;" onclick="runJobAudit(true)">Re-run Audit</button>
+              </div>`
+            : `<button class="btn-sm btn-copy" style="margin-top:12px;" onclick="runJobAudit(true)">Run Video Audit</button>`;
         const batchZip = isBatch
             ? `<button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;margin-top:12px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>`
             : '';
@@ -912,6 +921,7 @@
             <p style="color:var(--text2);font-size:14px;">${esc(counts)}${partial ? ' — some outputs may need a rerun.' : ' — ready to publish.'}</p>
             ${retryBtn}
             ${batchZip}
+            ${auditBlock}
             ${checklist}
             ${issueBlock}
         </div>`;
@@ -2224,16 +2234,20 @@
             state.progress=Number.isFinite(data.progress)?data.progress:(state.progress||0);
             state.currentStep=data.current_step||state.currentStep||'';
             state.jobStatus=data.status; state.errors=data.errors||[];
+            state.jobWarnings=data.warnings||[];
+            if (data.audit) state.auditResult=data.audit;
             const split = splitJobMessages(state.errors);
             state.scriptErrors=data.script_errors || split.scriptErrors;
             state.videoWarnings=data.video_warnings || split.videoWarnings;
             state.otherErrors=data.other_errors || split.otherErrors;
 
-            if (data.status==='complete') {
+            if (data.status==='complete' || data.status==='partial') {
                 const rres=await fetch(`${API}/results/${state.jobId}`);
                 const rdata=await rres.json();
                 state.resultsSummary=rdata.summary||null;
                 state.trustInputs=rdata.trust_inputs||null;
+                state.jobWarnings=rdata.warnings||state.jobWarnings;
+                if (rdata.audit) state.auditResult=rdata.audit;
                 if (state.jobMode==='batch') {
                     state.batchResults=rdata.product_results||[];
                     state.activeProductIdx=0; state.activeTab=null;
@@ -2250,6 +2264,29 @@
             if (data.status==='error') { state.page='error'; render(); return; }
             render(); setTimeout(pollStatus,2000);
         } catch(e) { setTimeout(pollStatus,3000); }
+    }
+
+    async function runJobAudit(refresh) {
+        if (!state.jobId) {
+            showToast('No job to audit.');
+            return;
+        }
+        try {
+            const url = `${API}/audit/${state.jobId}${refresh ? '?refresh=true' : ''}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!res.ok) {
+                showToast((data && data.detail) ? String(data.detail) : 'Audit failed.');
+                return;
+            }
+            state.auditResult = data.audit || null;
+            state.resultsSummary = data.summary || state.resultsSummary;
+            render();
+            const a = data.audit || {};
+            showToast(`Audit: FAIL ${a.fail_count || 0}, WARN ${a.warn_count || 0}`);
+        } catch (e) {
+            showToast('Audit failed: ' + e.message);
+        }
     }
 
     async function retryMissingOutputs() {
