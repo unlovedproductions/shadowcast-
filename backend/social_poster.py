@@ -11,6 +11,7 @@ import httpx
 from oauth_manager import OAuthManager
 
 PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "rumble")
+MAX_QUEUE_ATTEMPTS = 5
 
 
 class SocialPoster:
@@ -73,6 +74,10 @@ class SocialPoster:
                 self.queue = json.load(f)
         else:
             self.queue = []
+        for post in self.queue:
+            post.setdefault("attempts", 0)
+            post.setdefault("failed", False)
+            post.setdefault("last_error", "")
 
     def save_queue(self):
         with open(self.queue_file, "w") as f:
@@ -89,6 +94,9 @@ class SocialPoster:
             "hashtags": hashtags,
             "scheduled_time": scheduled_time,
             "posted": False,
+            "failed": False,
+            "attempts": 0,
+            "last_error": "",
             "job_id": job_id,
             "hook_type": hook_type,
             "video_format": video_format,
@@ -99,16 +107,24 @@ class SocialPoster:
         return {"status": "scheduled", "platform": platform, "scheduled_time": scheduled_time}
 
     def get_queue(self):
-        return [post for post in self.queue if not post["posted"]]
+        return [post for post in self.queue if not post["posted"] and not post.get("failed")]
 
     def process_queue(self, dry_run=False, publish_service=None, jobs=None):
         now = datetime.now()
         processed = 0
         for post in self.queue:
-            if post["posted"]:
+            if post["posted"] or post.get("failed"):
                 continue
             if datetime.fromisoformat(post["scheduled_time"]) > now:
                 continue
+
+            attempts = int(post.get("attempts") or 0)
+            if attempts >= MAX_QUEUE_ATTEMPTS:
+                post["failed"] = True
+                post["last_error"] = post.get("last_error") or "Max retry attempts exceeded"
+                continue
+
+            post["attempts"] = attempts + 1
 
             if publish_service and post.get("job_id") and post.get("hook_type"):
                 result = publish_service.publish(
@@ -134,7 +150,12 @@ class SocialPoster:
 
             if result.get("status") == "success":
                 post["posted"] = True
+                post["last_error"] = ""
                 processed += 1
+            else:
+                post["last_error"] = str(result.get("message") or result)
+                if post["attempts"] >= MAX_QUEUE_ATTEMPTS:
+                    post["failed"] = True
         self.save_queue()
         return processed
 

@@ -202,12 +202,15 @@ Return ONLY valid JSON."""
             "hashtags": [],
             "pinned_comment": "",
             "thumbnail_text_primary": product_info['product_name'],
+            "_shadowcast_fallback": True,
         }
         # Merge any fields found in parsed dict
         if isinstance(parsed, dict):
             fallback.update(parsed)
         return fallback
 
+    if isinstance(parsed, dict):
+        parsed["_shadowcast_fallback"] = False
     return parsed
 
 

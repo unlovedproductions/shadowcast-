@@ -51,49 +51,67 @@ class RumblePublisher:
         tags = payload.get("tags", [])
         category = payload.get("category", "Entertainment")
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            context.add_cookies(cookies)
-            page = context.new_page()
-            page.goto(RUMBLE_UPLOAD_URL, wait_until="networkidle")
+        browser = None
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context()
+                context.add_cookies(cookies)
+                page = context.new_page()
+                page.goto(RUMBLE_UPLOAD_URL, wait_until="networkidle")
 
-            page.fill('input[name="title"], #title, [placeholder*="Title"]', title)
-            page.fill('textarea[name="description"], #description, [placeholder*="Description"]', description)
+                page.fill('input[name="title"], #title, [placeholder*="Title"]', title)
+                page.fill('textarea[name="description"], #description, [placeholder*="Description"]', description)
 
-            if tags:
-                tags_str = ", ".join(tags)
-                tag_sel = 'input[name="tags"], #tags, [placeholder*="tag" i]'
-                if page.locator(tag_sel).count():
-                    page.fill(tag_sel, tags_str)
+                if tags:
+                    tags_str = ", ".join(tags)
+                    tag_sel = 'input[name="tags"], #tags, [placeholder*="tag" i]'
+                    if page.locator(tag_sel).count():
+                        page.fill(tag_sel, tags_str)
 
-            cat_sel = 'select[name="category"], #category'
-            if page.locator(cat_sel).count():
+                cat_sel = 'select[name="category"], #category'
+                if page.locator(cat_sel).count():
+                    try:
+                        page.select_option(cat_sel, label=category)
+                    except Exception:
+                        pass
+
+                file_input = page.locator('input[type="file"]')
+                file_input.set_input_files(str(Path(video_path).resolve()))
+
+                for checkbox in page.locator('input[type="checkbox"]').all():
+                    try:
+                        if not checkbox.is_checked():
+                            checkbox.check()
+                    except Exception:
+                        pass
+
+                submit = page.locator('button[type="submit"], input[type="submit"], button:has-text("Publish"), button:has-text("Upload")')
+                if submit.count():
+                    submit.first.click()
+                    page.wait_for_load_state("networkidle", timeout=120000)
+
+                url = page.url
+                if "login" in url.lower():
+                    raise RuntimeError("Rumble session expired — reconnect via browser login")
+                body_text = page.locator("body").inner_text().lower()
+                if any(token in body_text for token in ("error", "failed", "invalid")):
+                    raise RuntimeError("Rumble upload page reported an error after submit")
+
+                post_id = url.rstrip("/").split("/")[-1] if "rumble.com" in url else ""
+                if not post_id or post_id in ("upload.php", "upload"):
+                    raise RuntimeError("Rumble publish did not return a video URL")
+
+                new_cookies = context.cookies()
+                self.save_session_from_cookies(new_cookies)
+                browser.close()
+                browser = None
+        finally:
+            if browser is not None:
                 try:
-                    page.select_option(cat_sel, label=category)
+                    browser.close()
                 except Exception:
                     pass
-
-            file_input = page.locator('input[type="file"]')
-            file_input.set_input_files(str(Path(video_path).resolve()))
-
-            for checkbox in page.locator('input[type="checkbox"]').all():
-                try:
-                    if not checkbox.is_checked():
-                        checkbox.check()
-                except Exception:
-                    pass
-
-            submit = page.locator('button[type="submit"], input[type="submit"], button:has-text("Publish"), button:has-text("Upload")')
-            if submit.count():
-                submit.first.click()
-                page.wait_for_load_state("networkidle", timeout=120000)
-
-            url = page.url
-            post_id = url.rstrip("/").split("/")[-1] if "rumble.com" in url else "rumble_post"
-            new_cookies = context.cookies()
-            self.save_session_from_cookies(new_cookies)
-            browser.close()
 
         return {"status": "success", "platform": "rumble", "post_id": post_id, "url": url}
 

@@ -241,16 +241,12 @@ def audit_output(output_dir: Path) -> dict[str, Any]:
 
         bundle = by_directory_key.get((video_path.parent.resolve(), key))
         if bundle is None:
-            candidates = by_key.get(key, [])
-            if len(candidates) == 1:
-                bundle = candidates[0]
-        if bundle is None:
             push(
                 check="script_pairing",
                 severity=FAIL,
                 expected=f"{key}_scripts.json with {fmt} content",
                 actual="missing script bundle",
-                detail="Video has no paired script JSON.",
+                detail="Video has no paired script JSON in the same directory.",
             )
             continue
 

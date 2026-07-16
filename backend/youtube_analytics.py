@@ -35,18 +35,23 @@ class YouTubeAnalyticsClient:
         self.oauth = OAuthManager(self.store)
 
     def _credentials(self):
+        from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
 
         creds_data = self.oauth.get_credentials("youtube")
         if not creds_data or not creds_data.get("access_token"):
             raise ValueError("YouTube not connected — complete OAuth first")
-        return Credentials(
+        creds = Credentials(
             token=creds_data.get("access_token"),
             refresh_token=creds_data.get("refresh_token"),
             token_uri="https://oauth2.googleapis.com/token",
             client_id=os.getenv("GOOGLE_CLIENT_ID"),
             client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
         )
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            self.oauth.persist_google_tokens(creds, "youtube")
+        return creds
 
     def fetch_video_stats(self, youtube_video_ids: list[str]) -> dict[str, dict[str, Any]]:
         if not youtube_video_ids:

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 import uuid
 import threading
@@ -56,6 +57,7 @@ from oauth_manager import OAuthManager
 from publish_service import PublishService, resolve_job_assets
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
+from video_claim_audit import audit_output
 
 app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
 app.add_middleware(
@@ -100,6 +102,7 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
         "/api/status/",
         "/api/results/",
         "/api/retry-missing/",
+        "/api/audit/",
         "/api/download/",
         "/api/files/",
         "/api/bg-",
@@ -128,6 +131,8 @@ OUTPUT_BASE.mkdir(exist_ok=True)
 jobs = {}
 _active_job_threads = set()
 _job_thread_lock = threading.Lock()
+_job_heartbeats: dict[str, float] = {}
+_JOB_HEARTBEAT_STALE_SECONDS = 120
 
 
 def _job_path(job_id: str) -> Path:
@@ -180,6 +185,49 @@ def _load_cached_script_payload(path: Path) -> Optional[dict]:
     return payload if isinstance(payload, dict) else None
 
 
+def _probe_mp4_ok(path: Path) -> tuple[bool, str]:
+    command = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-show_format", str(path),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return True, ""
+    if result.returncode != 0:
+        return False, "ffprobe could not read MP4"
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False, "ffprobe returned invalid JSON"
+    streams = payload.get("streams", [])
+    has_video = any(
+        isinstance(s, dict) and s.get("codec_type") == "video" for s in streams
+    )
+    if not has_video:
+        return False, "MP4 has no video stream"
+    fmt = payload.get("format", {})
+    duration = fmt.get("duration")
+    if duration is not None:
+        try:
+            if float(duration) <= 0:
+                return False, "MP4 has zero duration"
+        except (TypeError, ValueError):
+            pass
+    return True, ""
+
+
+def _youtube_package_ok(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    seo_title = str(data.get("seo_title", "")).strip()
+    return bool(seo_title) and not data.get("_shadowcast_fallback", False)
+
+
 def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[List[str]] = None) -> bool:
     try:
         file_ok = path.is_file() and path.stat().st_size > 0
@@ -187,21 +235,30 @@ def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[L
         return False
     if not file_ok:
         return False
-    if artifact_type != "script":
-        return True
+    if artifact_type == "script":
+        script_payload = _load_cached_script_payload(path)
+        if script_payload is None:
+            return False
+        expected_formats = formats or ["short_form", "long_form"]
+        valid, _ = _validate_script_payload(script_payload, expected_formats)
+        return valid
+    if artifact_type == "youtube_package" or path.name.endswith("_youtube_package.json"):
+        return _youtube_package_ok(path)
+    if path.suffix.lower() == ".mp4":
+        ok, _ = _probe_mp4_ok(path)
+        return ok
+    return True
 
-    script_payload = _load_cached_script_payload(path)
-    if script_payload is None:
-        return False
-    expected_formats = formats or ["short_form", "long_form"]
-    valid, _ = _validate_script_payload(script_payload, expected_formats)
-    return valid
+
+def _add_job_warning(job: dict, message: str) -> None:
+    job.setdefault("warnings", []).append(message)
 
 
 def _save_job(job_id: str) -> None:
     job = jobs.get(job_id)
     if not job:
         return
+    _job_heartbeats[job_id] = time.time()
     path = _job_path(job_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
@@ -268,8 +325,64 @@ def _summarize_job_output(job: dict) -> dict:
             videos < total_expected
             or packages < total_expected
             or warning_count > 0
+            or len(job.get("warnings") or []) > 0
         ),
     }
+
+
+def _run_job_audit(job_dir: Path) -> dict:
+    try:
+        return audit_output(job_dir)
+    except Exception as exc:
+        return {
+            "output_dir": str(job_dir),
+            "videos_checked": 0,
+            "fail_count": 0,
+            "warn_count": 0,
+            "findings": [],
+            "audit_error": str(exc),
+        }
+
+
+def _finalize_job_status(job_id: str, job_dir: Path, *, done_message: str) -> None:
+    job = jobs[job_id]
+    audit_result = _run_job_audit(job_dir)
+    job["audit"] = audit_result
+    summary = _summarize_job_output(job)
+    job["summary"] = summary
+
+    fail_count = int(audit_result.get("fail_count") or 0)
+    warn_count = int(audit_result.get("warn_count") or 0)
+    has_outputs = summary.get("videos_ready", 0) > 0
+
+    if fail_count > 0:
+        job["errors"].append(f"Video claim audit: {fail_count} FAIL finding(s)")
+    if warn_count > 0:
+        _add_job_warning(job, f"Video claim audit: {warn_count} WARN finding(s)")
+    if audit_result.get("audit_error"):
+        _add_job_warning(job, f"Video claim audit error: {audit_result['audit_error']}")
+
+    if fail_count > 0 or not has_outputs:
+        job["status"] = "error"
+        job["current_step"] = (
+            done_message if has_outputs else "Error: No video outputs produced"
+        )
+    elif summary.get("is_partial"):
+        job["status"] = "partial"
+        job["current_step"] = f"{done_message} (review warnings)"
+    else:
+        job["status"] = "complete"
+        job["current_step"] = done_message
+
+    job["progress"] = 100
+    _save_job(job_id)
+
+
+def _job_thread_is_stale(job_id: str) -> bool:
+    last = _job_heartbeats.get(job_id)
+    if last is None:
+        return True
+    return (time.time() - last) > _JOB_HEARTBEAT_STALE_SECONDS
 
 
 _VARIANT_MP4_RE = re.compile(r"_(?P<hook>[^_/]+)_(?P<fmt>short_form|long_form)\.mp4$")
@@ -544,11 +657,15 @@ def _load_job(job_id: str) -> Optional[dict]:
     return job
 
 
-def _start_job_thread(job_id: str, target) -> None:
+def _start_job_thread(job_id: str, target) -> bool:
     with _job_thread_lock:
         if job_id in _active_job_threads:
-            return
+            if not _job_thread_is_stale(job_id):
+                return False
+            _active_job_threads.discard(job_id)
         _active_job_threads.add(job_id)
+
+    _job_heartbeats[job_id] = time.time()
 
     def _runner():
         try:
@@ -558,6 +675,7 @@ def _start_job_thread(job_id: str, target) -> None:
                 _active_job_threads.discard(job_id)
 
     threading.Thread(target=_runner, daemon=True).start()
+    return True
 
 
 def _resume_incomplete_jobs() -> None:
@@ -741,7 +859,28 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
         try:
             if _artifact_ok(script_path, artifact_type="script", formats=formats):
-                script_payload = _load_cached_script_payload(script_path) or {}
+                try:
+                    with open(script_path) as f:
+                        scripts_file = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    scripts_file = {}
+                script_payload = scripts_file.get("scripts", {}) if isinstance(scripts_file, dict) else {}
+                if not isinstance(script_payload, dict):
+                    script_payload = {}
+                changed = False
+                for fmt in formats:
+                    if fmt not in script_payload:
+                        continue
+                    enriched = enrich_script(script_payload[fmt], product, effective_style)
+                    if enriched != script_payload[fmt]:
+                        script_payload[fmt] = enriched
+                        changed = True
+                if changed and isinstance(scripts_file, dict):
+                    scripts_file["scripts"] = script_payload
+                    scripts_file["product_info"] = product
+                    scripts_file["content_style"] = effective_style
+                    with open(str(script_path), "w") as f:
+                        json.dump(scripts_file, f, indent=2)
                 all_scripts[hook_type] = script_payload
                 job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} scripts..."
             else:
@@ -801,6 +940,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         tts_provider=tts_provider,
                         tts_voice=tts_voice,
                         video_preset=render_preset,
+                        render_warnings=job.setdefault("warnings", []),
                     )
                     if fmt == "short_form":
                         render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
@@ -831,6 +971,15 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 step += 1
                 continue
 
+            hook_videos = (
+                product_results.get("hooks", {})
+                .get(hook_type, {})
+                .get("videos", {})
+            )
+            if fmt not in hook_videos:
+                step += 1
+                continue
+
             fl = fmt_display(fmt)
             fname = f"{slug}_{hook_type}_{fmt_label(fmt)}_youtube_package.json"
             yt_path = product_dir / fname
@@ -839,12 +988,17 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             _save_job(job_id)
 
             try:
-                if _artifact_ok(yt_path):
+                if _artifact_ok(yt_path, artifact_type="youtube_package"):
                     with open(yt_path) as f:
                         assets = json.load(f)
                     job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} {fl} YouTube package..."
                 else:
                     assets = generate_youtube_assets(product, scripts_data[fmt], fmt)
+                    if assets.get("_shadowcast_fallback"):
+                        _add_job_warning(
+                            job,
+                            f"[{product['product_name']}] YT package ({hook_type} {fmt}): LLM fallback stub used",
+                        )
                     with open(str(yt_path), "w") as f:
                         json.dump(assets, f, indent=2)
 
@@ -911,8 +1065,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     try:
         fname = f"{slug}_YOUTUBE_POSTING_PACKAGE.txt"
         save_posting_package_readable(all_yt_packages, product, str(product_dir / fname))
-    except Exception:
-        pass
+    except Exception as e:
+        _add_job_warning(job, f"[{product['product_name']}] Posting package TXT failed: {e}")
 
     _save_job(job_id)
     return product_results, step
@@ -947,10 +1101,7 @@ def _run_generation(job_id: str):
             video_preset=job.get("video_preset", "medium"),
         )
         job["results"] = result.get("hooks", {})
-        job["status"] = "complete"
-        job["progress"] = 100
-        job["current_step"] = "Done!"
-        _save_job(job_id)
+        _finalize_job_status(job_id, job_dir, done_message="Done!")
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
@@ -998,20 +1149,24 @@ def _run_batch_generation(job_id: str):
 
         job["product_results"] = all_product_results
 
-        zip_path = job_dir / "all_products.zip"
-        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(str(job_dir)):
-                for file in files:
-                    if file == "all_products.zip":
-                        continue
-                    full = os.path.join(root, file)
-                    arcname = os.path.relpath(full, str(job_dir))
-                    zf.write(full, arcname)
+        try:
+            zip_path = job_dir / "all_products.zip"
+            with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, dirs, files in os.walk(str(job_dir)):
+                    for file in files:
+                        if file == "all_products.zip":
+                            continue
+                        full = os.path.join(root, file)
+                        arcname = os.path.relpath(full, str(job_dir))
+                        zf.write(full, arcname)
+        except Exception as zip_exc:
+            _add_job_warning(job, f"ZIP creation failed: {zip_exc}")
 
-        job["status"] = "complete"
-        job["progress"] = 100
-        job["current_step"] = f"Done! {len(products)} products processed."
-        _save_job(job_id)
+        _finalize_job_status(
+            job_id,
+            job_dir,
+            done_message=f"Done! {len(products)} products processed.",
+        )
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
@@ -1049,6 +1204,19 @@ def _check_llm_reachable() -> tuple[bool, str]:
     return False, f"LLM unreachable at {base_url}."
 
 
+def _ensure_generation_ready() -> None:
+    blockers: List[str] = []
+    if shutil.which("ffmpeg") is None:
+        blockers.append("ffmpeg is not installed or not on PATH.")
+    if shutil.which("ffprobe") is None:
+        blockers.append("ffprobe is not installed or not on PATH.")
+    llm_ok, llm_detail = _check_llm_reachable()
+    if not llm_ok:
+        blockers.append(llm_detail or "LLM provider is unreachable.")
+    if blockers:
+        raise HTTPException(status_code=503, detail="; ".join(blockers))
+
+
 @app.get("/api/readiness")
 def get_readiness():
     blockers: List[str] = []
@@ -1057,6 +1225,10 @@ def get_readiness():
     ffmpeg_ok = shutil.which("ffmpeg") is not None
     if not ffmpeg_ok:
         blockers.append("ffmpeg is not installed or not on PATH.")
+
+    ffprobe_ok = shutil.which("ffprobe") is not None
+    if not ffprobe_ok:
+        blockers.append("ffprobe is not installed or not on PATH.")
 
     llm_ok, llm_detail = _check_llm_reachable()
     cfg = llm_config.get_config()
@@ -1077,6 +1249,7 @@ def get_readiness():
         "warnings": warnings,
         "checks": {
             "ffmpeg": ffmpeg_ok,
+            "ffprobe": ffprobe_ok,
             "llm": llm_ok,
             "llm_provider": cfg.provider,
             "llm_model": cfg.model,
@@ -1191,6 +1364,7 @@ def get_csv_template():
 # ── Single product generation ─────────────────────────────────────────
 @app.post("/api/generate")
 def start_generation(req: GenerateRequest):
+    _ensure_generation_ready()
     job_id = str(uuid.uuid4())[:8]
     job_dir = OUTPUT_BASE / job_id
     job_dir.mkdir(exist_ok=True)
@@ -1222,12 +1396,13 @@ def start_generation(req: GenerateRequest):
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
-        "results": {}, "errors": [],
+        "results": {}, "errors": [], "warnings": [],
         "created_at": time.time(),
     }
     _save_job(job_id)
 
-    _start_job_thread(job_id, _run_generation)
+    if not _start_job_thread(job_id, _run_generation):
+        raise HTTPException(status_code=409, detail="Job thread already active")
     response = {"job_id": job_id, "status": "running", "mode": "single"}
     if warnings:
         response["warnings"] = warnings
@@ -1241,7 +1416,14 @@ async def batch_upload(
     hook_types: str = Form("curiosity"),
     formats: str = Form("short_form,long_form"),
     content_style: str = Form(DEFAULT_CONTENT_STYLE),
+    audio_enabled: bool = Form(True),
+    audio_mood: str = Form("auto"),
+    use_tts: bool = Form(False),
+    tts_provider: str = Form("auto"),
+    tts_voice: str = Form(""),
+    video_preset: str = Form("medium"),
 ):
+    _ensure_generation_ready()
     content = await file.read()
     try:
         csv_text = content.decode("utf-8-sig")
@@ -1265,12 +1447,19 @@ async def batch_upload(
         "current_step": f"Starting batch: {len(products)} products...",
         "products": products, "hook_types": hook_list,
         "formats": fmt_list, "content_style": content_style,
+        "audio_enabled": audio_enabled,
+        "audio_mood": audio_mood,
+        "use_tts": use_tts,
+        "tts_provider": tts_provider,
+        "tts_voice": tts_voice or None,
+        "video_preset": resolve_video_preset(video_preset),
         "product_results": [],
-        "errors": [], "created_at": time.time(),
+        "errors": [], "warnings": [], "created_at": time.time(),
     }
     _save_job(job_id)
 
-    _start_job_thread(job_id, _run_batch_generation)
+    if not _start_job_thread(job_id, _run_batch_generation):
+        raise HTTPException(status_code=409, detail="Job thread already active")
 
     return {
         "job_id": job_id, "status": "running", "mode": "batch",
@@ -1334,6 +1523,7 @@ async def import_apf(file: UploadFile = File(...)):
 # ── Batch JSON upload ─────────────────────────────────────────────────
 @app.post("/api/batch-generate")
 def batch_generate(req: BatchGenerateRequest):
+    _ensure_generation_ready()
     products = []
     for p in req.products:
         item = p.dict()
@@ -1361,11 +1551,12 @@ def batch_generate(req: BatchGenerateRequest):
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
         "product_results": [],
-        "errors": [], "created_at": time.time(),
+        "errors": [], "warnings": [], "created_at": time.time(),
     }
     _save_job(job_id)
 
-    _start_job_thread(job_id, _run_batch_generation)
+    if not _start_job_thread(job_id, _run_batch_generation):
+        raise HTTPException(status_code=409, detail="Job thread already active")
 
     return {
         "job_id": job_id, "status": "running", "mode": "batch",
@@ -1386,9 +1577,12 @@ def get_status(job_id: str):
         "id": job["id"], "mode": job.get("mode", "single"),
         "status": job["status"], "progress": job.get("progress", 0),
         "current_step": job.get("current_step", ""), "errors": errors,
+        "warnings": job.get("warnings", []),
         "script_errors": script_errors,
         "video_warnings": video_warnings,
         "other_errors": other_errors,
+        "summary": _summarize_job_output(job),
+        "audit": job.get("audit"),
     }
     if job.get("mode") == "batch":
         resp["product_count"] = len(job.get("products", []))
@@ -1406,9 +1600,12 @@ def get_results(job_id: str):
         "id": job["id"], "mode": job.get("mode", "single"),
         "status": job["status"], "progress": job.get("progress", 0),
         "current_step": job.get("current_step", ""), "errors": errors,
+        "warnings": job.get("warnings", []),
         "script_errors": script_errors,
         "video_warnings": video_warnings,
         "other_errors": other_errors,
+        "summary": _summarize_job_output(job),
+        "audit": job.get("audit"),
     }
     if job.get("mode") == "batch":
         resp["product_results"] = job.get("product_results", [])
@@ -1440,10 +1637,15 @@ def retry_missing_outputs(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.get("status") == "running":
-        raise HTTPException(status_code=409, detail="Job is already running")
+        if job_id in _active_job_threads and not _job_thread_is_stale(job_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Job is already running with an active worker thread",
+            )
+        _active_job_threads.discard(job_id)
 
     summary = _summarize_job_output(job)
-    if job.get("status") == "complete" and not summary.get("is_partial"):
+    if job.get("status") in ("complete", "partial") and not summary.get("is_partial"):
         return {
             "job_id": job_id,
             "status": "complete",
@@ -1457,15 +1659,45 @@ def retry_missing_outputs(job_id: str):
     _save_job(job_id)
 
     if job.get("mode") == "batch":
-        _start_job_thread(job_id, _run_batch_generation)
+        started = _start_job_thread(job_id, _run_batch_generation)
     else:
-        _start_job_thread(job_id, _run_generation)
+        started = _start_job_thread(job_id, _run_generation)
+
+    if not started:
+        raise HTTPException(
+            status_code=409,
+            detail="Could not start retry worker — job thread already active",
+        )
 
     return {
         "job_id": job_id,
         "status": "running",
         "message": "Retry started. Existing artifacts will be skipped.",
         "summary": summary,
+    }
+
+
+@app.get("/api/audit/{job_id}")
+def get_job_audit(job_id: str, refresh: bool = False):
+    job = _load_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_dir = OUTPUT_BASE / job_id
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail="Job output directory not found")
+
+    if refresh or not job.get("audit"):
+        audit_result = _run_job_audit(job_dir)
+        job["audit"] = audit_result
+        _save_job(job_id)
+    else:
+        audit_result = job["audit"]
+
+    return {
+        "job_id": job_id,
+        "status": job.get("status"),
+        "audit": audit_result,
+        "summary": _summarize_job_output(job),
     }
 
 

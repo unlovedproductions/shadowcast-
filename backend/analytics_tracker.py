@@ -465,54 +465,69 @@ def create_tracking_link(affiliate_url, video_id, platform="youtube"):
     return tracking_url
 
 def parse_youtube_analytics(api_key, video_ids):
-    """
-    Fetches basic public stats from YouTube Data API v3 (views, likes, comments).
-    Includes graceful fallback if no API key is provided.
+    """Fetch YouTube video statistics via Data API v3 when a key is provided."""
+    if not video_ids:
+        return {}
 
-    Args:
-        api_key (str): Your YouTube Data API v3 key. Can be None for fallback.
-        video_ids (list): A list of YouTube video IDs.
-
-    Returns:
-        dict: A dictionary where keys are video IDs and values are their stats (views, likes, comments).
-              Returns empty dict if API key is missing or API call fails.
-    """
     if not api_key:
-        print("YouTube API key not provided. Skipping YouTube analytics fetching.")
-        return {video_id: {"views": 0, "likes": 0, "comments": 0} for video_id in video_ids}
-
-    # This part would typically involve making actual API calls.
-    # For this exercise, we'll simulate a response or return zeros.
-    # In a real scenario, you'd use a library like `google-api-python-client`.
-    # Example (conceptual, not executable without actual API setup):
-    # from googleapiclient.discovery import build
-    # youtube = build('youtube', 'v3', developerKey=api_key)
-    # request = youtube.videos().list(
-    #     part='statistics',
-    #     id=','.join(video_ids)
-    # )
-    # response = request.execute()
-    # stats = {}
-    # for item in response.get('items', []):
-    #     video_id = item['id']
-    #     statistics = item['statistics']
-    #     stats[video_id] = {
-    #         'views': int(statistics.get('viewCount', 0)),
-    #         'likes': int(statistics.get('likeCount', 0)),
-    #         'comments': int(statistics.get('commentCount', 0))
-    #     }
-    # return stats
-
-    print("Simulating YouTube API response (API key provided but no actual API call).")
-    # Simulate some data for demonstration purposes if an API key is provided
-    simulated_stats = {}
-    for video_id in video_ids:
-        simulated_stats[video_id] = {
-            "views": 1000 + video_ids.index(video_id) * 500,
-            "likes": 50 + video_ids.index(video_id) * 10,
-            "comments": 5 + video_ids.index(video_id) * 2
+        return {
+            video_id: {"views": 0, "likes": 0, "comments": 0, "_simulated": True}
+            for video_id in video_ids
         }
-    return simulated_stats
+
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        return {
+            video_id: {
+                "views": 0,
+                "likes": 0,
+                "comments": 0,
+                "_simulated": True,
+                "_error": "google-api-python-client not installed",
+            }
+            for video_id in video_ids
+        }
+
+    stats: dict = {}
+    try:
+        youtube = build("youtube", "v3", developerKey=api_key)
+        for offset in range(0, len(video_ids), 50):
+            chunk = video_ids[offset: offset + 50]
+            response = youtube.videos().list(
+                part="statistics",
+                id=",".join(chunk),
+            ).execute()
+            for item in response.get("items", []):
+                vid = item["id"]
+                statistics = item.get("statistics", {})
+                stats[vid] = {
+                    "views": int(statistics.get("viewCount", 0) or 0),
+                    "likes": int(statistics.get("likeCount", 0) or 0),
+                    "comments": int(statistics.get("commentCount", 0) or 0),
+                    "_simulated": False,
+                }
+        for video_id in video_ids:
+            if video_id not in stats:
+                stats[video_id] = {
+                    "views": 0,
+                    "likes": 0,
+                    "comments": 0,
+                    "_simulated": False,
+                    "_missing": True,
+                }
+        return stats
+    except Exception as exc:
+        return {
+            video_id: {
+                "views": 0,
+                "likes": 0,
+                "comments": 0,
+                "_simulated": True,
+                "_error": str(exc),
+            }
+            for video_id in video_ids
+        }
 
 
 if __name__ == "__main__":
