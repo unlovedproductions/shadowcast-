@@ -22,6 +22,7 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
@@ -38,11 +39,27 @@ from amazon_scraper import scrape_amazon_product
 from youtube_research import research_youtube_keywords
 from api_models import (
     BatchGenerateRequest,
+    ConfigResponse,
+    ContentStylesResponse,
+    ErrorResponse,
     GenerateRequest,
+    GenerateResponse,
+    HealthResponse,
+    HooksResponse,
+    JobAuditResponse,
+    JobResultsResponse,
+    JobStatusResponse,
     LLMConfigRequest,
+    LLMModelsResponse,
+    LLMTestResponse,
     MetricRequest,
     ProductInfo,
+    ProvidersResponse,
+    ReadinessChecks,
+    ReadinessResponse,
+    RetryMissingResponse,
     ScrapeAmazonRequest,
+    TTSProvidersResponse,
     YouTubeResearchRequest,
 )
 from research_enrichment import enrich_product_research
@@ -71,14 +88,86 @@ from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
 
-app = FastAPI(title="ShadowCast by Unloved Productions", version="4.0")
+app = FastAPI(
+    title="ShadowCast by Unloved Productions",
+    version="4.0",
+    description=(
+        "Affiliate video generation API: product research, script generation, "
+        "video rendering, publishing, and analytics."
+    ),
+    servers=[{"url": "/", "description": "Current deployment host"}],
+)
+
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
+_cors_origins = [origin.strip() for origin in _cors_raw.split(",") if origin.strip()]
+if os.getenv("CORS_ALLOW_ALL", "").lower() in ("1", "true", "yes"):
+    _cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_COMMON_ERROR_RESPONSES = {
+    400: {"model": ErrorResponse, "description": "Bad request"},
+    401: {"model": ErrorResponse, "description": "Unauthorized"},
+    404: {"model": ErrorResponse, "description": "Not found"},
+    409: {"model": ErrorResponse, "description": "Conflict"},
+    422: {"model": ErrorResponse, "description": "Validation error"},
+    503: {"model": ErrorResponse, "description": "Service unavailable"},
+}
+
+
+def _error_code(status_code: int) -> str:
+    return {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        422: "VALIDATION_ERROR",
+        503: "SERVICE_UNAVAILABLE",
+    }.get(status_code, f"HTTP_{status_code}")
+
+
+def _error_payload(status_code: int, message: str, details: list | None = None) -> dict:
+    detail_items = details or []
+    return {
+        "detail": message,
+        "error": {
+            "code": _error_code(status_code),
+            "message": message,
+            "details": detail_items,
+        },
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_payload(exc.status_code, message),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    details = [
+        {
+            "field": ".".join(str(part) for part in err.get("loc", ())),
+            "code": err.get("type", "validation_error"),
+            "message": err.get("msg", "Invalid value"),
+        }
+        for err in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content=_error_payload(422, "Request validation failed", details),
+    )
 
 def check_internal_auth(request):
     service_key = request.headers.get("X-Service-Key")
@@ -1139,12 +1228,12 @@ def _run_batch_generation(job_id: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse, responses=_COMMON_ERROR_RESPONSES, tags=["ops"])
 def health_check():
     return {"status": "ok", "app": "ShadowCast", "version": "4.0"}
 
 
-@app.get("/api/openapi.json")
+@app.get("/api/openapi.json", tags=["ops"])
 def openapi_spec():
     return JSONResponse(app.openapi())
 
@@ -1190,7 +1279,7 @@ def _ensure_generation_ready() -> None:
         raise HTTPException(status_code=503, detail="; ".join(blockers))
 
 
-@app.get("/api/readiness")
+@app.get("/api/readiness", response_model=ReadinessResponse, responses=_COMMON_ERROR_RESPONSES, tags=["ops"])
 def get_readiness():
     blockers: List[str] = []
     warnings: List[str] = []
@@ -1216,41 +1305,42 @@ def get_readiness():
             "Only basic Google TTS is available. Install Kokoro/Piper or configure OpenAI TTS for better voice quality."
         )
 
-    return {
-        "ready": len(blockers) == 0,
-        "blockers": blockers,
-        "warnings": warnings,
-        "checks": {
-            "ffmpeg": ffmpeg_ok,
-            "ffprobe": ffprobe_ok,
-            "llm": llm_ok,
-            "llm_provider": cfg.provider,
-            "llm_model": cfg.model,
-            "tts_best": best_tts,
-            "tts_quality": quality_tts,
-            "tts_providers": {
+    return ReadinessResponse(
+        ready=len(blockers) == 0,
+        blockers=blockers,
+        warnings=warnings,
+        checks=ReadinessChecks(
+            ffmpeg=ffmpeg_ok,
+            ffprobe=ffprobe_ok,
+            llm=llm_ok,
+            llm_provider=cfg.provider,
+            llm_model=cfg.model,
+            tts_best=best_tts,
+            tts_quality=quality_tts,
+            tts_providers={
                 key: bool(info.get("available"))
                 for key, info in providers.items()
             },
-        },
-        "default_video_preset": resolve_video_preset(None),
-    }
+        ),
+        default_video_preset=resolve_video_preset(None),
+    )
 
 
-@app.get("/api/providers")
+@app.get("/api/providers", response_model=ProvidersResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
 def get_providers():
+    cfg = llm_config.get_config()
     return {
         "providers": llm_config.PROVIDER_PRESETS,
         "current": {
-            "provider": llm_config.get_config().provider,
-            "base_url": llm_config.get_config().base_url,
-            "model": llm_config.get_config().model,
-            "has_api_key": bool(llm_config.get_config().api_key),
+            "provider": cfg.provider,
+            "base_url": cfg.base_url,
+            "model": cfg.model,
+            "has_api_key": bool(cfg.api_key),
         },
     }
 
 
-@app.post("/api/config")
+@app.post("/api/config", response_model=ConfigResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
 def set_llm_config(req: LLMConfigRequest):
     cfg = llm_config.set_config(
         provider=req.provider, api_key=req.api_key,
@@ -1263,7 +1353,7 @@ def set_llm_config(req: LLMConfigRequest):
     }
 
 
-@app.get("/api/llm/test")
+@app.get("/api/llm/test", response_model=LLMTestResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
 def test_llm():
     cfg = llm_config.get_config()
     ok, detail, sample = test_chat_completion(timeout=15.0)
@@ -1277,7 +1367,7 @@ def test_llm():
     }
 
 
-@app.get("/api/llm/models")
+@app.get("/api/llm/models", response_model=LLMModelsResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
 def list_llm_models():
     cfg = llm_config.get_config()
     models = list_ollama_models(cfg.base_url if cfg.provider == "ollama" else "http://localhost:11434")
@@ -1293,7 +1383,7 @@ def list_llm_models():
     }
 
 
-@app.get("/api/hooks")
+@app.get("/api/hooks", response_model=HooksResponse, responses=_COMMON_ERROR_RESPONSES, tags=["catalog"])
 def get_hooks():
     return {
         "hooks": HOOK_TYPES,
@@ -1301,7 +1391,7 @@ def get_hooks():
     }
 
 
-@app.get("/api/content-styles")
+@app.get("/api/content-styles", response_model=ContentStylesResponse, responses=_COMMON_ERROR_RESPONSES, tags=["catalog"])
 def get_content_styles():
     return {
         "styles": CONTENT_STYLES,
@@ -1310,7 +1400,7 @@ def get_content_styles():
 
 
 # ── TTS Providers ────────────────────────────────────────────────────
-@app.get("/api/tts-providers")
+@app.get("/api/tts-providers", response_model=TTSProvidersResponse, responses=_COMMON_ERROR_RESPONSES, tags=["catalog"])
 def tts_providers():
     """Return available TTS providers and their status."""
     providers = get_tts_providers()
@@ -1363,7 +1453,7 @@ def get_csv_template():
 
 
 # ── Single product generation ─────────────────────────────────────────
-@app.post("/api/generate")
+@app.post("/api/generate", response_model=GenerateResponse, responses=_COMMON_ERROR_RESPONSES, tags=["jobs"])
 def start_generation(req: GenerateRequest):
     _ensure_generation_ready()
     job_id = str(uuid.uuid4())[:8]
@@ -1567,7 +1657,7 @@ def batch_generate(req: BatchGenerateRequest):
 
 
 # ── Status & Results ──────────────────────────────────────────────────
-@app.get("/api/status/{job_id}")
+@app.get("/api/status/{job_id}", response_model=JobStatusResponse, responses=_COMMON_ERROR_RESPONSES, tags=["jobs"])
 def get_status(job_id: str):
     job = _load_job(job_id)
     if not job:
@@ -1590,7 +1680,7 @@ def get_status(job_id: str):
     return resp
 
 
-@app.get("/api/results/{job_id}")
+@app.get("/api/results/{job_id}", response_model=JobResultsResponse, responses=_COMMON_ERROR_RESPONSES, tags=["jobs"])
 def get_results(job_id: str):
     job = _load_job(job_id)
     if not job:
@@ -1632,7 +1722,7 @@ def get_results(job_id: str):
     return resp
 
 
-@app.post("/api/retry-missing/{job_id}")
+@app.post("/api/retry-missing/{job_id}", response_model=RetryMissingResponse, responses=_COMMON_ERROR_RESPONSES, tags=["jobs"])
 def retry_missing_outputs(job_id: str):
     job = _load_job(job_id)
     if not job:
@@ -1678,7 +1768,7 @@ def retry_missing_outputs(job_id: str):
     }
 
 
-@app.get("/api/audit/{job_id}")
+@app.get("/api/audit/{job_id}", response_model=JobAuditResponse, responses=_COMMON_ERROR_RESPONSES, tags=["jobs"])
 def get_job_audit(job_id: str, refresh: bool = False):
     job = _load_job(job_id)
     if not job:

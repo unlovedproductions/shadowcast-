@@ -1,0 +1,82 @@
+{
+  "overall": {
+    "score": 50.5,
+    "grade": "F",
+    "totalEndpoints": 54
+  },
+  "api_info": {
+    "title": "ShadowCast by Unloved Productions",
+    "version": "4.0",
+    "description": "Affiliate video generation API: product research, script generation, video rendering, publishing, and analytics.",
+    "total_paths": 54,
+    "openapi_version": "3.1.0"
+  },
+  "categories": {
+    "consistency": {
+      "score": 82.19,
+      "grade": "B",
+      "weight": 30.0,
+      "weightedScore": 24.66,
+      "issues": [],
+      "recommendations": [
+        "Minor consistency improvements needed in naming or response formats",
+        "Consider creating API design guidelines document"
+      ]
+    },
+    "documentation": {
+      "score": 45.0,
+      "grade": "F",
+      "weight": 20.0,
+      "weightedScore": 9.0,
+      "issues": [],
+      "recommendations": [
+        "Add comprehensive descriptions to all API components",
+        "Include examples for complex operations and schemas",
+        "Document all parameters and response fields"
+      ]
+    },
+    "security": {
+      "score": 28.0,
+      "grade": "F",
+      "weight": 20.0,
+      "weightedScore": 5.6,
+      "issues": [],
+      "recommendations": [
+        "Implement comprehensive security schemes (OAuth2, API keys, etc.)",
+        "Ensure all endpoints have appropriate security requirements",
+        "Add input validation and rate limiting patterns"
+      ]
+    },
+    "usability": {
+      "score": 48.13,
+      "grade": "F",
+      "weight": 15.0,
+      "weightedScore": 7.22,
+      "issues": [],
+      "recommendations": [
+        "Improve error messages with actionable guidance",
+        "Add filtering and search capabilities to list endpoints",
+        "Enhance resource discoverability with better linking"
+      ]
+    },
+    "performance": {
+      "score": 26.8,
+      "grade": "F",
+      "weight": 15.0,
+      "weightedScore": 4.02,
+      "issues": [],
+      "recommendations": [
+        "Implement pagination for list endpoints",
+        "Add caching headers for cacheable responses",
+        "Consider batch operations for bulk updates"
+      ]
+    }
+  },
+  "topRecommendations": [
+    "Consistency: Minor consistency improvements needed in naming or response formats",
+    "Consistency: Consider creating API design guidelines document",
+    "Documentation: Add comprehensive descriptions to all API components",
+    "Documentation: Include examples for complex operations and schemas",
+    "Security: Implement comprehensive security schemes (OAuth2, API keys, etc.)"
+  ]
+}

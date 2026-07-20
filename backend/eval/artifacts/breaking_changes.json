@@ -1,0 +1,16 @@
+{
+  "summary": {
+    "total_changes": 0,
+    "breaking_changes": 0,
+    "potentially_breaking_changes": 0,
+    "non_breaking_changes": 0,
+    "enhancements": 0,
+    "critical_severity": 0,
+    "high_severity": 0,
+    "medium_severity": 0,
+    "low_severity": 0,
+    "info_severity": 0
+  },
+  "hasBreakingChanges": false,
+  "changes": []
+}
