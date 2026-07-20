@@ -241,6 +241,39 @@
     <script>
     const API = window.location.origin + '/api';
 
+    let pollTimer = null;
+    let pollBackoffMs = 2000;
+    const POLL_BACKOFF_MAX = 15000;
+    let pollActive = false;
+
+    function clearPollTimer() {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    }
+
+    function cancelJobPolling() {
+        pollActive = false;
+        clearPollTimer();
+        pollBackoffMs = 2000;
+        showToast('Stopped status polling. The job may still run on the server.');
+        render();
+    }
+
+    function beginPolling() {
+        pollActive = true;
+        pollBackoffMs = 2000;
+        state.pollStaleCount = 0;
+        state.lastPollProgress = null;
+        state.lastPollStep = null;
+        clearPollTimer();
+        pollStatus();
+    }
+
+    function scheduleNextPoll() {
+        clearPollTimer();
+        if (!pollActive || !state.jobId) return;
+        pollTimer = setTimeout(pollStatus, pollBackoffMs);
+    }
+
     let state = {
         page: 'form',
         mode: 'single',
@@ -250,6 +283,7 @@
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
         affiliateLink: '', keywords: '', targetAudience: '',
+        amazonUrl: '',
         productCategory: '', competitors: '', usp: '',
         discountInfo: '', couponCode: '',
         // Single product — trust-based
@@ -278,6 +312,7 @@
         results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null, trustInputs: null,
         errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [], jobWarnings: [],
         auditResult: null,
+        pollStaleCount: 0, lastPollProgress: null, lastPollStep: null,
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
@@ -767,7 +802,10 @@
                 ${warningRows.map(err => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
               </div>`
             : '';
-        return `<div class="progress-section card">
+        const staleHint = state.pollStaleCount >= 5
+            ? `<div style="color:var(--text2);font-size:12px;margin-top:8px;">No progress change detected — polling slower. Job may still be running.</div>`
+            : '';
+        return `<div class="progress-section card" aria-live="polite" aria-atomic="true" role="status">
             <div class="spinner"></div>
             <div class="progress-pct">${pct}%</div>
             <div class="progress-bar-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
@@ -776,6 +814,10 @@
             <div class="progress-text">${esc(state.currentStep)}</div>
             ${scriptIssueBlock}
             ${warningBlock}
+            ${staleHint}
+            <div style="margin-top:14px;text-align:center;">
+                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Stop Watching</button>
+            </div>
         </div>`;
     }
 
@@ -818,7 +860,7 @@
         const recoveryHints = getErrorRecoveryHints(phase)
             .map((hint) => `<div style="margin-top:6px;">• ${esc(hint)}</div>`)
             .join('');
-        return `<div class="card" style="border-color:var(--red);">
+        return `<div class="card" style="border-color:var(--red);" aria-live="assertive" role="alert">
             <h2 style="color:var(--red);justify-content:center;">Generation Stopped</h2>
             <p style="color:var(--text2);font-size:14px;text-align:center;">The run hit an issue during <strong>${esc(phase)}</strong>.</p>
             <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
@@ -2146,6 +2188,7 @@
         state.whoNotFor=document.getElementById('whoNotFor')?.value||'';
         state.seriesName=document.getElementById('seriesName')?.value||'';
         state.priceComparison=document.getElementById('priceComparison')?.value||'';
+        state.amazonUrl=document.getElementById('amazonUrl')?.value||'';
     }
 
     async function startGeneration() {
@@ -2178,6 +2221,7 @@
                 series_name:state.seriesName||'',
                 price_comparison:state.priceComparison||'',
                 content_style:state.contentStyle,
+                amazon_url:state.amazonUrl||'',
             },
             hook_types:state.selectedHooks, formats:state.selectedFormats,
             content_style:state.contentStyle,
@@ -2191,7 +2235,7 @@
             const data=await res.json();
             state.jobId=data.job_id; state.jobMode='single';
             state.page='progress'; state.progress=0; state.currentStep='Starting...';
-            render(); pollStatus();
+            render(); beginPolling();
         } catch(e) { showToast('Error: '+e.message); }
     }
 
@@ -2211,16 +2255,18 @@
             const data=await res.json();
             state.jobId=data.job_id; state.jobMode='batch';
             state.page='progress'; state.progress=0; state.currentStep=`Starting batch: ${data.product_count} products...`;
-            render(); pollStatus();
+            render(); beginPolling();
         } catch(e) { showToast('Error: '+e.message); }
     }
 
     async function pollStatus() {
-        if (!state.jobId) return;
+        if (!state.jobId || !pollActive) return;
         try {
             const res=await fetch(`${API}/status/${state.jobId}`);
             const data=await res.json();
             if (!res.ok) {
+                pollActive = false;
+                clearPollTimer();
                 state.jobStatus='error';
                 state.currentStep=(data&&data.detail)?String(data.detail):'Job not found (server may have restarted).';
                 state.errors=[state.currentStep];
@@ -2241,7 +2287,18 @@
             state.videoWarnings=data.video_warnings || split.videoWarnings;
             state.otherErrors=data.other_errors || split.otherErrors;
 
+            if (state.progress === state.lastPollProgress && state.currentStep === state.lastPollStep) {
+                state.pollStaleCount = (state.pollStaleCount || 0) + 1;
+            } else {
+                state.pollStaleCount = 0;
+            }
+            state.lastPollProgress = state.progress;
+            state.lastPollStep = state.currentStep;
+
             if (data.status==='complete' || data.status==='partial') {
+                pollActive = false;
+                clearPollTimer();
+                pollBackoffMs = 2000;
                 const rres=await fetch(`${API}/results/${state.jobId}`);
                 const rdata=await rres.json();
                 state.resultsSummary=rdata.summary||null;
@@ -2261,9 +2318,19 @@
                 state.activeFormat=state.selectedFormats[0];
                 state.page='results'; render(); return;
             }
-            if (data.status==='error') { state.page='error'; render(); return; }
-            render(); setTimeout(pollStatus,2000);
-        } catch(e) { setTimeout(pollStatus,3000); }
+            if (data.status==='error') {
+                pollActive = false;
+                clearPollTimer();
+                pollBackoffMs = 2000;
+                state.page='error'; render(); return;
+            }
+            pollBackoffMs = Math.min(Math.round(pollBackoffMs * 1.35), POLL_BACKOFF_MAX);
+            render();
+            scheduleNextPoll();
+        } catch(e) {
+            pollBackoffMs = Math.min(Math.round((pollBackoffMs || 2000) * 1.5), POLL_BACKOFF_MAX);
+            scheduleNextPoll();
+        }
     }
 
     async function runJobAudit(refresh) {
@@ -2313,7 +2380,7 @@
             state.videoWarnings = [];
             state.otherErrors = [];
             render();
-            pollStatus();
+            beginPolling();
         } catch (e) {
             showToast('Retry failed: ' + e.message);
         }
@@ -2328,7 +2395,7 @@
         state.jobStatus = 'running';
         state.currentStep = state.currentStep || 'Retrying status...';
         render();
-        pollStatus();
+        beginPolling();
     }
 
     function attachEvents() {

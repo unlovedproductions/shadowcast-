@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from content_styles import normalize_content_style
+from visual_quality import audit_thumbnail_contrast
 from video_claims import (
     FORMAT_CLAIMS,
     LONG_FORM,
@@ -148,6 +149,10 @@ def _discover_videos(output_dir: Path) -> list[Path]:
             continue
         videos.append(path)
     return videos
+
+
+def _discover_thumbnails(output_dir: Path) -> list[Path]:
+    return sorted(output_dir.rglob("*_thumbnail_*.png"))
 
 
 def _probe_video(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -380,11 +385,29 @@ def audit_output(output_dir: Path) -> dict[str, Any]:
                 detail="Script uses transition tokens without dedicated renderer handlers.",
             )
 
+    thumbnails = _discover_thumbnails(output_dir)
+    for thumb_path in thumbnails:
+        rel_path = thumb_path.relative_to(output_dir)
+        job = rel_path.parts[0] if rel_path.parts else ""
+        severity, expected, actual, detail = audit_thumbnail_contrast(thumb_path)
+        findings.append(
+            Finding(
+                job=job,
+                path=str(rel_path),
+                check="thumbnail_contrast",
+                severity=severity,
+                expected=expected,
+                actual=actual,
+                detail=detail,
+            )
+        )
+
     fail_count = sum(1 for f in findings if f.severity == FAIL)
     warn_count = sum(1 for f in findings if f.severity == WARN)
     return {
         "output_dir": str(output_dir),
         "videos_checked": len(videos),
+        "thumbnails_checked": len(thumbnails),
         "fail_count": fail_count,
         "warn_count": warn_count,
         "findings": [asdict(f) for f in findings],

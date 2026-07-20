@@ -104,6 +104,20 @@ COMPARISON CONTEXT (use in layout segments):
 - Price comparison notes: {product_info.get('price_comparison', '') or 'Compare against category alternatives'}
 """
 
+    youtube_block = ""
+    yt = product_info.get("_youtube_research")
+    if isinstance(yt, dict) and yt:
+        tags = yt.get("recommended_tags") or []
+        titles = yt.get("recommended_titles") or []
+        questions = yt.get("question_keywords") or []
+        if tags or titles or questions:
+            youtube_block = f"""
+YOUTUBE RESEARCH (use for titles/tags, not verbatim copy):
+- Recommended tags: {', '.join(tags[:15]) if tags else 'N/A'}
+- Title angles: {' | '.join(titles[:3]) if titles else 'N/A'}
+- Question keywords: {', '.join(questions[:8]) if questions else 'N/A'}
+"""
+
     return f"""PRODUCT RESEARCH DATA:
 - Product Name: {product_info['product_name']}
 - Key Features: {', '.join(product_info.get('key_features', []))}
@@ -119,7 +133,7 @@ COMPARISON CONTEXT (use in layout segments):
 - Coupon Code: {product_info.get('coupon_code', '')}
 - Price Comparison Notes: {product_info.get('price_comparison', '')}
 - Series Name: {product_info.get('series_name', '')}
-{comparison_block}"""
+{comparison_block}{youtube_block}"""
 
 
 def build_research_context(product_info: dict) -> str:
