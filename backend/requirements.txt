@@ -15,3 +15,4 @@ google-auth-oauthlib
 google-auth-httplib2
 cryptography
 playwright
+pytest>=8.0

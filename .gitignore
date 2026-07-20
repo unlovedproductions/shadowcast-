@@ -7,6 +7,9 @@ backend/output/*
 # Local environment
 backend/.env
 backend/.env.*
+backend/.env.bak*
+*.bak
+*.bak.*
 .env
 .env.*
 

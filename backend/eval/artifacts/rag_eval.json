@@ -1,0 +1,226 @@
+{
+  "aggregate_metrics": {
+    "mean_precision@3": 0.5333333333333333,
+    "mean_recall@3": 0.6,
+    "mean_ndcg@3": 0.6160558421703625,
+    "mean_precision@5": 0.6,
+    "mean_recall@5": 0.8,
+    "mean_ndcg@5": 0.7216830911993989,
+    "mean_precision@10": 0.6,
+    "mean_recall@10": 0.8,
+    "mean_ndcg@10": 0.7216830911993989,
+    "mean_reciprocal_rank": 0.7
+  },
+  "query_results": [
+    {
+      "query_id": "q1",
+      "query": "What content style should I use for competitor comparison videos?",
+      "relevant_count": 2,
+      "retrieved_count": 4,
+      "metrics": {
+        "precision@3": 0.3333333333333333,
+        "recall@3": 0.5,
+        "precision@5": 0.5,
+        "recall@5": 1.0,
+        "precision@10": 0.5,
+        "recall@10": 1.0,
+        "reciprocal_rank": 0.5,
+        "ndcg@3": 0.38685280723454163,
+        "ndcg@5": 0.6509209298071326,
+        "ndcg@10": 0.6509209298071326
+      },
+      "retrieved_docs": [
+        [
+          "RECOVERY",
+          1.0
+        ],
+        [
+          "ARCHITECTURE",
+          1.0
+        ],
+        [
+          "AUDIT",
+          1.0
+        ],
+        [
+          "STYLE_RENDERING_CHECKLIST",
+          0.6661579767520703
+        ]
+      ],
+      "relevant_docs": [
+        "ARCHITECTURE",
+        "STYLE_RENDERING_CHECKLIST"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "query": "What buyer-facing language is banned in scripts?",
+      "relevant_count": 2,
+      "retrieved_count": 3,
+      "metrics": {
+        "precision@3": 0.3333333333333333,
+        "recall@3": 0.5,
+        "precision@5": 0.3333333333333333,
+        "recall@5": 0.5,
+        "precision@10": 0.3333333333333333,
+        "recall@10": 0.5,
+        "reciprocal_rank": 0.5,
+        "ndcg@3": 0.38685280723454163,
+        "ndcg@5": 0.38685280723454163,
+        "ndcg@10": 0.38685280723454163
+      },
+      "retrieved_docs": [
+        [
+          "STYLE_RENDERING_CHECKLIST",
+          1.0
+        ],
+        [
+          "AUDIT",
+          0.9712829281263884
+        ],
+        [
+          "RECOVERY",
+          0.8944271909999159
+        ]
+      ],
+      "relevant_docs": [
+        "RUNBOOK",
+        "AUDIT"
+      ]
+    },
+    {
+      "query_id": "q3",
+      "query": "How do I run prompt evaluation baselines?",
+      "relevant_count": 2,
+      "retrieved_count": 3,
+      "metrics": {
+        "precision@3": 0.6666666666666666,
+        "recall@3": 1.0,
+        "precision@5": 0.6666666666666666,
+        "recall@5": 1.0,
+        "precision@10": 0.6666666666666666,
+        "recall@10": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg@3": 0.9197207891481876,
+        "ndcg@5": 0.9197207891481876,
+        "ndcg@10": 0.9197207891481876
+      },
+      "retrieved_docs": [
+        [
+          "RUNBOOK",
+          1.0000000000000002
+        ],
+        [
+          "STYLE_RENDERING_CHECKLIST",
+          1.0
+        ],
+        [
+          "AUDIT",
+          0.9738403226380504
+        ]
+      ],
+      "relevant_docs": [
+        "RUNBOOK",
+        "AUDIT"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "query": "What are the health check endpoints?",
+      "relevant_count": 2,
+      "retrieved_count": 4,
+      "metrics": {
+        "precision@3": 0.3333333333333333,
+        "recall@3": 0.5,
+        "precision@5": 0.5,
+        "recall@5": 1.0,
+        "precision@10": 0.5,
+        "recall@10": 1.0,
+        "reciprocal_rank": 0.5,
+        "ndcg@3": 0.38685280723454163,
+        "ndcg@5": 0.6509209298071326,
+        "ndcg@10": 0.6509209298071326
+      },
+      "retrieved_docs": [
+        [
+          "STYLE_RENDERING_CHECKLIST",
+          1.0
+        ],
+        [
+          "RECOVERY",
+          1.0
+        ],
+        [
+          "AUDIT",
+          1.0
+        ],
+        [
+          "RUNBOOK",
+          0.8664406462759657
+        ]
+      ],
+      "relevant_docs": [
+        "RECOVERY",
+        "RUNBOOK"
+      ]
+    },
+    {
+      "query_id": "q5",
+      "query": "How does ShadowCast startup work locally?",
+      "relevant_count": 2,
+      "retrieved_count": 1,
+      "metrics": {
+        "precision@3": 1.0,
+        "recall@3": 0.5,
+        "precision@5": 1.0,
+        "recall@5": 0.5,
+        "precision@10": 1.0,
+        "recall@10": 0.5,
+        "reciprocal_rank": 1.0,
+        "ndcg@3": 1.0,
+        "ndcg@5": 1.0,
+        "ndcg@10": 1.0
+      },
+      "retrieved_docs": [
+        [
+          "RUNBOOK",
+          1.0
+        ]
+      ],
+      "relevant_docs": [
+        "RECOVERY",
+        "RUNBOOK"
+      ]
+    }
+  ],
+  "failure_analysis": {
+    "poor_precision_count": 0,
+    "poor_recall_count": 0,
+    "zero_results_count": 0,
+    "poor_precision_examples": [],
+    "poor_recall_examples": [],
+    "query_length_analysis": {
+      "short_queries": {
+        "count": 0,
+        "avg_precision@5": 0.0
+      },
+      "medium_queries": {
+        "count": 4,
+        "avg_precision@5": 0.625
+      },
+      "long_queries": {
+        "count": 1,
+        "avg_precision@5": 0.5
+      }
+    },
+    "common_failure_patterns": [
+      "Vocabulary mismatch: 5 queries may have vocabulary mismatch issues"
+    ]
+  },
+  "evaluation_summary": "Evaluation Summary (5 queries):\n==================================================\nPrecision@1:  0.000 (0.0%)\nPrecision@5:  0.600 (60.0%)\nRecall@5:     0.800 (80.0%)\nMRR:          0.700\nNDCG@5:       0.722\n\nPerformance Assessment:\n\u2717 Poor precision - few queries return relevant results first\n\u2713 Excellent recall - finding most relevant documents\n",
+  "recommendations": [
+    "LOW PRECISION: Consider implementing query expansion or reranking to improve result quality.",
+    "SHORT QUERY ISSUES: Brief queries perform poorly. Consider query completion or suggestion features.",
+    "QUERY PROCESSING: Longer queries perform better. Consider query parsing to extract key terms."
+  ]
+}
