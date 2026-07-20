@@ -28,6 +28,29 @@
 - Stop server terminal (`Ctrl+C`) or kill the background PID if started with `nohup`.
 
 ## Common Failures
+
 - `ffmpeg` missing: install FFmpeg package.
 - Provider errors: verify local Ollama/service availability or API keys in local env.
 - Render failures: validate product payload and available disk space.
+
+## Prompt Eval (LLM)
+
+Static analysis and validator dry-run (no LLM required):
+
+```bash
+cd backend
+python3 eval/export_snapshots.py
+python3 eval/prompt_optimizer.py eval/snapshots/script_short_honest_review.txt --analyze --model qwen2.5
+python3 eval/eval_runner.py --output eval/baselines/eval_baseline.json
+pytest ../tests/test_prompt_eval.py -q
+```
+
+Live LLM eval (requires Ollama or configured provider):
+
+```bash
+cd backend
+LLM_EVAL=1 pytest ../tests/test_prompt_eval.py -m llm -q
+python3 eval/eval_runner.py --live --filter hr_short,hr_long --output eval_results.json
+```
+
+See `backend/eval/AUDIT.md` for baseline metrics and iteration gates.
