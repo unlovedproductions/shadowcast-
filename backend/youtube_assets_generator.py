@@ -4,10 +4,14 @@ Generates complete YouTube posting packages optimized for trust,
 engagement, and affiliate conversions.
 """
 
-import json
-import os
 import re
-from llm_config import get_config, parse_llm_json
+
+from llm_client import chat_completion_json
+from prompts import (
+    BUYER_SEO_RULES,
+    YOUTUBE_ASSETS_SYSTEM_PROMPT,
+    youtube_assets_json_schema,
+)
 
 
 def _iter_script_segments(script: dict):
@@ -92,9 +96,6 @@ def _extract_signal_lines(script: dict, max_each: int = 4) -> dict:
 
 
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
-    cfg = get_config()
-    client = cfg.get_client()
-
     hook_type = script.get("hook_type", "curiosity")
     content_style = script.get("content_style", "honest_review")
     title_suggestion = script.get("title_suggestion", "")
@@ -109,7 +110,7 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
     affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
     series_name = product_info.get('series_name', '')
 
-    prompt = f"""You are an expert YouTube SEO specialist creating buyer-focused posting packages for people researching whether to buy a product. Generate a COMPLETE YouTube posting package that helps shoppers decide with honest pros, cons, fit, and practical purchase guidance.
+    user_prompt = f"""Create a COMPLETE YouTube posting package for shoppers researching whether to buy a product.
 
 PRODUCT INFORMATION:
 - Product Name: {product_info['product_name']}
@@ -133,66 +134,23 @@ Buyer Signal Lines:
 - CTA Guidance: {cta_lines}
 - Conclusion / Verdict: {verdict_lines}
 
-BUYER-FOCUSED APPROACH:
-- Titles should help shoppers decide, not hype affiliate earnings
-- Description must include HONEST framing — mention that you cover pros AND cons
-- NEVER mention commission rates, EPC, hop conversion, or promoting the product
-- Pinned comment must answer buyer objections and include the product link once, naturally
-- Tags should target buyer-intent keywords (people ready to research or purchase)
-- CTAs should feel like helpful purchase guidance, not pushy sales copy
+{BUYER_SEO_RULES}
 
 PINNED COMMENT STRATEGY (CRITICAL):
-The pinned comment is prime real estate. Use this structure:
 1. Personal take with honest framing for shoppers
 2. Product link with a benefit statement for buyers
 3. Quick FAQ answering 2-3 common objections from reviews
 4. Engagement question to drive replies
 
-Return JSON:
-{{
-    "seo_title": "<max 70 chars, buyer-intent keyword, curiosity gap — NOT clickbait>",
-    "seo_title_alternatives": ["<alt1 - negative framing test>", "<alt2 - question format>", "<alt3 - number/data format>"],
-    "seo_description": "<2000-3000 chars structured as: Hook paragraph mentioning honest review → Product overview → Key Pros (3-4) → Key Cons (2-3) → Product link with soft CTA → More details → Timestamps → One brief disclaimer if needed: 'As an affiliate, I may earn a commission at no extra cost to you.'>",
-    "tags": ["<30 tags: mix buyer-intent keywords like 'best X 2026', 'X review honest', 'X vs Y', 'should I buy X', 'X pros and cons'>"],
-    "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
-    "pinned_comment": "<300-600 chars: Personal honest take for shoppers → Product link with benefit → Quick FAQ (2-3 common objections answered) → Question for replies>",
-    "pinned_comment_alternatives": ["<alt1 - comparison angle>", "<alt2 - value/savings angle>"],
-    "thumbnail_text_primary": "<2-4 words, test negative framing like 'DON'T BUY' or 'HONEST TRUTH'>",
-    "thumbnail_text_secondary": "<supporting text>",
-    "thumbnail_color_scheme": "<description — suggest signature color consistency>",
-    "thumbnail_tips": "<specific tips for A/B testing: test negative vs positive framing>",
-    "end_screen_strategy": "<strategy linking to related content in same series/niche>",
-    "cards_strategy": "<strategy — link to comparison or follow-up video>",
-    "community_post_template": "<poll or question format to drive engagement before/after video>",
-    "best_posting_time": "<recommendation based on niche and audience>",
-    "posting_frequency_tip": "<quality over quantity advice>",
-    "engagement_boosters": ["<tip1>", "<tip2>", "<tip3>", "<tip4>", "<tip5>"],
-    "cross_promotion_ideas": ["<idea1 - Shorts teaser>", "<idea2 - Reddit/forum>", "<idea3 - other platform>"],
-    "reply_templates": {{
-        "positive_comment": "<grateful + helpful purchase guidance>",
-        "question_about_product": "<helpful answer + product link naturally>",
-        "comparison_question": "<honest comparison + link to comparison video if applicable>",
-        "negative_comment": "<acknowledge concern + provide balanced perspective>",
-        "where_to_buy": "<direct product link + mention any active deals>"
-    }},
-    "series_suggestions": ["<next video idea in same series>", "<related comparison video>", "<follow-up content idea>"]
-}}
+{youtube_assets_json_schema(affiliate_link)}
+Include the product link naturally in the description and pinned comment."""
 
-Product link: {affiliate_link}
-Include the product link naturally in the description and pinned comment for shoppers who want to check details.
-Return ONLY valid JSON."""
-
-    response = client.chat.completions.create(
-        model=cfg.model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        response_format={"type": "json_object"},
+    parsed = chat_completion_json(
+        YOUTUBE_ASSETS_SYSTEM_PROMPT,
+        user_prompt,
+        required_keys=["seo_title"],
     )
 
-    content = getattr(response.choices[0].message, "content", "")
-    parsed = parse_llm_json(content)
-
-    # If parsed output doesn't look like the expected package, create a safe fallback
     if not isinstance(parsed, dict) or "seo_title" not in parsed:
         fallback = {
             "seo_title": title_suggestion or f"{product_info['product_name']} - Honest Review",
@@ -204,13 +162,11 @@ Return ONLY valid JSON."""
             "thumbnail_text_primary": product_info['product_name'],
             "_shadowcast_fallback": True,
         }
-        # Merge any fields found in parsed dict
         if isinstance(parsed, dict):
             fallback.update(parsed)
         return fallback
 
-    if isinstance(parsed, dict):
-        parsed["_shadowcast_fallback"] = False
+    parsed["_shadowcast_fallback"] = False
     return parsed
 
 

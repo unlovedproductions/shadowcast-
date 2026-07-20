@@ -245,7 +245,7 @@
         page: 'form',
         mode: 'single',
         showSettings: false,
-        llmProvider: 'openai', llmApiKey: '', llmBaseUrl: '', llmModel: '',
+        llmProvider: 'ollama', llmApiKey: '', llmBaseUrl: 'http://localhost:11434/v1', llmModel: 'qwen2.5:14b-instruct-q5_K_M',
         providerPresets: {},
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
@@ -2373,15 +2373,18 @@
             state.llmBaseUrl=data.current.base_url;
             state.llmModel=data.current.model||'';
         } catch(e) {
+            state.llmProvider='ollama';
+            state.llmBaseUrl='http://localhost:11434/v1';
+            state.llmModel='qwen2.5:14b-instruct-q5_K_M';
             state.providerPresets={
-                openai:{name:'OpenAI API',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'OpenAI cloud API. ~$0.02/video.'},
-                ollama:{name:'Ollama (Local — FREE)',base_url:'http://localhost:11434/v1',default_model:'qwen2.5:14b-instruct-q5_K_M',api_key_required:false,description:'Ollama local LLM. FREE. Recommended for RTX 3080.',recommended_models:[
+                ollama:{name:'Ollama (Local — FREE)',base_url:'http://localhost:11434/v1',default_model:'qwen2.5:14b-instruct-q5_K_M',api_key_required:false,description:'Ollama local LLM. Default for ShadowCast.',recommended_models:[
                     {name:'qwen2.5:14b-instruct-q5_K_M',vram:'~12GB',quality:'Best',speed:'Medium'},
                     {name:'llama3.1:8b-instruct-q6_K',vram:'~7GB',quality:'Good',speed:'Very Fast'},
                     {name:'phi3.5:3.8b-mini-instruct-q6_K',vram:'~4GB',quality:'Decent',speed:'Ultra Fast'},
                 ]},
                 lmstudio:{name:'LM Studio (Local — FREE)',base_url:'http://localhost:1234/v1',default_model:'local-model',api_key_required:false,description:'LM Studio with GUI model management.'},
-                custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any OpenAI-compatible API endpoint.'},
+                custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any local OpenAI-compatible API endpoint.'},
+                openai:{name:'OpenAI API (optional cloud)',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'Optional cloud API. ~$0.02/video.'},
             };
         }
         await Promise.all([loadReadiness(), loadTtsProviders()]);
