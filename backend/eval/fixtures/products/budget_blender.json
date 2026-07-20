@@ -1,0 +1,18 @@
+{
+  "product_name": "Ninja BN401 Compact Blender",
+  "price": "$49.99",
+  "key_features": ["1000W motor", "Auto-iQ", "24oz cup"],
+  "target_audience": "Apartment dwellers and smoothie makers",
+  "product_category": "Kitchen Appliances",
+  "niche": "Kitchen",
+  "unique_selling_point": "Powerful motor in a compact footprint",
+  "competitors": ["Magic Bullet", "NutriBullet Pro"],
+  "common_complaints": "Loud operation, plastic smell on first use",
+  "common_praises": "Crushes ice well, easy cleanup",
+  "who_not_for": "Large families needing full-size pitchers",
+  "price_comparison": "NutriBullet Pro is $30 more with similar wattage",
+  "affiliate_link": "https://example.com/ninja-bn401",
+  "discount_info": "",
+  "coupon_code": "",
+  "series_name": "Budget Kitchen Gear"
+}

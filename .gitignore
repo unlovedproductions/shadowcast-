@@ -58,6 +58,8 @@ downloads/
 apf_imports/
 logs/
 *.log
+backend/eval/eval_results.json
+backend/eval/eval_results_*.json
 # --- OS/editor ---
 .DS_Store
 .idea/

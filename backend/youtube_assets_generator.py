@@ -7,11 +7,7 @@ engagement, and affiliate conversions.
 import re
 
 from llm_client import chat_completion_json
-from prompts import (
-    BUYER_SEO_RULES,
-    YOUTUBE_ASSETS_SYSTEM_PROMPT,
-    youtube_assets_json_schema,
-)
+from prompts import YOUTUBE_ASSETS_SYSTEM_PROMPT, build_youtube_assets_user_prompt
 
 
 def _iter_script_segments(script: dict):
@@ -96,8 +92,6 @@ def _extract_signal_lines(script: dict, max_each: int = 4) -> dict:
 
 
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
-    hook_type = script.get("hook_type", "curiosity")
-    content_style = script.get("content_style", "honest_review")
     title_suggestion = script.get("title_suggestion", "")
 
     all_text = _fit_script_context(_collect_script_context(script))
@@ -106,44 +100,15 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
     cta_lines = _fit_script_context(" | ".join(signals["ctas"]), max_chars=900) if signals["ctas"] else "N/A"
     verdict_lines = _fit_script_context(" | ".join(signals["verdicts"]), max_chars=900) if signals["verdicts"] else "N/A"
 
-    format_label = "YouTube Shorts (vertical, short-form)" if video_format == "short_form" else "YouTube (landscape, long-form)"
-    affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
-    series_name = product_info.get('series_name', '')
-
-    user_prompt = f"""Create a COMPLETE YouTube posting package for shoppers researching whether to buy a product.
-
-PRODUCT INFORMATION:
-- Product Name: {product_info['product_name']}
-- Niche: {product_info.get('niche', product_info.get('product_category', 'General'))}
-- Keywords: {', '.join(product_info.get('keywords', product_info.get('key_features', [])))}
-- Product Link: {affiliate_link}
-- Price: {product_info.get('price', 'N/A')}
-- Target Audience: {product_info.get('target_audience', 'General consumers')}
-- Competitor Products: {', '.join(product_info.get('competitors', ['N/A']))}
-- Unique Selling Point: {product_info.get('unique_selling_point', '')}
-- Discount: {product_info.get('discount_info', '')}
-- Coupon Code: {product_info.get('coupon_code', '')}
-- Common Complaints: {product_info.get('common_complaints', 'N/A')}
-- Common Praises: {product_info.get('common_praises', 'N/A')}
-- Series Name: {series_name}
-
-VIDEO: {format_label} | Hook: {hook_type} | Style: {content_style} | Title: {title_suggestion}
-Script Context: {all_text}
-Buyer Signal Lines:
-- Cons / Limitations: {cons_lines}
-- CTA Guidance: {cta_lines}
-- Conclusion / Verdict: {verdict_lines}
-
-{BUYER_SEO_RULES}
-
-PINNED COMMENT STRATEGY (CRITICAL):
-1. Personal take with honest framing for shoppers
-2. Product link with a benefit statement for buyers
-3. Quick FAQ answering 2-3 common objections from reviews
-4. Engagement question to drive replies
-
-{youtube_assets_json_schema(affiliate_link)}
-Include the product link naturally in the description and pinned comment."""
+    user_prompt = build_youtube_assets_user_prompt(
+        product_info,
+        script,
+        video_format,
+        script_context=all_text,
+        cons_lines=cons_lines,
+        cta_lines=cta_lines,
+        verdict_lines=verdict_lines,
+    )
 
     parsed = chat_completion_json(
         YOUTUBE_ASSETS_SYSTEM_PROMPT,
