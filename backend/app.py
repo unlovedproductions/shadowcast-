@@ -33,6 +33,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 import llm_config
+from llm_client import list_ollama_models, list_openai_compatible_models, test_chat_completion
 from amazon_scraper import scrape_amazon_product
 from youtube_research import research_youtube_keywords
 from script_generator import (
@@ -719,7 +720,7 @@ def fmt_display(fmt: str) -> str:
 
 # ── Pydantic Models ───────────────────────────────────────────────────
 class LLMConfigRequest(BaseModel):
-    provider: str = "openai"
+    provider: str = "ollama"
     api_key: str = ""
     base_url: str = ""
     model: str = ""
@@ -1200,8 +1201,14 @@ def _check_llm_reachable() -> tuple[bool, str]:
             return False, f"LLM auth failed ({exc.code}). Check API key or provider settings."
         return False, f"LLM HTTP {exc.code} at {base_url}."
     except Exception as exc:
-        return False, f"LLM unreachable at {base_url}: {exc}"
-    return False, f"LLM unreachable at {base_url}."
+        detail = f"LLM unreachable at {base_url}: {exc}"
+        if cfg.provider == "ollama":
+            detail += " Start Ollama (ollama serve) and pull a model (ollama pull qwen2.5:14b-instruct-q5_K_M)."
+        return False, detail
+    detail = f"LLM unreachable at {base_url}."
+    if cfg.provider == "ollama":
+        detail += " Start Ollama (ollama serve) and verify the model is pulled."
+    return False, detail
 
 
 def _ensure_generation_ready() -> None:
@@ -1287,6 +1294,36 @@ def set_llm_config(req: LLMConfigRequest):
         "status": "ok", "provider": cfg.provider,
         "base_url": cfg.base_url, "model": cfg.model,
         "has_api_key": bool(cfg.api_key),
+    }
+
+
+@app.get("/api/llm/test")
+def test_llm():
+    cfg = llm_config.get_config()
+    ok, detail, sample = test_chat_completion(timeout=15.0)
+    return {
+        "ok": ok,
+        "provider": cfg.provider,
+        "model": cfg.model,
+        "base_url": cfg.base_url,
+        "detail": detail or None,
+        "sample": sample,
+    }
+
+
+@app.get("/api/llm/models")
+def list_llm_models():
+    cfg = llm_config.get_config()
+    models = list_ollama_models(cfg.base_url if cfg.provider == "ollama" else "http://localhost:11434")
+    source = "ollama" if models else "openai_compatible"
+    if not models:
+        models = list_openai_compatible_models()
+    return {
+        "provider": cfg.provider,
+        "model": cfg.model,
+        "source": source,
+        "models": models,
+        "count": len(models),
     }
 
 
