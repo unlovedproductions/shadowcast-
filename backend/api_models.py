@@ -1,6 +1,6 @@
-"""Pydantic request models for ShadowCast API endpoints."""
+"""Pydantic request/response models for ShadowCast API endpoints."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -114,3 +114,155 @@ class MetricRequest(BaseModel):
     video_id: str = Field(..., min_length=4, max_length=64)
     metric_type: str = Field(..., min_length=2, max_length=64)
     value: float
+
+
+class ErrorDetailItem(BaseModel):
+    field: Optional[str] = None
+    code: Optional[str] = None
+    message: str
+
+
+class ApiErrorBody(BaseModel):
+    code: str
+    message: str
+    details: List[ErrorDetailItem] = Field(default_factory=list)
+
+
+class ErrorResponse(BaseModel):
+    detail: str
+    error: ApiErrorBody
+
+
+class HealthResponse(BaseModel):
+    status: str
+    app: str
+    version: str
+
+
+class ReadinessChecks(BaseModel):
+    ffmpeg: bool
+    ffprobe: bool
+    llm: bool
+    llm_provider: str
+    llm_model: str
+    tts_best: str
+    tts_quality: bool
+    tts_providers: Dict[str, bool]
+
+
+class ReadinessResponse(BaseModel):
+    ready: bool
+    blockers: List[str]
+    warnings: List[str]
+    checks: ReadinessChecks
+    default_video_preset: str
+
+
+class CurrentProviderConfig(BaseModel):
+    provider: str
+    base_url: str
+    model: str
+    has_api_key: bool
+
+
+class ProvidersResponse(BaseModel):
+    providers: Dict[str, Any]
+    current: CurrentProviderConfig
+
+
+class ConfigResponse(BaseModel):
+    status: str
+    provider: str
+    base_url: str
+    model: str
+    has_api_key: bool
+
+
+class LLMTestResponse(BaseModel):
+    ok: bool
+    provider: str
+    model: str
+    base_url: str
+    detail: Optional[str] = None
+    sample: Optional[str] = None
+
+
+class LLMModelsResponse(BaseModel):
+    provider: str
+    model: str
+    source: str
+    models: List[str]
+    count: int
+
+
+class HooksResponse(BaseModel):
+    hooks: List[str]
+    descriptions: Dict[str, str]
+
+
+class ContentStylesResponse(BaseModel):
+    styles: Dict[str, Any]
+    default: str
+
+
+class TTSProvidersResponse(BaseModel):
+    providers: Dict[str, Any]
+    best: str
+
+
+class GenerateResponse(BaseModel):
+    job_id: str
+    status: str
+    mode: str
+    warnings: Optional[List[str]] = None
+    product_count: Optional[int] = None
+    products_found: Optional[List[str]] = None
+
+
+class JobOutputSummary(BaseModel):
+    videos_ready: int
+    videos_expected: int
+    packages_ready: int
+    packages_expected: int
+    warning_count: int
+    is_partial: bool
+
+
+class JobStatusResponse(BaseModel):
+    id: str
+    mode: str
+    status: str
+    progress: int
+    current_step: str
+    errors: List[str]
+    warnings: List[str]
+    script_errors: List[str]
+    video_warnings: List[str]
+    other_errors: List[str]
+    summary: JobOutputSummary
+    audit: Optional[Dict[str, Any]] = None
+    product_count: Optional[int] = None
+
+
+class JobResultsResponse(JobStatusResponse):
+    product_results: Optional[List[Dict[str, Any]]] = None
+    products: Optional[List[Dict[str, Any]]] = None
+    hook_types: Optional[List[str]] = None
+    formats: Optional[List[str]] = None
+    product_info: Optional[Dict[str, Any]] = None
+    results: Optional[Dict[str, Any]] = None
+    trust_inputs: Optional[Any] = None
+
+
+class RetryMissingResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+    summary: JobOutputSummary
+
+
+class JobAuditResponse(BaseModel):
+    job_id: str
+    status: Optional[str] = None
+    audit: Dict[str, Any]
+    summary: JobOutputSummary
