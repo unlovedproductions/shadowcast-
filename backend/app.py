@@ -7,6 +7,7 @@ research-based honest review generation.
 import csv
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ import uuid
 import threading
 import traceback
 import zipfile
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -87,6 +89,17 @@ from publish_service import PublishService, resolve_job_assets
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
+from openapi_customize import customize_openapi
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
+)
+logger = logging.getLogger("shadowcast")
+
+_oauth_rate_buckets: dict[str, list[float]] = defaultdict(list)
+_OAUTH_RATE_LIMIT = 60
+_OAUTH_RATE_WINDOW = 60.0
 
 app = FastAPI(
     title="ShadowCast by Unloved Productions",
@@ -198,6 +211,10 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
         "/api/import-apf",
         "/api/import-apf/direct",  # UNLOVED_APF_DIRECT_IMPORT_AUTH_BYPASS
         "/api/batch-generate",
+        "/api/scrape-amazon",
+        "/api/youtube-research",
+        "/api/readiness",
+        "/api/openapi.json",
     }
     public_prefixes = (
         "/api/status/",
@@ -223,6 +240,30 @@ async def enforce_internal_auth_middleware(request: Request, call_next):
         if service_key != internal_secret:
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers_and_rate_limit(request: Request, call_next):
+    """In-process OAuth rate limiting (slowapi-compatible bucket pattern)."""
+    path = request.url.path
+    if path.startswith("/api/oauth"):
+        ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        bucket = [t for t in _oauth_rate_buckets[ip] if now - t < _OAUTH_RATE_WINDOW]
+        if len(bucket) >= _OAUTH_RATE_LIMIT:
+            return JSONResponse(status_code=429, content=_error_payload(429, "Rate limit exceeded"))
+        bucket.append(now)
+        _oauth_rate_buckets[ip] = bucket
+
+    response = await call_next(request)
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    )
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 
 
 OUTPUT_BASE = Path(__file__).parent / "output"
@@ -2280,6 +2321,23 @@ async def unloved_get_apf_direct_import(token: str):
 
     return _unloved_json.loads(path.read_text())
 # END UNLOVED_APF_DIRECT_IMPORT_ENDPOINTS
+
+def _custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    app.openapi_schema = customize_openapi(schema)
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
 
 # ── Serve Frontend ────────────────────────────────────────────────────
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

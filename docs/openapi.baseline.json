@@ -2,11 +2,22 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ShadowCast by Unloved Productions",
-    "version": "4.0"
+    "description": "Affiliate video generation API: product research, script generation, video rendering, publishing, and analytics.",
+    "version": "4.0",
+    "contact": {
+      "name": "Unloved Productions",
+      "url": "https://github.com/unloved/shadowcast-"
+    },
+    "license": {
+      "name": "Proprietary"
+    }
   },
   "paths": {
     "/api/health": {
       "get": {
+        "tags": [
+          "ops"
+        ],
         "summary": "Health Check",
         "operationId": "health_check_api_health_get",
         "responses": {
@@ -14,15 +25,137 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Health Check. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/openapi.json": {
       "get": {
+        "tags": [
+          "ops"
+        ],
         "summary": "Openapi Spec",
         "operationId": "openapi_spec_api_openapi_json_get",
         "responses": {
@@ -32,13 +165,73 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Openapi Spec. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/readiness": {
       "get": {
+        "tags": [
+          "ops"
+        ],
         "summary": "Get Readiness",
         "operationId": "get_readiness_api_readiness_get",
         "responses": {
@@ -46,15 +239,137 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Get Readiness. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/providers": {
       "get": {
+        "tags": [
+          "config"
+        ],
         "summary": "Get Providers",
         "operationId": "get_providers_api_providers_get",
         "responses": {
@@ -62,15 +377,137 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Get Providers. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/config": {
       "post": {
+        "tags": [
+          "config"
+        ],
         "summary": "Set Llm Config",
         "operationId": "set_llm_config_api_config_post",
         "requestBody": {
@@ -88,25 +525,91 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Set Llm Config. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/llm/test": {
       "get": {
+        "tags": [
+          "config"
+        ],
         "summary": "Test Llm",
         "operationId": "test_llm_api_llm_test_get",
         "responses": {
@@ -114,15 +617,146 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LLMTestResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Test Llm. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/llm/models": {
       "get": {
+        "tags": [
+          "config"
+        ],
         "summary": "List Llm Models",
         "operationId": "list_llm_models_api_llm_models_get",
         "responses": {
@@ -130,15 +764,146 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LLMModelsResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "List Llm Models. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/hooks": {
       "get": {
+        "tags": [
+          "catalog"
+        ],
         "summary": "Get Hooks",
         "operationId": "get_hooks_api_hooks_get",
         "responses": {
@@ -146,15 +911,137 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HooksResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Get Hooks. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/content-styles": {
       "get": {
+        "tags": [
+          "catalog"
+        ],
         "summary": "Get Content Styles",
         "operationId": "get_content_styles_api_content_styles_get",
         "responses": {
@@ -162,15 +1049,137 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ContentStylesResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "description": "Get Content Styles. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/tts-providers": {
       "get": {
+        "tags": [
+          "catalog"
+        ],
         "summary": "Tts Providers",
         "description": "Return available TTS providers and their status.",
         "operationId": "tts_providers_api_tts_providers_get",
@@ -179,11 +1188,129 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TTSProvidersResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
-        }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/scrape-amazon": {
@@ -220,7 +1347,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/youtube-research": {
@@ -257,7 +1385,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/csv-template": {
@@ -271,13 +1400,73 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Get Csv Template. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/generate": {
       "post": {
+        "tags": [
+          "jobs"
+        ],
         "summary": "Start Generation",
         "operationId": "start_generation_api_generate_post",
         "requestBody": {
@@ -295,21 +1484,75 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Start Generation. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/batch-upload": {
@@ -345,7 +1588,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Batch Upload. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/import-apf": {
@@ -382,7 +1627,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/batch-generate": {
@@ -418,11 +1664,16 @@
               }
             }
           }
-        }
+        },
+        "description": "Batch Generate. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/status/{job_id}": {
       "get": {
+        "tags": [
+          "jobs"
+        ],
         "summary": "Get Status",
         "operationId": "get_status_api_status__job_id__get",
         "parameters": [
@@ -434,6 +1685,15 @@
               "type": "string",
               "title": "Job Id"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -441,25 +1701,96 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Get Status. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/results/{job_id}": {
       "get": {
+        "tags": [
+          "jobs"
+        ],
         "summary": "Get Results",
         "operationId": "get_results_api_results__job_id__get",
         "parameters": [
@@ -471,6 +1802,15 @@
               "type": "string",
               "title": "Job Id"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -478,25 +1818,96 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobResultsResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Get Results. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/retry-missing/{job_id}": {
       "post": {
+        "tags": [
+          "jobs"
+        ],
         "summary": "Retry Missing Outputs",
         "operationId": "retry_missing_outputs_api_retry_missing__job_id__post",
         "parameters": [
@@ -515,25 +1926,82 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RetryMissingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Retry Missing Outputs. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/audit/{job_id}": {
       "get": {
+        "tags": [
+          "jobs"
+        ],
         "summary": "Get Job Audit",
         "operationId": "get_job_audit_api_audit__job_id__get",
         "parameters": [
@@ -555,6 +2023,15 @@
               "default": false,
               "title": "Refresh"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -562,21 +2039,89 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobAuditResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "description": "Get Job Audit. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/download/{job_id}/{path}": {
@@ -601,6 +2146,15 @@
               "type": "string",
               "title": "Path"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -609,6 +2163,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -622,7 +2190,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Download File. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/files/{job_id}": {
@@ -638,6 +2208,15 @@
               "type": "string",
               "title": "Job Id"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -646,6 +2225,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -659,7 +2252,9 @@
               }
             }
           }
-        }
+        },
+        "description": "List Files. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/jobs/postable": {
@@ -673,9 +2268,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "List Postable Jobs. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/social/status": {
@@ -689,9 +2350,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Social Status. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/media/serve": {
@@ -708,6 +2435,45 @@
               "type": "string",
               "title": "Path"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
           }
         ],
         "responses": {
@@ -716,6 +2482,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -729,7 +2509,17 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/oauth/status": {
@@ -743,9 +2533,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Oauth Status. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/oauth/config": {
@@ -759,9 +2615,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Oauth Config. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/oauth/{platform}/authorize": {
@@ -777,6 +2699,15 @@
               "type": "string",
               "title": "Platform"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -785,6 +2716,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -798,7 +2743,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Oauth Authorize. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/oauth/{platform}/callback": {
@@ -844,6 +2800,15 @@
               "default": "",
               "title": "Error"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -852,6 +2817,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -865,7 +2844,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Oauth Callback. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/oauth/rumble/login": {
@@ -901,7 +2891,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Oauth Rumble Login. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/oauth/{platform}": {
@@ -938,7 +2939,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Oauth Disconnect. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/publish": {
@@ -974,7 +2986,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Publish Video. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/publish/batch": {
@@ -1010,7 +3033,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Publish Video Batch. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/social/post": {
@@ -1046,7 +3080,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Social Post. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/social/queue": {
@@ -1060,9 +3105,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Social Queue. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/social/schedule": {
@@ -1098,7 +3209,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Schedule Social Post. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/social/queue/process": {
@@ -1136,7 +3258,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Process Social Queue. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/analytics/track": {
@@ -1172,7 +3305,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Track Video. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/analytics/record": {
@@ -1208,7 +3352,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Record Metric. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/analytics/sync-youtube": {
@@ -1224,7 +3379,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Sync Youtube Analytics. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/analytics/dashboard": {
@@ -1238,9 +3404,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Analytics Dashboard. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/analytics/hooks": {
@@ -1254,9 +3486,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Hook Performance. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/analytics/formats": {
@@ -1270,9 +3568,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Format Performance. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/analytics/top": {
@@ -1299,6 +3663,34 @@
               "default": 10,
               "title": "Limit"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
           }
         ],
         "responses": {
@@ -1307,6 +3699,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1320,7 +3726,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Top Performers. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/analytics/revenue": {
@@ -1334,9 +3751,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Revenue Report. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/analytics/export": {
@@ -1350,9 +3833,75 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "Export Analytics. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/tracking-link": {
@@ -1387,6 +3936,45 @@
               "default": "youtube",
               "title": "Platform"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
           }
         ],
         "responses": {
@@ -1395,6 +3983,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1408,7 +4010,18 @@
               }
             }
           }
-        }
+        },
+        "description": "Get Tracking Link. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     },
     "/api/bg-styles": {
@@ -1422,9 +4035,66 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
             }
           }
-        }
+        },
+        "description": "List Bg Styles. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
+          }
+        ]
       }
     },
     "/api/bg-preview/{style}": {
@@ -1440,6 +4110,15 @@
               "type": "string",
               "title": "Style"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -1448,6 +4127,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1461,7 +4154,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Preview Bg. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/bg-recommend": {
@@ -1488,6 +4183,45 @@
               "default": "curiosity",
               "title": "Hook Type"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free-text search filter for list results."
           }
         ],
         "responses": {
@@ -1496,6 +4230,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1509,7 +4257,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Recommend Bg. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/import-apf/direct": {
@@ -1525,7 +4275,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Unloved Apf Direct Import. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/api/import-apf/direct/{token}": {
@@ -1541,6 +4293,15 @@
               "type": "string",
               "title": "Token"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -1549,6 +4310,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1562,7 +4337,9 @@
               }
             }
           }
-        }
+        },
+        "description": "Unloved Get Apf Direct Import. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
       }
     },
     "/{full_path}": {
@@ -1578,6 +4355,15 @@
               "type": "string",
               "title": "Full Path"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
           }
         ],
         "responses": {
@@ -1586,6 +4372,20 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
               }
             }
           },
@@ -1599,12 +4399,52 @@
               }
             }
           }
-        }
+        },
+        "description": "Serve Frontend. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": [
+          {
+            "ServiceKeyAuth": []
+          },
+          {
+            "OAuth2": [
+              "publish"
+            ]
+          }
+        ]
       }
     }
   },
   "components": {
     "schemas": {
+      "ApiErrorBody": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "code field."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "message field."
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetailItem"
+            },
+            "type": "array",
+            "title": "Details",
+            "description": "details field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiErrorBody",
+        "description": "ApiErrorBody schema used by the ShadowCast API."
+      },
       "BatchGenerateRequest": {
         "properties": {
           "products": {
@@ -1614,7 +4454,8 @@
             "type": "array",
             "maxItems": 100,
             "minItems": 1,
-            "title": "Products"
+            "title": "Products",
+            "description": "products field."
           },
           "hook_types": {
             "items": {
@@ -1623,7 +4464,8 @@
             "type": "array",
             "maxItems": 9,
             "minItems": 1,
-            "title": "Hook Types"
+            "title": "Hook Types",
+            "description": "hook_types field."
           },
           "formats": {
             "items": {
@@ -1632,35 +4474,41 @@
             "type": "array",
             "maxItems": 2,
             "minItems": 1,
-            "title": "Formats"
+            "title": "Formats",
+            "description": "formats field."
           },
           "content_style": {
             "type": "string",
             "maxLength": 64,
             "title": "Content Style",
-            "default": "honest_review"
+            "default": "honest_review",
+            "description": "content_style field."
           },
           "audio_enabled": {
             "type": "boolean",
             "title": "Audio Enabled",
-            "default": true
+            "default": true,
+            "description": "audio_enabled field."
           },
           "audio_mood": {
             "type": "string",
             "maxLength": 32,
             "title": "Audio Mood",
-            "default": "auto"
+            "default": "auto",
+            "description": "audio_mood field."
           },
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false
+            "default": false,
+            "description": "use_tts field."
           },
           "tts_provider": {
             "type": "string",
             "maxLength": 32,
             "title": "Tts Provider",
-            "default": "auto"
+            "default": "auto",
+            "description": "tts_provider field."
           },
           "tts_voice": {
             "anyOf": [
@@ -1672,124 +4520,146 @@
                 "type": "null"
               }
             ],
-            "title": "Tts Voice"
+            "title": "Tts Voice",
+            "description": "tts_voice field."
           },
           "video_preset": {
             "type": "string",
             "maxLength": 32,
             "title": "Video Preset",
-            "default": "medium"
+            "default": "medium",
+            "description": "video_preset field."
           }
         },
         "type": "object",
         "required": [
           "products"
         ],
-        "title": "BatchGenerateRequest"
+        "title": "BatchGenerateRequest",
+        "description": "BatchGenerateRequest schema used by the ShadowCast API."
       },
       "Body_batch_upload_api_batch_upload_post": {
         "properties": {
           "file": {
             "type": "string",
             "contentMediaType": "application/octet-stream",
-            "title": "File"
+            "title": "File",
+            "description": "file field."
           },
           "hook_types": {
             "type": "string",
             "title": "Hook Types",
-            "default": "curiosity"
+            "default": "curiosity",
+            "description": "hook_types field."
           },
           "formats": {
             "type": "string",
             "title": "Formats",
-            "default": "short_form,long_form"
+            "default": "short_form,long_form",
+            "description": "formats field."
           },
           "content_style": {
             "type": "string",
             "title": "Content Style",
-            "default": "honest_review"
+            "default": "honest_review",
+            "description": "content_style field."
           },
           "audio_enabled": {
             "type": "boolean",
             "title": "Audio Enabled",
-            "default": true
+            "default": true,
+            "description": "audio_enabled field."
           },
           "audio_mood": {
             "type": "string",
             "title": "Audio Mood",
-            "default": "auto"
+            "default": "auto",
+            "description": "audio_mood field."
           },
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false
+            "default": false,
+            "description": "use_tts field."
           },
           "tts_provider": {
             "type": "string",
             "title": "Tts Provider",
-            "default": "auto"
+            "default": "auto",
+            "description": "tts_provider field."
           },
           "tts_voice": {
             "type": "string",
             "title": "Tts Voice",
-            "default": ""
+            "default": "",
+            "description": "tts_voice field."
           },
           "video_preset": {
             "type": "string",
             "title": "Video Preset",
-            "default": "medium"
+            "default": "medium",
+            "description": "video_preset field."
           }
         },
         "type": "object",
         "required": [
           "file"
         ],
-        "title": "Body_batch_upload_api_batch_upload_post"
+        "title": "Body_batch_upload_api_batch_upload_post",
+        "description": "Body_batch_upload_api_batch_upload_post schema used by the ShadowCast API."
       },
       "Body_import_apf_api_import_apf_post": {
         "properties": {
           "file": {
             "type": "string",
             "contentMediaType": "application/octet-stream",
-            "title": "File"
+            "title": "File",
+            "description": "file field."
           }
         },
         "type": "object",
         "required": [
           "file"
         ],
-        "title": "Body_import_apf_api_import_apf_post"
+        "title": "Body_import_apf_api_import_apf_post",
+        "description": "Body_import_apf_api_import_apf_post schema used by the ShadowCast API."
       },
       "Body_scrape_amazon_api_scrape_amazon_post": {
         "properties": {
           "url": {
             "type": "string",
-            "title": "Url"
+            "title": "Url",
+            "description": "url field."
           }
         },
         "type": "object",
         "required": [
           "url"
         ],
-        "title": "Body_scrape_amazon_api_scrape_amazon_post"
+        "title": "Body_scrape_amazon_api_scrape_amazon_post",
+        "description": "Body_scrape_amazon_api_scrape_amazon_post schema used by the ShadowCast API."
       },
       "Body_track_video_api_analytics_track_post": {
         "properties": {
           "product_name": {
             "type": "string",
-            "title": "Product Name"
+            "title": "Product Name",
+            "description": "product_name field."
           },
           "hook_type": {
             "type": "string",
-            "title": "Hook Type"
+            "title": "Hook Type",
+            "description": "hook_type field."
           },
           "format_type": {
             "type": "string",
-            "title": "Format Type"
+            "title": "Format Type",
+            "description": "format_type field."
           },
           "video_path": {
             "type": "string",
-            "title": "Video Path"
+            "title": "Video Path",
+            "description": "video_path field."
           },
           "youtube_url": {
             "anyOf": [
@@ -1800,7 +4670,8 @@
                 "type": "null"
               }
             ],
-            "title": "Youtube Url"
+            "title": "Youtube Url",
+            "description": "youtube_url field."
           }
         },
         "type": "object",
@@ -1810,25 +4681,190 @@
           "format_type",
           "video_path"
         ],
-        "title": "Body_track_video_api_analytics_track_post"
+        "title": "Body_track_video_api_analytics_track_post",
+        "description": "Body_track_video_api_analytics_track_post schema used by the ShadowCast API."
       },
       "Body_youtube_research_api_youtube_research_post": {
         "properties": {
           "query": {
             "type": "string",
-            "title": "Query"
+            "title": "Query",
+            "description": "query field."
           }
         },
         "type": "object",
         "required": [
           "query"
         ],
-        "title": "Body_youtube_research_api_youtube_research_post"
+        "title": "Body_youtube_research_api_youtube_research_post",
+        "description": "Body_youtube_research_api_youtube_research_post schema used by the ShadowCast API."
+      },
+      "ConfigResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "provider field."
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "description": "base_url field."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "model field."
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key",
+            "description": "has_api_key field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "provider",
+          "base_url",
+          "model",
+          "has_api_key"
+        ],
+        "title": "ConfigResponse",
+        "description": "ConfigResponse schema used by the ShadowCast API."
+      },
+      "ContentStylesResponse": {
+        "properties": {
+          "styles": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Styles",
+            "description": "styles field."
+          },
+          "default": {
+            "type": "string",
+            "title": "Default",
+            "description": "default field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "styles",
+          "default"
+        ],
+        "title": "ContentStylesResponse",
+        "description": "ContentStylesResponse schema used by the ShadowCast API."
+      },
+      "CurrentProviderConfig": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "provider field."
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "description": "base_url field."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "model field."
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key",
+            "description": "has_api_key field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "base_url",
+          "model",
+          "has_api_key"
+        ],
+        "title": "CurrentProviderConfig",
+        "description": "CurrentProviderConfig schema used by the ShadowCast API."
+      },
+      "ErrorDetailItem": {
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "field field."
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code",
+            "description": "code field."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "message field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ErrorDetailItem",
+        "description": "ErrorDetailItem schema used by the ShadowCast API."
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "detail field."
+          },
+          "error": {
+            "$ref": "#/components/schemas/ApiErrorBody",
+            "description": "error field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail",
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "description": "ErrorResponse schema used by the ShadowCast API.",
+        "example": {
+          "detail": "Job not found",
+          "error": {
+            "code": "NOT_FOUND",
+            "message": "Job not found",
+            "details": []
+          }
+        }
       },
       "GenerateRequest": {
         "properties": {
           "product_info": {
-            "$ref": "#/components/schemas/ProductInfo"
+            "$ref": "#/components/schemas/ProductInfo",
+            "description": "product_info field."
           },
           "hook_types": {
             "items": {
@@ -1837,7 +4873,8 @@
             "type": "array",
             "maxItems": 9,
             "minItems": 1,
-            "title": "Hook Types"
+            "title": "Hook Types",
+            "description": "hook_types field."
           },
           "formats": {
             "items": {
@@ -1846,35 +4883,41 @@
             "type": "array",
             "maxItems": 2,
             "minItems": 1,
-            "title": "Formats"
+            "title": "Formats",
+            "description": "formats field."
           },
           "content_style": {
             "type": "string",
             "maxLength": 64,
             "title": "Content Style",
-            "default": "honest_review"
+            "default": "honest_review",
+            "description": "content_style field."
           },
           "audio_enabled": {
             "type": "boolean",
             "title": "Audio Enabled",
-            "default": true
+            "default": true,
+            "description": "audio_enabled field."
           },
           "audio_mood": {
             "type": "string",
             "maxLength": 32,
             "title": "Audio Mood",
-            "default": "auto"
+            "default": "auto",
+            "description": "audio_mood field."
           },
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false
+            "default": false,
+            "description": "use_tts field."
           },
           "tts_provider": {
             "type": "string",
             "maxLength": 32,
             "title": "Tts Provider",
-            "default": "auto"
+            "default": "auto",
+            "description": "tts_provider field."
           },
           "tts_voice": {
             "anyOf": [
@@ -1886,20 +4929,92 @@
                 "type": "null"
               }
             ],
-            "title": "Tts Voice"
+            "title": "Tts Voice",
+            "description": "tts_voice field."
           },
           "video_preset": {
             "type": "string",
             "maxLength": 32,
             "title": "Video Preset",
-            "default": "medium"
+            "default": "medium",
+            "description": "video_preset field."
           }
         },
         "type": "object",
         "required": [
           "product_info"
         ],
-        "title": "GenerateRequest"
+        "title": "GenerateRequest",
+        "description": "GenerateRequest schema used by the ShadowCast API."
+      },
+      "GenerateResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "job_id field."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "mode field."
+          },
+          "warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warnings",
+            "description": "warnings field."
+          },
+          "product_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Count",
+            "description": "product_count field."
+          },
+          "products_found": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products Found",
+            "description": "products_found field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "mode"
+        ],
+        "title": "GenerateResponse",
+        "description": "GenerateResponse schema used by the ShadowCast API."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1908,11 +5023,477 @@
               "$ref": "#/components/schemas/ValidationError"
             },
             "type": "array",
-            "title": "Detail"
+            "title": "Detail",
+            "description": "detail field."
           }
         },
         "type": "object",
-        "title": "HTTPValidationError"
+        "title": "HTTPValidationError",
+        "description": "HTTPValidationError schema used by the ShadowCast API."
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "app": {
+            "type": "string",
+            "title": "App",
+            "description": "app field."
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "version field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "app",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "description": "HealthResponse schema used by the ShadowCast API."
+      },
+      "HooksResponse": {
+        "properties": {
+          "hooks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hooks",
+            "description": "hooks field."
+          },
+          "descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Descriptions",
+            "description": "descriptions field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "hooks",
+          "descriptions"
+        ],
+        "title": "HooksResponse",
+        "description": "HooksResponse schema used by the ShadowCast API."
+      },
+      "JobAuditResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "job_id field."
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "status field."
+          },
+          "audit": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Audit",
+            "description": "audit field."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/JobOutputSummary",
+            "description": "summary field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "audit",
+          "summary"
+        ],
+        "title": "JobAuditResponse",
+        "description": "JobAuditResponse schema used by the ShadowCast API."
+      },
+      "JobOutputSummary": {
+        "properties": {
+          "videos_ready": {
+            "type": "integer",
+            "title": "Videos Ready",
+            "description": "videos_ready field."
+          },
+          "videos_expected": {
+            "type": "integer",
+            "title": "Videos Expected",
+            "description": "videos_expected field."
+          },
+          "packages_ready": {
+            "type": "integer",
+            "title": "Packages Ready",
+            "description": "packages_ready field."
+          },
+          "packages_expected": {
+            "type": "integer",
+            "title": "Packages Expected",
+            "description": "packages_expected field."
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count",
+            "description": "warning_count field."
+          },
+          "is_partial": {
+            "type": "boolean",
+            "title": "Is Partial",
+            "description": "is_partial field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "videos_ready",
+          "videos_expected",
+          "packages_ready",
+          "packages_expected",
+          "warning_count",
+          "is_partial"
+        ],
+        "title": "JobOutputSummary",
+        "description": "JobOutputSummary schema used by the ShadowCast API."
+      },
+      "JobResultsResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "id field."
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "mode field."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress",
+            "description": "progress field."
+          },
+          "current_step": {
+            "type": "string",
+            "title": "Current Step",
+            "description": "current_step field."
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "errors field."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "warnings field."
+          },
+          "script_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Script Errors",
+            "description": "script_errors field."
+          },
+          "video_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Warnings",
+            "description": "video_warnings field."
+          },
+          "other_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Errors",
+            "description": "other_errors field."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/JobOutputSummary",
+            "description": "summary field."
+          },
+          "audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit",
+            "description": "audit field."
+          },
+          "product_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Count",
+            "description": "product_count field."
+          },
+          "product_results": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Results",
+            "description": "product_results field."
+          },
+          "products": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products",
+            "description": "products field."
+          },
+          "hook_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hook Types",
+            "description": "hook_types field."
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formats",
+            "description": "formats field."
+          },
+          "product_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Info",
+            "description": "product_info field."
+          },
+          "results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results",
+            "description": "results field."
+          },
+          "trust_inputs": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trust Inputs",
+            "description": "trust_inputs field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "status",
+          "progress",
+          "current_step",
+          "errors",
+          "warnings",
+          "script_errors",
+          "video_warnings",
+          "other_errors",
+          "summary"
+        ],
+        "title": "JobResultsResponse",
+        "description": "JobResultsResponse schema used by the ShadowCast API."
+      },
+      "JobStatusResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "id field."
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "mode field."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress",
+            "description": "progress field."
+          },
+          "current_step": {
+            "type": "string",
+            "title": "Current Step",
+            "description": "current_step field."
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "errors field."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "warnings field."
+          },
+          "script_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Script Errors",
+            "description": "script_errors field."
+          },
+          "video_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Warnings",
+            "description": "video_warnings field."
+          },
+          "other_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Errors",
+            "description": "other_errors field."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/JobOutputSummary",
+            "description": "summary field."
+          },
+          "audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit",
+            "description": "audit field."
+          },
+          "product_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Count",
+            "description": "product_count field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "status",
+          "progress",
+          "current_step",
+          "errors",
+          "warnings",
+          "script_errors",
+          "video_warnings",
+          "other_errors",
+          "summary"
+        ],
+        "title": "JobStatusResponse",
+        "description": "JobStatusResponse schema used by the ShadowCast API."
       },
       "LLMConfigRequest": {
         "properties": {
@@ -1921,26 +5502,130 @@
             "maxLength": 64,
             "minLength": 1,
             "title": "Provider",
-            "default": "ollama"
+            "default": "ollama",
+            "description": "provider field."
           },
           "api_key": {
             "type": "string",
             "title": "Api Key",
-            "default": ""
+            "default": "",
+            "description": "api_key field."
           },
           "base_url": {
             "type": "string",
             "title": "Base Url",
-            "default": ""
+            "default": "",
+            "description": "base_url field."
           },
           "model": {
             "type": "string",
             "title": "Model",
-            "default": ""
+            "default": "",
+            "description": "model field."
           }
         },
         "type": "object",
-        "title": "LLMConfigRequest"
+        "title": "LLMConfigRequest",
+        "description": "LLMConfigRequest schema used by the ShadowCast API."
+      },
+      "LLMModelsResponse": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "provider field."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "model field."
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "source field."
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models",
+            "description": "models field."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "count field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "source",
+          "models",
+          "count"
+        ],
+        "title": "LLMModelsResponse",
+        "description": "LLMModelsResponse schema used by the ShadowCast API."
+      },
+      "LLMTestResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "description": "ok field."
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "provider field."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "model field."
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "description": "base_url field."
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "detail field."
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample",
+            "description": "sample field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "provider",
+          "model",
+          "base_url"
+        ],
+        "title": "LLMTestResponse",
+        "description": "LLMTestResponse schema used by the ShadowCast API."
       },
       "MetricRequest": {
         "properties": {
@@ -1948,17 +5633,20 @@
             "type": "string",
             "maxLength": 64,
             "minLength": 4,
-            "title": "Video Id"
+            "title": "Video Id",
+            "description": "video_id field."
           },
           "metric_type": {
             "type": "string",
             "maxLength": 64,
             "minLength": 2,
-            "title": "Metric Type"
+            "title": "Metric Type",
+            "description": "metric_type field."
           },
           "value": {
             "type": "number",
-            "title": "Value"
+            "title": "Value",
+            "description": "value field."
           }
         },
         "type": "object",
@@ -1967,7 +5655,8 @@
           "metric_type",
           "value"
         ],
-        "title": "MetricRequest"
+        "title": "MetricRequest",
+        "description": "MetricRequest schema used by the ShadowCast API."
       },
       "PostRequest": {
         "properties": {
@@ -1980,16 +5669,19 @@
                 "type": "null"
               }
             ],
-            "title": "Video Path"
+            "title": "Video Path",
+            "description": "video_path field."
           },
           "caption": {
             "type": "string",
             "title": "Caption",
-            "default": ""
+            "default": "",
+            "description": "caption field."
           },
           "platform": {
             "type": "string",
-            "title": "Platform"
+            "title": "Platform",
+            "description": "platform field."
           },
           "hashtags": {
             "items": {
@@ -1997,12 +5689,14 @@
             },
             "type": "array",
             "title": "Hashtags",
-            "default": []
+            "default": [],
+            "description": "hashtags field."
           },
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
-            "default": false
+            "default": false,
+            "description": "dry_run field."
           },
           "job_id": {
             "anyOf": [
@@ -2013,7 +5707,8 @@
                 "type": "null"
               }
             ],
-            "title": "Job Id"
+            "title": "Job Id",
+            "description": "job_id field."
           },
           "hook_type": {
             "anyOf": [
@@ -2024,7 +5719,8 @@
                 "type": "null"
               }
             ],
-            "title": "Hook Type"
+            "title": "Hook Type",
+            "description": "hook_type field."
           },
           "video_format": {
             "anyOf": [
@@ -2036,7 +5732,8 @@
               }
             ],
             "title": "Video Format",
-            "default": "short_form"
+            "default": "short_form",
+            "description": "video_format field."
           },
           "product_slug": {
             "anyOf": [
@@ -2047,14 +5744,16 @@
                 "type": "null"
               }
             ],
-            "title": "Product Slug"
+            "title": "Product Slug",
+            "description": "product_slug field."
           }
         },
         "type": "object",
         "required": [
           "platform"
         ],
-        "title": "PostRequest"
+        "title": "PostRequest",
+        "description": "PostRequest schema used by the ShadowCast API."
       },
       "ProductInfo": {
         "properties": {
@@ -2062,13 +5761,15 @@
             "type": "string",
             "maxLength": 200,
             "minLength": 1,
-            "title": "Product Name"
+            "title": "Product Name",
+            "description": "product_name field."
           },
           "niche": {
             "type": "string",
             "maxLength": 120,
             "title": "Niche",
-            "default": "General"
+            "default": "General",
+            "description": "niche field."
           },
           "key_features": {
             "items": {
@@ -2076,19 +5777,22 @@
             },
             "type": "array",
             "maxItems": 30,
-            "title": "Key Features"
+            "title": "Key Features",
+            "description": "key_features field."
           },
           "price": {
             "type": "string",
             "maxLength": 32,
             "title": "Price",
-            "default": "$49.99"
+            "default": "$49.99",
+            "description": "price field."
           },
           "affiliate_link": {
             "type": "string",
             "maxLength": 500,
             "title": "Affiliate Link",
-            "default": "[YOUR_AFFILIATE_LINK]"
+            "default": "[YOUR_AFFILIATE_LINK]",
+            "description": "affiliate_link field."
           },
           "keywords": {
             "items": {
@@ -2096,19 +5800,22 @@
             },
             "type": "array",
             "maxItems": 50,
-            "title": "Keywords"
+            "title": "Keywords",
+            "description": "keywords field."
           },
           "target_audience": {
             "type": "string",
             "maxLength": 200,
             "title": "Target Audience",
-            "default": "General consumers"
+            "default": "General consumers",
+            "description": "target_audience field."
           },
           "product_category": {
             "type": "string",
             "maxLength": 120,
             "title": "Product Category",
-            "default": ""
+            "default": "",
+            "description": "product_category field."
           },
           "competitors": {
             "items": {
@@ -2116,96 +5823,133 @@
             },
             "type": "array",
             "maxItems": 20,
-            "title": "Competitors"
+            "title": "Competitors",
+            "description": "competitors field."
           },
           "unique_selling_point": {
             "type": "string",
             "maxLength": 500,
             "title": "Unique Selling Point",
-            "default": ""
+            "default": "",
+            "description": "unique_selling_point field."
           },
           "discount_info": {
             "type": "string",
             "maxLength": 200,
             "title": "Discount Info",
-            "default": ""
+            "default": "",
+            "description": "discount_info field."
           },
           "coupon_code": {
             "type": "string",
             "maxLength": 64,
             "title": "Coupon Code",
-            "default": ""
+            "default": "",
+            "description": "coupon_code field."
           },
           "common_complaints": {
             "type": "string",
             "maxLength": 4000,
             "title": "Common Complaints",
-            "default": ""
+            "default": "",
+            "description": "common_complaints field."
           },
           "common_praises": {
             "type": "string",
             "maxLength": 4000,
             "title": "Common Praises",
-            "default": ""
+            "default": "",
+            "description": "common_praises field."
           },
           "who_not_for": {
             "type": "string",
             "maxLength": 1000,
             "title": "Who Not For",
-            "default": ""
+            "default": "",
+            "description": "who_not_for field."
           },
           "series_name": {
             "type": "string",
             "maxLength": 120,
             "title": "Series Name",
-            "default": ""
+            "default": "",
+            "description": "series_name field."
           },
           "price_comparison": {
             "type": "string",
             "maxLength": 500,
             "title": "Price Comparison",
-            "default": ""
+            "default": "",
+            "description": "price_comparison field."
           },
           "content_style": {
             "type": "string",
             "maxLength": 64,
             "title": "Content Style",
-            "default": "honest_review"
+            "default": "honest_review",
+            "description": "content_style field."
           },
           "amazon_url": {
             "type": "string",
             "maxLength": 500,
             "title": "Amazon Url",
-            "default": ""
+            "default": "",
+            "description": "amazon_url field."
           }
         },
         "type": "object",
         "required": [
           "product_name"
         ],
-        "title": "ProductInfo"
+        "title": "ProductInfo",
+        "description": "ProductInfo schema used by the ShadowCast API."
+      },
+      "ProvidersResponse": {
+        "properties": {
+          "providers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Providers",
+            "description": "providers field."
+          },
+          "current": {
+            "$ref": "#/components/schemas/CurrentProviderConfig",
+            "description": "current field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "providers",
+          "current"
+        ],
+        "title": "ProvidersResponse",
+        "description": "ProvidersResponse schema used by the ShadowCast API."
       },
       "PublishBatchRequest": {
         "properties": {
           "job_id": {
             "type": "string",
-            "title": "Job Id"
+            "title": "Job Id",
+            "description": "job_id field."
           },
           "hook_type": {
             "type": "string",
-            "title": "Hook Type"
+            "title": "Hook Type",
+            "description": "hook_type field."
           },
           "video_format": {
             "type": "string",
             "title": "Video Format",
-            "default": "short_form"
+            "default": "short_form",
+            "description": "video_format field."
           },
           "platforms": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Platforms"
+            "title": "Platforms",
+            "description": "platforms field."
           },
           "product_slug": {
             "anyOf": [
@@ -2216,12 +5960,14 @@
                 "type": "null"
               }
             ],
-            "title": "Product Slug"
+            "title": "Product Slug",
+            "description": "product_slug field."
           },
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
-            "default": false
+            "default": false,
+            "description": "dry_run field."
           }
         },
         "type": "object",
@@ -2230,26 +5976,31 @@
           "hook_type",
           "platforms"
         ],
-        "title": "PublishBatchRequest"
+        "title": "PublishBatchRequest",
+        "description": "PublishBatchRequest schema used by the ShadowCast API."
       },
       "PublishRequest": {
         "properties": {
           "job_id": {
             "type": "string",
-            "title": "Job Id"
+            "title": "Job Id",
+            "description": "job_id field."
           },
           "hook_type": {
             "type": "string",
-            "title": "Hook Type"
+            "title": "Hook Type",
+            "description": "hook_type field."
           },
           "video_format": {
             "type": "string",
             "title": "Video Format",
-            "default": "short_form"
+            "default": "short_form",
+            "description": "video_format field."
           },
           "platform": {
             "type": "string",
-            "title": "Platform"
+            "title": "Platform",
+            "description": "platform field."
           },
           "product_slug": {
             "anyOf": [
@@ -2260,17 +6011,20 @@
                 "type": "null"
               }
             ],
-            "title": "Product Slug"
+            "title": "Product Slug",
+            "description": "product_slug field."
           },
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
-            "default": false
+            "default": false,
+            "description": "dry_run field."
           },
           "thumbnail_variant": {
             "type": "string",
             "title": "Thumbnail Variant",
-            "default": "variant_a"
+            "default": "variant_a",
+            "description": "thumbnail_variant field."
           },
           "target_page_id": {
             "anyOf": [
@@ -2281,7 +6035,8 @@
                 "type": "null"
               }
             ],
-            "title": "Target Page Id"
+            "title": "Target Page Id",
+            "description": "target_page_id field."
           }
         },
         "type": "object",
@@ -2290,17 +6045,156 @@
           "hook_type",
           "platform"
         ],
-        "title": "PublishRequest"
+        "title": "PublishRequest",
+        "description": "PublishRequest schema used by the ShadowCast API."
+      },
+      "ReadinessChecks": {
+        "properties": {
+          "ffmpeg": {
+            "type": "boolean",
+            "title": "Ffmpeg",
+            "description": "ffmpeg field."
+          },
+          "ffprobe": {
+            "type": "boolean",
+            "title": "Ffprobe",
+            "description": "ffprobe field."
+          },
+          "llm": {
+            "type": "boolean",
+            "title": "Llm",
+            "description": "llm field."
+          },
+          "llm_provider": {
+            "type": "string",
+            "title": "Llm Provider",
+            "description": "llm_provider field."
+          },
+          "llm_model": {
+            "type": "string",
+            "title": "Llm Model",
+            "description": "llm_model field."
+          },
+          "tts_best": {
+            "type": "string",
+            "title": "Tts Best",
+            "description": "tts_best field."
+          },
+          "tts_quality": {
+            "type": "boolean",
+            "title": "Tts Quality",
+            "description": "tts_quality field."
+          },
+          "tts_providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Tts Providers",
+            "description": "tts_providers field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ffmpeg",
+          "ffprobe",
+          "llm",
+          "llm_provider",
+          "llm_model",
+          "tts_best",
+          "tts_quality",
+          "tts_providers"
+        ],
+        "title": "ReadinessChecks",
+        "description": "ReadinessChecks schema used by the ShadowCast API."
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "ready field."
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers",
+            "description": "blockers field."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "warnings field."
+          },
+          "checks": {
+            "$ref": "#/components/schemas/ReadinessChecks",
+            "description": "checks field."
+          },
+          "default_video_preset": {
+            "type": "string",
+            "title": "Default Video Preset",
+            "description": "default_video_preset field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ready",
+          "blockers",
+          "warnings",
+          "checks",
+          "default_video_preset"
+        ],
+        "title": "ReadinessResponse",
+        "description": "ReadinessResponse schema used by the ShadowCast API."
+      },
+      "RetryMissingResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "job_id field."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "status field."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "message field."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/JobOutputSummary",
+            "description": "summary field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "message",
+          "summary"
+        ],
+        "title": "RetryMissingResponse",
+        "description": "RetryMissingResponse schema used by the ShadowCast API."
       },
       "RumbleLoginRequest": {
         "properties": {
           "username": {
             "type": "string",
-            "title": "Username"
+            "title": "Username",
+            "description": "username field."
           },
           "password": {
             "type": "string",
-            "title": "Password"
+            "title": "Password",
+            "description": "password field."
           }
         },
         "type": "object",
@@ -2308,13 +6202,15 @@
           "username",
           "password"
         ],
-        "title": "RumbleLoginRequest"
+        "title": "RumbleLoginRequest",
+        "description": "RumbleLoginRequest schema used by the ShadowCast API."
       },
       "SchedulePostRequest": {
         "properties": {
           "platform": {
             "type": "string",
-            "title": "Platform"
+            "title": "Platform",
+            "description": "platform field."
           },
           "video_path": {
             "anyOf": [
@@ -2325,12 +6221,14 @@
                 "type": "null"
               }
             ],
-            "title": "Video Path"
+            "title": "Video Path",
+            "description": "video_path field."
           },
           "caption": {
             "type": "string",
             "title": "Caption",
-            "default": ""
+            "default": "",
+            "description": "caption field."
           },
           "hashtags": {
             "items": {
@@ -2338,11 +6236,13 @@
             },
             "type": "array",
             "title": "Hashtags",
-            "default": []
+            "default": [],
+            "description": "hashtags field."
           },
           "scheduled_time": {
             "type": "string",
-            "title": "Scheduled Time"
+            "title": "Scheduled Time",
+            "description": "scheduled_time field."
           },
           "job_id": {
             "anyOf": [
@@ -2353,7 +6253,8 @@
                 "type": "null"
               }
             ],
-            "title": "Job Id"
+            "title": "Job Id",
+            "description": "job_id field."
           },
           "hook_type": {
             "anyOf": [
@@ -2364,7 +6265,8 @@
                 "type": "null"
               }
             ],
-            "title": "Hook Type"
+            "title": "Hook Type",
+            "description": "hook_type field."
           },
           "video_format": {
             "anyOf": [
@@ -2376,7 +6278,8 @@
               }
             ],
             "title": "Video Format",
-            "default": "short_form"
+            "default": "short_form",
+            "description": "video_format field."
           },
           "product_slug": {
             "anyOf": [
@@ -2387,7 +6290,8 @@
                 "type": "null"
               }
             ],
-            "title": "Product Slug"
+            "title": "Product Slug",
+            "description": "product_slug field."
           }
         },
         "type": "object",
@@ -2395,7 +6299,30 @@
           "platform",
           "scheduled_time"
         ],
-        "title": "SchedulePostRequest"
+        "title": "SchedulePostRequest",
+        "description": "SchedulePostRequest schema used by the ShadowCast API."
+      },
+      "TTSProvidersResponse": {
+        "properties": {
+          "providers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Providers",
+            "description": "providers field."
+          },
+          "best": {
+            "type": "string",
+            "title": "Best",
+            "description": "best field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "providers",
+          "best"
+        ],
+        "title": "TTSProvidersResponse",
+        "description": "TTSProvidersResponse schema used by the ShadowCast API."
       },
       "ValidationError": {
         "properties": {
@@ -2411,22 +6338,27 @@
               ]
             },
             "type": "array",
-            "title": "Location"
+            "title": "Location",
+            "description": "loc field."
           },
           "msg": {
             "type": "string",
-            "title": "Message"
+            "title": "Message",
+            "description": "msg field."
           },
           "type": {
             "type": "string",
-            "title": "Error Type"
+            "title": "Error Type",
+            "description": "type field."
           },
           "input": {
-            "title": "Input"
+            "title": "Input",
+            "description": "input field."
           },
           "ctx": {
             "type": "object",
-            "title": "Context"
+            "title": "Context",
+            "description": "ctx field."
           }
         },
         "type": "object",
@@ -2435,8 +6367,65 @@
           "msg",
           "type"
         ],
-        "title": "ValidationError"
+        "title": "ValidationError",
+        "description": "ValidationError schema used by the ShadowCast API."
+      }
+    },
+    "securitySchemes": {
+      "ServiceKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Service-Key",
+        "description": "Internal service key required for admin and publishing routes."
+      },
+      "OAuth2": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "/api/oauth/{platform}/authorize",
+            "tokenUrl": "/api/oauth/{platform}/callback",
+            "scopes": {
+              "publish": "Publish generated videos to connected platforms"
+            }
+          }
+        }
       }
     }
-  }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current deployment host (gzip compression enabled at reverse proxy)."
+    }
+  ],
+  "tags": [
+    {
+      "name": "ops",
+      "description": "Health and readiness probes."
+    },
+    {
+      "name": "config",
+      "description": "LLM provider configuration."
+    },
+    {
+      "name": "catalog",
+      "description": "Hooks, styles, and provider catalogs."
+    },
+    {
+      "name": "jobs",
+      "description": "Generation jobs, status, results, and audit."
+    },
+    {
+      "name": "input",
+      "description": "Product research and import helpers."
+    },
+    {
+      "name": "publish",
+      "description": "OAuth and social publishing."
+    },
+    {
+      "name": "analytics",
+      "description": "Performance tracking and exports."
+    }
+  ]
 }

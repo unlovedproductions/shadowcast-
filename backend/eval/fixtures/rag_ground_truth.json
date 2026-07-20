@@ -1,0 +1,7 @@
+{
+  "q1": ["ARCHITECTURE", "STYLE_RENDERING_CHECKLIST"],
+  "q2": ["AUDIT", "RUNBOOK"],
+  "q3": ["RUNBOOK", "AUDIT"],
+  "q4": ["RUNBOOK", "RECOVERY"],
+  "q5": ["RUNBOOK", "RECOVERY"]
+}

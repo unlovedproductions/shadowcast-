@@ -20,8 +20,16 @@ DEFAULT_STORE_DIR = Path(__file__).parent / "output" / "credentials"
 
 
 def _derive_key(secret: str) -> bytes:
-    digest = hashlib.sha256(secret.encode("utf-8")).digest()
-    return base64.urlsafe_b64encode(digest)
+    salt = b"shadowcast-credentials-v1"
+    derived = hashlib.scrypt(
+        secret.encode("utf-8"),
+        salt=salt,
+        n=2**14,
+        r=8,
+        p=1,
+        dklen=32,
+    )
+    return base64.urlsafe_b64encode(derived)
 
 
 class CredentialsStore:

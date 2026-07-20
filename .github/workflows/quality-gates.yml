@@ -1,0 +1,56 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Export and verify OpenAPI
+        run: |
+          python export_openapi.py -o ../docs/openapi.json
+          git diff --exit-code ../docs/openapi.json
+
+      - name: API linter
+        run: python ../scripts/quality/api_linter.py ../docs/openapi.json --format json --output ../backend/eval/artifacts/ci_api_lint.json
+
+      - name: Breaking change detection
+        run: python ../scripts/quality/breaking_change_detector.py ../docs/openapi.baseline.json ../docs/openapi.json --format json --output ../backend/eval/artifacts/ci_breaking.json
+
+      - name: API scorecard (min grade B)
+        run: python ../scripts/quality/api_scorecard.py ../docs/openapi.json --format json --min-grade B --output ../backend/eval/artifacts/ci_scorecard.json
+
+      - name: Pytest (unit + API routes)
+        run: pytest ../tests/test_api_routes.py ../tests/ -q -m "not llm"
+
+      - name: Ship gate (app code)
+        run: |
+          python ../scripts/quality/ship_gate_scanner.py .. --json --no-interactive
+
+      - name: Commit message lint (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git log origin/${{ github.base_ref }}..HEAD --pretty=format:'%s' > /tmp/commits.txt
+          python ../scripts/quality/commit_linter.py --input /tmp/commits.txt --strict --format text || true

@@ -54,3 +54,29 @@ python3 eval/eval_runner.py --live --filter hr_short,hr_long --output eval_resul
 ```
 
 See `backend/eval/AUDIT.md` for baseline metrics and iteration gates.
+
+## Quality Gates
+
+Local checks (from repo root):
+
+```bash
+cd backend && .venv/bin/python export_openapi.py -o ../docs/openapi.json
+python3 scripts/quality/api_linter.py docs/openapi.json
+python3 scripts/quality/api_scorecard.py docs/openapi.json --min-grade B
+python3 scripts/quality/breaking_change_detector.py docs/openapi.baseline.json docs/openapi.json
+cd backend && .venv/bin/pytest ../tests/test_api_routes.py ../tests/ -q -m "not llm"
+python3 scripts/quality/ship_gate_scanner.py backend --no-interactive
+python3 scripts/quality/ship_gate_scanner.py frontend --no-interactive
+```
+
+CI runs the same gates via `.github/workflows/quality-gates.yml`.
+
+OpenAPI policy: unversioned `/api/*` URLs are intentional for this internal UI-backed API. Breaking changes require updating `docs/openapi.baseline.json` on semver bumps.
+
+## Rollback (Vercel)
+
+1. Identify last good deploy in the Vercel dashboard.
+2. Promote that deploy to production (instant rollback).
+3. If API contract changed, revert `docs/openapi.baseline.json` in git and redeploy.
+4. For bad releases with DB/file side effects, disable feature flags first; ShadowCast is file-based for job output — no destructive DB migrations to roll back.
+
