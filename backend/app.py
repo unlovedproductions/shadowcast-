@@ -23,7 +23,7 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 load_dotenv(Path(__file__).parent / ".env")
 from fastapi.staticfiles import StaticFiles
@@ -36,11 +36,22 @@ import llm_config
 from llm_client import list_ollama_models, list_openai_compatible_models, test_chat_completion
 from amazon_scraper import scrape_amazon_product
 from youtube_research import research_youtube_keywords
+from api_models import (
+    BatchGenerateRequest,
+    GenerateRequest,
+    LLMConfigRequest,
+    MetricRequest,
+    ProductInfo,
+    ScrapeAmazonRequest,
+    YouTubeResearchRequest,
+)
+from research_enrichment import enrich_product_research
 from script_generator import (
     generate_selected_scripts, HOOK_TYPES, HOOK_DESCRIPTIONS,
-    CONTENT_STYLES, DEFAULT_CONTENT_STYLE,
 )
 from content_styles import (
+    CONTENT_STYLES,
+    DEFAULT_CONTENT_STYLE,
     normalize_content_style,
     style_badge_text,
     style_requires_competitors,
@@ -718,69 +729,13 @@ def fmt_display(fmt: str) -> str:
     return "Short-Form" if fmt == "short_form" else "Long-Form"
 
 
-# ── Pydantic Models ───────────────────────────────────────────────────
-class LLMConfigRequest(BaseModel):
-    provider: str = "ollama"
-    api_key: str = ""
-    base_url: str = ""
-    model: str = ""
-
-
-class ProductInfo(BaseModel):
-    product_name: str
-    niche: str = "General"
-    key_features: List[str] = []
-    price: str = "$49.99"
-    affiliate_link: str = "[YOUR_AFFILIATE_LINK]"
-    keywords: List[str] = []
-    target_audience: str = "General consumers"
-    product_category: str = ""
-    competitors: List[str] = []
-    unique_selling_point: str = ""
-    discount_info: str = ""
-    coupon_code: str = ""
-    # ── New trust-based fields ──
-    common_complaints: str = ""
-    common_praises: str = ""
-    who_not_for: str = ""
-    series_name: str = ""
-    price_comparison: str = ""
-    content_style: str = DEFAULT_CONTENT_STYLE
-
-
-class GenerateRequest(BaseModel):
-    product_info: ProductInfo
-    hook_types: List[str] = ["curiosity"]
-    formats: List[str] = ["short_form", "long_form"]
-    content_style: str = DEFAULT_CONTENT_STYLE
-    audio_enabled: bool = True
-    audio_mood: str = "auto"
-    use_tts: bool = False
-    tts_provider: str = "auto"
-    tts_voice: Optional[str] = None
-    video_preset: str = "medium"
-
-
-class BatchGenerateRequest(BaseModel):
-    products: List[ProductInfo]
-    hook_types: List[str] = ["curiosity"]
-    formats: List[str] = ["short_form", "long_form"]
-    content_style: str = DEFAULT_CONTENT_STYLE
-    audio_enabled: bool = True
-    audio_mood: str = "auto"
-    use_tts: bool = False
-    tts_provider: str = "auto"
-    tts_voice: Optional[str] = None
-    video_preset: str = "medium"
-
-
 # ── CSV Parsing ───────────────────────────────────────────────────────
 CSV_COLUMNS = [
     "product_name", "niche", "key_features", "price", "affiliate_link",
     "keywords", "target_audience", "product_category", "competitors",
     "unique_selling_point", "discount_info", "coupon_code",
     "common_complaints", "common_praises", "who_not_for",
-    "series_name", "price_comparison", "content_style",
+    "series_name", "price_comparison", "content_style", "amazon_url",
 ]
 
 
@@ -818,6 +773,7 @@ def parse_csv_products(csv_text: str) -> List[dict]:
             "series_name": norm.get("series_name", ""),
             "price_comparison": norm.get("price_comparison", ""),
             "content_style": normalize_content_style(norm.get("content_style", DEFAULT_CONTENT_STYLE)),
+            "amazon_url": norm.get("amazon_url", ""),
         }
         products.append(product)
     return products
@@ -841,6 +797,11 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     # Use product-level content_style if set, otherwise job-level
     effective_style = normalize_content_style(product.get("content_style") or content_style)
     product["content_style"] = effective_style
+
+    try:
+        product = enrich_product_research(product)
+    except Exception as exc:
+        job.setdefault("warnings", []).append(f"Research enrichment skipped: {exc}")
 
     mood_arg = None if audio_mood in (None, "", "auto") else audio_mood
     render_preset = resolve_video_preset(video_preset)
@@ -1183,6 +1144,11 @@ def health_check():
     return {"status": "ok", "app": "ShadowCast", "version": "4.0"}
 
 
+@app.get("/api/openapi.json")
+def openapi_spec():
+    return JSONResponse(app.openapi())
+
+
 def _check_llm_reachable() -> tuple[bool, str]:
     cfg = llm_config.get_config()
     base_url = (cfg.base_url or "").rstrip("/")
@@ -1356,9 +1322,8 @@ def tts_providers():
 @app.post("/api/scrape-amazon")
 async def scrape_amazon(url: str = Form(...)):
     """Scrape an Amazon product URL to auto-fill product fields."""
-    if not url or not url.strip():
-        raise HTTPException(status_code=400, detail="No URL provided")
-    result = await scrape_amazon_product(url.strip())
+    req = ScrapeAmazonRequest(url=url)
+    result = await scrape_amazon_product(req.url)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     # Map scraped data to ShadowCast product fields
@@ -1382,9 +1347,8 @@ async def scrape_amazon(url: str = Form(...)):
 @app.post("/api/youtube-research")
 async def youtube_research(query: str = Form(...)):
     """Research YouTube keywords and get suggestions for a product/niche."""
-    if not query or not query.strip():
-        raise HTTPException(status_code=400, detail="No query provided")
-    result = await research_youtube_keywords(query.strip())
+    req = YouTubeResearchRequest(query=query)
+    result = await research_youtube_keywords(req.query)
     return {"status": "ok", "data": result}
 
 
@@ -2022,12 +1986,6 @@ def track_video(
         product_name, hook_type, format_type, video_path, youtube_url
     )
     return {"video_id": video_id}
-
-
-class MetricRequest(BaseModel):
-    video_id: str
-    metric_type: str
-    value: float
 
 
 @app.post("/api/analytics/record")

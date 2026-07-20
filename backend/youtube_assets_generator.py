@@ -6,6 +6,7 @@ engagement, and affiliate conversions.
 
 import re
 
+from eval.output_validators import validate_youtube_assets
 from llm_client import chat_completion_json
 from prompts import YOUTUBE_ASSETS_SYSTEM_PROMPT, build_youtube_assets_user_prompt
 
@@ -114,6 +115,9 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
         YOUTUBE_ASSETS_SYSTEM_PROMPT,
         user_prompt,
         required_keys=["seo_title"],
+        validate_fn=lambda payload: validate_youtube_assets(
+            payload, str(product_info.get("affiliate_link", ""))
+        )[0],
     )
 
     if not isinstance(parsed, dict) or "seo_title" not in parsed:

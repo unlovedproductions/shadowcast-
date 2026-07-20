@@ -3,7 +3,7 @@
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from llm_config import get_config, get_provider_defaults, parse_llm_json, supports_json_response_format
 
@@ -66,6 +66,7 @@ def chat_completion_json(
     max_retries: Optional[int] = None,
     required_keys: Optional[list[str]] = None,
     timeout: Optional[float] = None,
+    validate_fn: Optional[Callable[[dict], bool]] = None,
 ) -> dict:
     cfg = get_config()
     defaults = get_provider_defaults(cfg.provider)
@@ -89,6 +90,8 @@ def chat_completion_json(
         if "__raw" in parsed and len(parsed) == 1:
             continue
         if required_keys and not all(k in parsed for k in required_keys):
+            continue
+        if validate_fn is not None and not validate_fn(parsed):
             continue
         return parsed
 

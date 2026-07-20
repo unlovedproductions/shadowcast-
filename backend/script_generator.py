@@ -5,6 +5,7 @@ never need to physically buy or test products.
 """
 
 from content_styles import DEFAULT_CONTENT_STYLE, normalize_content_style
+from eval.output_validators import validate_script_output
 from llm_client import chat_completion_json
 from prompts import (
     HOOK_TYPES,
@@ -22,8 +23,27 @@ __all__ = [
 ]
 
 
-def _call_llm(user: str, required_keys: list[str] | None = None) -> dict:
-    return chat_completion_json(SCRIPT_SYSTEM_PROMPT, user, required_keys=required_keys)
+def _call_llm(
+    user: str,
+    required_keys: list[str] | None = None,
+    *,
+    content_style: str = "",
+    fmt: str = "",
+) -> dict:
+    validate_fn = None
+    if fmt:
+        style = normalize_content_style(content_style or DEFAULT_CONTENT_STYLE)
+
+        def validate_fn(parsed: dict) -> bool:
+            ok, _ = validate_script_output(parsed, style, fmt)
+            return ok
+
+    return chat_completion_json(
+        SCRIPT_SYSTEM_PROMPT,
+        user,
+        required_keys=required_keys,
+        validate_fn=validate_fn,
+    )
 
 
 def generate_short_form_script(product_info: dict, hook_type: str, content_style: str = None) -> dict:
@@ -31,7 +51,12 @@ def generate_short_form_script(product_info: dict, hook_type: str, content_style
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
     content_style = normalize_content_style(content_style)
     user_prompt = build_script_user_prompt(product_info, hook_type, content_style, "short_form")
-    return _call_llm(user_prompt, required_keys=["segments"])
+    return _call_llm(
+        user_prompt,
+        required_keys=["segments"],
+        content_style=content_style,
+        fmt="short_form",
+    )
 
 
 def generate_long_form_script(product_info: dict, hook_type: str, content_style: str = None) -> dict:
@@ -39,7 +64,12 @@ def generate_long_form_script(product_info: dict, hook_type: str, content_style:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
     content_style = normalize_content_style(content_style)
     user_prompt = build_script_user_prompt(product_info, hook_type, content_style, "long_form")
-    return _call_llm(user_prompt, required_keys=["chapters"])
+    return _call_llm(
+        user_prompt,
+        required_keys=["chapters"],
+        content_style=content_style,
+        fmt="long_form",
+    )
 
 
 def generate_selected_scripts(product_info: dict, hook_type: str,
