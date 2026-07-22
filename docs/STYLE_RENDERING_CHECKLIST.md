@@ -14,12 +14,14 @@ Local verification matrix for all 6 content styles × 2 video formats. No full v
 
 | content_style | short_form | long_form | Has layout segments | Thumbnail badge |
 |--------------|-----------|-----------|--------------------|-----------------|
-| honest_review | [ ] pass | [ ] pass | N/A | HONEST REVIEW |
-| elimination | [ ] pass | [ ] pass | winner_reveal | ELIMINATION |
-| vs_battle | [ ] pass | [ ] pass | vs_split + scorecard | VS BATTLE |
-| budget_challenge | [ ] pass | [ ] pass | price_compare | BUDGET PICK |
-| worth_it_or_waste | [ ] pass | [ ] pass | verdict styling | WORTH IT? |
-| standard | [ ] pass | [ ] pass | N/A | none |
+| honest_review | [x] pass | [x] pass | N/A | HONEST REVIEW |
+| elimination | [x] pass | [x] pass | winner_reveal | ELIMINATION |
+| vs_battle | [x] pass | [x] pass | vs_split + scorecard | VS BATTLE |
+| budget_challenge | [x] pass | [x] pass | price_compare | BUDGET PICK |
+| worth_it_or_waste | [x] pass | [x] pass | verdict styling | WORTH IT? |
+| standard | [x] pass | [x] pass | N/A | none |
+
+> Verified 2026-07-22 via `tests/test_style_matrix.py` (6×2 layout/badge matrix) + related style/APF/audio pytest suite. Manual MP4 eyeball still optional when services are up.
 
 ## Per-Style Checks
 

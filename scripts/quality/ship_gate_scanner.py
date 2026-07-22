@@ -1051,11 +1051,18 @@ def severity_for_result(r: Result) -> Severity:
     return r.check.severity
 
 
+def _blocking_statuses(*, no_interactive: bool) -> tuple[Status, ...]:
+    if no_interactive:
+        return (Status.FAIL,)
+    return (Status.FAIL, Status.MANUAL)
+
+
 def print_report(all_results: List[Result], stack: Stack, scan_time: float,
-                 verbose: bool) -> int:
-    critical = [r for r in all_results if r.status in (Status.FAIL, Status.MANUAL)
+                 verbose: bool, *, no_interactive: bool = False) -> int:
+    blocking = _blocking_statuses(no_interactive=no_interactive)
+    critical = [r for r in all_results if r.status in blocking
                 and r.check.severity == Severity.CRITICAL]
-    high     = [r for r in all_results if r.status in (Status.FAIL, Status.MANUAL)
+    high     = [r for r in all_results if r.status in blocking
                 and r.check.severity == Severity.HIGH]
     advisory = [r for r in all_results if r.status in (Status.FAIL, Status.MANUAL)
                 and r.check.severity == Severity.ADVISORY]
@@ -1122,10 +1129,12 @@ def print_report(all_results: List[Result], stack: Stack, scan_time: float,
         return 0
 
 
-def print_json_report(all_results: List[Result], stack: Stack, scan_time: float) -> int:
-    critical = [r for r in all_results if r.status in (Status.FAIL, Status.MANUAL)
+def print_json_report(all_results: List[Result], stack: Stack, scan_time: float,
+                      *, no_interactive: bool = False) -> int:
+    blocking = _blocking_statuses(no_interactive=no_interactive)
+    critical = [r for r in all_results if r.status in blocking
                 and r.check.severity == Severity.CRITICAL]
-    high     = [r for r in all_results if r.status in (Status.FAIL, Status.MANUAL)
+    high     = [r for r in all_results if r.status in blocking
                 and r.check.severity == Severity.HIGH]
 
     output = {
@@ -1245,9 +1254,9 @@ def main():
     scan_time = time.time() - start
 
     if args.json:
-        sys.exit(print_json_report(all_results, stack, scan_time))
+        sys.exit(print_json_report(all_results, stack, scan_time, no_interactive=args.no_interactive))
     else:
-        sys.exit(print_report(all_results, stack, scan_time, args.verbose))
+        sys.exit(print_report(all_results, stack, scan_time, args.verbose, no_interactive=args.no_interactive))
 
 
 if __name__ == "__main__":

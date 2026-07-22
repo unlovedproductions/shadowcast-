@@ -49,11 +49,13 @@ def _run_script_case(case: dict, live: bool) -> dict:
 
     if live:
         from script_generator import generate_long_form_script, generate_short_form_script
+        from script_postprocessor import enrich_script
         try:
             if fmt == "short_form":
                 output = generate_short_form_script(product, hook_type, content_style)
             else:
                 output = generate_long_form_script(product, hook_type, content_style)
+            output = enrich_script(output, product, content_style)
         except Exception as exc:
             result["errors"] = [f"LLM call failed: {exc}"]
             return result
