@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Start APF
+Comment=Start APF and open http://localhost:3001
+Exec=/home/unloved/.local/bin/unloved-launchers/launch-apf.sh
+Icon=applications-internet
+Terminal=false
+Categories=Development;
+StartupNotify=false

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Start Unloved Stack
+Comment=Start APF, ShadowCast, Mission Control in kitty tabs and open all three apps in Firefox tabs
+Exec=/home/unloved/.local/bin/unloved-launchers/launch-unloved-stack.sh
+Icon=applications-development
+Terminal=false
+Categories=Development;
+StartupNotify=false
