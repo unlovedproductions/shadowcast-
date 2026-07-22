@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-07-20T16:58:22Z",
+  "timestamp": "2026-07-22T17:34:24Z",
   "live": true,
   "required_pass_ids": [
     "hr_short",
@@ -20,9 +20,9 @@
     "yt_assets_worth"
   ],
   "total": 16,
-  "passed": 4,
+  "passed": 16,
   "failed": 0,
-  "pending_live": 12,
+  "pending_live": 0,
   "results": [
     {
       "id": "hr_short",
@@ -44,15 +44,21 @@
     },
     {
       "id": "elim_short",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "elimination",
+      "errors": [],
+      "live": true
     },
     {
       "id": "elim_long",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "elimination",
+      "errors": [],
+      "live": true
     },
     {
       "id": "vs_short",
@@ -65,45 +71,66 @@
     },
     {
       "id": "vs_long",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "vs_battle",
+      "errors": [],
+      "live": true
     },
     {
       "id": "budget_short",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "budget_challenge",
+      "errors": [],
+      "live": true
     },
     {
       "id": "budget_long",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "budget_challenge",
+      "errors": [],
+      "live": true
     },
     {
       "id": "worth_short",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "worth_it_or_waste",
+      "errors": [],
+      "live": true
     },
     {
       "id": "worth_long",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "worth_it_or_waste",
+      "errors": [],
+      "live": true
     },
     {
       "id": "std_short",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "standard",
+      "errors": [],
+      "live": true
     },
     {
       "id": "std_long",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "standard",
+      "errors": [],
+      "live": true
     },
     {
       "id": "yt_assets_hr",
@@ -115,21 +142,27 @@
     },
     {
       "id": "yt_assets_vs",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
     },
     {
       "id": "yt_assets_budget",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
     },
     {
       "id": "yt_assets_worth",
-      "passed": null,
-      "pending_live": true,
-      "note": "Run with LLM_EVAL=1 and --live to populate"
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
     }
   ]
 }

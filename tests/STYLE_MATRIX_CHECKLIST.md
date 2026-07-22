@@ -12,12 +12,14 @@ Local checklist — no full video renders required. Verify script JSON, layout s
 
 | content_style | short_form | long_form | Layout segments expected | Thumbnail badge |
 |---------------|-----------|-----------|--------------------------|-----------------|
-| `honest_review` | [ ] pass | [ ] pass | N/A (text only) | HONEST REVIEW |
-| `elimination` | [ ] pass | [ ] pass | `winner_reveal` | ELIMINATION |
-| `vs_battle` | [ ] pass | [ ] pass | `vs_split`, `spec_compare`, `scorecard`, `winner_reveal` | VS BATTLE |
-| `budget_challenge` | [ ] pass | [ ] pass | `price_compare` | BUDGET PICK |
-| `worth_it_or_waste` | [ ] pass | [ ] pass | verdict chapter uses `text_style: verdict` | WORTH IT? |
-| `standard` | [ ] pass | [ ] pass | N/A (text only) | none |
+| `honest_review` | [x] pass | [x] pass | N/A (text only) | HONEST REVIEW |
+| `elimination` | [x] pass | [x] pass | `winner_reveal` | ELIMINATION |
+| `vs_battle` | [x] pass | [x] pass | `vs_split`, `spec_compare`, `scorecard`, `winner_reveal` | VS BATTLE |
+| `budget_challenge` | [x] pass | [x] pass | `price_compare` | BUDGET PICK |
+| `worth_it_or_waste` | [x] pass | [x] pass | verdict chapter uses `text_style: verdict` | WORTH IT? |
+| `standard` | [x] pass | [x] pass | N/A (text only) | none |
+
+Verified 2026-07-22 — operator: Lilith audit; automated matrix via `tests/test_style_matrix.py` (40 passed in targeted pytest run).
 
 ## Per-style steps (UI)
 

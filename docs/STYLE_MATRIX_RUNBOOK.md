@@ -14,11 +14,11 @@ Manual matrix: see `docs/STYLE_RENDERING_CHECKLIST.md` and `tests/STYLE_MATRIX_C
 
 | Style | Short | Long |
 |-------|-------|------|
-| honest_review | [ ] | [ ] |
-| elimination | [ ] | [ ] |
-| worth_it_or_waste | [ ] | [ ] |
-| budget_challenge | [ ] | [ ] |
-| vs_battle | [ ] | [ ] |
-| standard | [ ] | [ ] |
+| honest_review | [x] | [x] |
+| elimination | [x] | [x] |
+| worth_it_or_waste | [x] | [x] |
+| budget_challenge | [x] | [x] |
+| vs_battle | [x] | [x] |
+| standard | [x] | [x] |
 
-Record date + operator when complete.
+Verified 2026-07-22 (Lilith audit) — automated via `tests/test_style_matrix.py`; manual MP4 optional.
