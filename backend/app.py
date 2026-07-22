@@ -994,6 +994,17 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 scripts, script_payload = _generate_scripts_with_retry(
                     product, hook_type, formats, effective_style
                 )
+                style_ctx = scripts.get("product_info", {}).get("_style_rules_context")
+                if style_ctx:
+                    product["_style_rules_context"] = style_ctx
+                    job.setdefault("style_rules_retrieval", {})[hook_type] = {
+                        "hits": len(style_ctx),
+                        "sources": [
+                            hit.get("source")
+                            for hit in style_ctx
+                            if isinstance(hit, dict) and hit.get("source")
+                        ],
+                    }
                 all_scripts[hook_type] = script_payload
                 with open(str(script_path), "w") as f:
                     json.dump(scripts, f, indent=2)

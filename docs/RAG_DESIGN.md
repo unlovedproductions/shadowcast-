@@ -1,70 +1,93 @@
 # RAG Design (ShadowCast)
 
-Design-only spike for a future retrieval layer. Does **not** replace [`research_enrichment.py`](../backend/research_enrichment.py) (live Amazon/YouTube enrichment).
+ShadowCast runs two retrieval layers:
 
-## Use case
+| Layer | Module | Injected into |
+|-------|--------|---------------|
+| **Product research RAG** | [`research_enrichment.py`](../backend/research_enrichment.py) → [`ResearchStore`](../backend/rag_store.py) | Script + YouTube user prompts via `_retrieved_research` |
+| **Style-rules RAG** | [`style_rules_retrieval.py`](../backend/style_rules_retrieval.py) → [`StyleCorpusStore`](../backend/rag_store.py) | Script user prompt only via `_style_rules_context` (default ON; `STYLE_RULES_RAG=0` to disable) |
 
-Retrieve style guides, prompt rules, and runbook snippets during script generation so the LLM follows buyer-language bans, content-style constraints, and eval gates.
+## Style-rules corpus
 
-## Corpus (phase 6)
+Seven markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpus/):
 
-| Path | Role |
-|------|------|
-| `docs/*.md` | Architecture, runbook, recovery, style checklist |
-| `backend/eval/AUDIT.md` | Prompt eval gates and buyer-language rules |
+| Doc | Role |
+|-----|------|
+| `BUYER_LANGUAGE_RULES.md` | Banned affiliate-speak, buyer-facing tone |
+| `AUDIT.md` | Prompt eval gates (corpus copy) |
+| `MOCK_SCRIPT_EXAMPLES.md` | Format exemplars |
+| `STYLE_RENDERING_CHECKLIST.md` | Layout / segment rules |
+| `ARCHITECTURE.md`, `RUNBOOK.md`, `RECOVERY.md` | Ops and recovery context |
 
-Copied to `backend/eval/rag_corpus/` for tooling.
+Canonical prompt audit lives in [`backend/eval/AUDIT.md`](../backend/eval/AUDIT.md).
 
-## Chunking (`chunking_optimizer.py`)
+## Runtime stack (current)
 
-- **Corpus:** 5 documents, ~11.6 KB total
-- **Recommended strategy:** `sentence_based` (from `rag_pipeline_designer.py`; fixed-size char also evaluated in `backend/eval/artifacts/chunking.json`)
-- **Sample config:** max 1000 chars, 1-sentence overlap
+Implemented in [`rag_store.py`](../backend/rag_store.py) — **not** pgvector or cross-encoder in production today:
 
-## Pipeline design (`rag_pipeline_designer.py`)
+- **Chunking:** sentence-based (`chunk_text_sentences`), max ~1200 chars, 1-sentence overlap
+- **Embeddings:** Ollama-compatible API (`nomic-embed-text` default) via `embed_base_url` from [`llm_config.get_config()`](../backend/llm_config.py)
+- **Retrieval:** hybrid dense (embedding cosine) + lexical overlap + BM25
+- **Rerank:** query-intent rerank (`default_rerank`) on doc-level hits
 
-| Component | Recommendation | Notes |
-|-----------|----------------|-------|
-| Embeddings | `all-MiniLM-L6-v2` tier (verify current model availability) | Self-hosted, cost-sensitive |
-| Vector store | pgvector | Fits low query volume (~50/day) |
-| Retrieval | Hybrid BM25 + vector | Designer output in `backend/eval/artifacts/rag_design.json` |
-| Reranking | Cross-encoder (optional phase 2) | Needed if precision stays below target |
+Product and style stores share chunking/hybrid primitives; style retrieval is doc-level aggregation over sentence chunks.
 
-**Cost figures in `rag_design.json` are estimates — verify live pricing before production.**
+## Eval baselines
 
-## Evaluation (`retrieval_evaluator.py`)
+| Gate | Script | Baseline |
+|------|--------|----------|
+| Corpus precision@5 | `eval/run_corpus_rag_eval.py` | **0.933** (`eval/baselines/rag_product_baseline.json` / corpus artifacts) |
+| Product groundedness | `eval/run_rag_eval.py` | **0.979** |
 
-Fixtures:
+CI runs both gates in [`.github/workflows/quality-gates.yml`](../.github/workflows/quality-gates.yml).
 
-- `backend/eval/fixtures/rag_queries.json` — 5 dev queries
-- `backend/eval/fixtures/rag_ground_truth.json` — doc stem IDs matching corpus filenames
+Legacy offline tool: `scripts/quality/retrieval_evaluator.py` (TF-IDF fixtures; superseded for gates by `run_corpus_rag_eval.py`).
 
-Latest run: `backend/eval/artifacts/rag_eval.json`
+## Integration
 
-**Targets (production gate):** precision@5 ≥ 0.8, recall@10 ≥ 0.85
-
-**Latest baseline (TF-IDF, 5-doc corpus):** precision@5 = 0.6, recall@10 = 0.8, MRR = 0.7 — below precision target; recall meets target.
-
-1. Expand corpus with `mock_scripts.json` exemplars and `prompts.py` exports
-2. Switch chunking per `chunking.json` recommendation
-3. Add embedding + pgvector index (design already specifies stack)
-4. Add cross-encoder reranking
-
-## Integration point (future)
-
+```mermaid
+flowchart LR
+  subgraph product [Product RAG]
+    PI[product_info] --> RE[enrich_product_research]
+    RS[ResearchStore] --> RE
+    RE --> PR["_retrieved_research"]
+  end
+  subgraph style [Style-rules RAG]
+    SG[script_generator] --> SR[attach_style_rules_context]
+    SC[StyleCorpusStore] --> SR
+    SR --> ST["_style_rules_context"]
+  end
+  PR --> BSP[build_script_user_prompt]
+  ST --> BSP
+  BSP --> LLM[llm_client.chat_completion_json]
 ```
-product_info + hook_types
-    → retrieve(style_rules, buyer_bans, format_examples)
-    → inject into script_generator system context
-    → existing LLM + validators (unchanged)
-```
 
-Do not wire into `/api/generate` until eval targets pass on an expanded corpus.
+Injection is **user prompt only** ([`build_script_user_prompt`](../backend/prompts.py)), not [`SCRIPT_SYSTEM_PROMPT`](../backend/prompts.py), to keep the system prefix stable for cache-friendly layout.
+
+YouTube assets and publish paths do **not** use style-rules RAG in the current pass.
 
 ## Commands
+
+```bash
+cd backend
+python3 eval/run_corpus_rag_eval.py --min-precision 0.80
+python3 eval/run_rag_eval.py --min-relevance 0.80
+python3 eval/structural_gate.py
+```
+
+Design / offline tooling (optional):
 
 ```bash
 python3 scripts/quality/chunking_optimizer.py backend/eval/rag_corpus --extensions .md -o backend/eval/artifacts/chunking.json
 python3 scripts/quality/rag_pipeline_designer.py backend/eval/fixtures/rag_requirements.json -o backend/eval/artifacts/rag_design.json
 python3 scripts/quality/retrieval_evaluator.py backend/eval/fixtures/rag_queries.json backend/eval/rag_corpus backend/eval/fixtures/rag_ground_truth.json -o backend/eval/artifacts/rag_eval.json
 ```
+
+## Future scale (not implemented)
+
+- pgvector or dedicated vector service for cross-job persistence
+- Cross-encoder reranking if precision drops on an expanded corpus
+- Sentence-transformers sidecar if Ollama embeddings are unavailable
+- Expand corpus with live `prompts.py` exports and production script exemplars
+
+Do not block current shipping on these; eval gates pass on the in-memory hybrid stack above.

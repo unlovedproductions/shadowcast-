@@ -13,6 +13,7 @@ from prompts import (
     SCRIPT_SYSTEM_PROMPT,
     build_script_user_prompt,
 )
+from style_rules_retrieval import attach_style_rules_context
 
 __all__ = [
     "HOOK_TYPES",
@@ -50,6 +51,9 @@ def generate_short_form_script(product_info: dict, hook_type: str, content_style
     if content_style is None:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
     content_style = normalize_content_style(content_style)
+    product_info = attach_style_rules_context(
+        {**product_info}, content_style, "short_form", hook_type
+    )
     user_prompt = build_script_user_prompt(product_info, hook_type, content_style, "short_form")
     return _call_llm(
         user_prompt,
@@ -63,6 +67,9 @@ def generate_long_form_script(product_info: dict, hook_type: str, content_style:
     if content_style is None:
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
     content_style = normalize_content_style(content_style)
+    product_info = attach_style_rules_context(
+        {**product_info}, content_style, "long_form", hook_type
+    )
     user_prompt = build_script_user_prompt(product_info, hook_type, content_style, "long_form")
     return _call_llm(
         user_prompt,
@@ -80,6 +87,10 @@ def generate_selected_scripts(product_info: dict, hook_type: str,
         content_style = product_info.get("content_style", DEFAULT_CONTENT_STYLE)
     content_style = normalize_content_style(content_style)
     product_info = {**product_info, "content_style": content_style}
+    primary_fmt = formats[0] if formats else "short_form"
+    product_info = attach_style_rules_context(
+        product_info, content_style, primary_fmt, hook_type
+    )
 
     result = {"product_info": product_info, "hook_type": hook_type,
               "content_style": content_style, "scripts": {}}
