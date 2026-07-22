@@ -175,6 +175,48 @@ def run_eval(cases: list, live: bool, filter_ids: set | None = None) -> dict:
     }
 
 
+def _merge_into_live_baseline(report: dict, output_path: Path, all_case_ids: list[str]) -> dict:
+    """Merge filtered live runs into an existing baseline without dropping other cases."""
+    existing_map: dict[str, dict] = {}
+    if output_path.exists():
+        prior = _load_json(output_path)
+        for row in prior.get("results", []):
+            if isinstance(row, dict) and row.get("id"):
+                existing_map[row["id"]] = row
+
+    for row in report.get("results", []):
+        if isinstance(row, dict) and row.get("id"):
+            existing_map[row["id"]] = row
+
+    merged_results: list[dict] = []
+    for case_id in all_case_ids:
+        if case_id in existing_map:
+            merged_results.append(existing_map[case_id])
+        else:
+            merged_results.append(
+                {
+                    "id": case_id,
+                    "passed": None,
+                    "pending_live": True,
+                    "note": "Run with LLM_EVAL=1 and --live to populate",
+                }
+            )
+
+    passed = sum(1 for row in merged_results if row.get("passed") is True)
+    failed = sum(1 for row in merged_results if row.get("passed") is False)
+    pending = sum(1 for row in merged_results if row.get("pending_live"))
+    return {
+        "timestamp": report["timestamp"],
+        "live": report["live"],
+        "required_pass_ids": all_case_ids,
+        "total": len(all_case_ids),
+        "passed": passed,
+        "failed": failed,
+        "pending_live": pending,
+        "results": merged_results,
+    }
+
+
 def compare_results(current: dict, baseline: dict) -> tuple[bool, list[str]]:
     issues = []
     baseline_map = {r["id"]: r for r in baseline.get("results", [])}
@@ -216,7 +258,11 @@ def main():
     print(summary)
 
     if args.output:
-        Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
+        output_path = Path(args.output)
+        all_case_ids = [case["id"] for case in cases]
+        if output_path.name == "eval_live_baseline.json" or (filter_ids and output_path.exists()):
+            report = _merge_into_live_baseline(report, output_path, all_case_ids)
+        output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"Wrote {args.output}")
 
     if args.compare and not report.get("compare_ok", True):
