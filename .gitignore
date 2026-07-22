@@ -61,8 +61,19 @@ downloads/
 apf_imports/
 logs/
 *.log
-backend/eval/eval_results.json
-backend/eval/eval_results_*.json
+
+# Local eval run outputs (never commit)
+.self-eval-scores.jsonl
+backend/eval_results.json
+backend/eval_results_*.json
+backend/eval/eval_results*.json
+
+# Regenerated locally by structural_gate / corpus RAG eval (CI recreates each run)
+backend/eval/snapshots/
+backend/eval/baselines/eval_baseline.json
+backend/eval/baselines/*.txt.analysis.json
+backend/eval/artifacts/rag_eval.json
+
 # --- OS/editor ---
 .DS_Store
 .idea/
