@@ -20,12 +20,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements.lock
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
 
       - name: Export and verify OpenAPI
         run: |
@@ -41,8 +41,25 @@ jobs:
       - name: API scorecard (min grade B)
         run: python ../scripts/quality/api_scorecard.py ../docs/openapi.json --format json --min-grade B --output ../backend/eval/artifacts/ci_scorecard.json
 
+      - name: Prompt structural gate
+        run: python eval/structural_gate.py
+
+      - name: Pipeline orchestrator validate
+        run: python eval/agent_orchestrator.py eval/shadowcast_pipeline.yaml --validate
+
+      - name: Product RAG eval gate
+        run: python eval/run_rag_eval.py --min-relevance 0.80
+
       - name: Pytest (unit + API routes)
         run: pytest ../tests/test_api_routes.py ../tests/ -q -m "not llm"
+
+      - name: Video claim audit (strict when fixtures exist)
+        run: |
+          if [ -d output ] && find output -name '*.mp4' | grep -q .; then
+            python video_claim_audit.py --output-dir output --fail-on warn --require-videos
+          else
+            echo "No output MP4 fixtures — skipping strict audit"
+          fi
 
       - name: Ship gate (app code)
         run: |

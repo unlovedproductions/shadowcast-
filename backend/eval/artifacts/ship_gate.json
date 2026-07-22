@@ -1,11 +1,11 @@
 {
   "version": "1.0.0",
-  "scan_time": 0.77,
+  "scan_time": 1.61,
   "stack": {
     "framework": "",
     "has_supabase": false,
     "has_typescript": false,
-    "deploy_target": "vercel",
+    "deploy_target": "",
     "has_ai": false
   },
   "results": [
@@ -23,15 +23,9 @@
       "description": "CORS not wildcard",
       "severity": "CRITICAL",
       "category": "SEC",
-      "status": "FAIL",
-      "message": "CORS wildcard (*) detected",
-      "findings": [
-        {
-          "file": "scripts/quality/ship_gate_scanner.py",
-          "line": 401,
-          "snippet": "    findings = grep_files(root, r\"(origin\\s*:\\s*['\\\"]?\\*['\\\"]?|Access-Control-Allow-Origin.*\\*|cors\\(\\s*\\))\","
-        }
-      ]
+      "status": "PASS",
+      "message": "",
+      "findings": []
     },
     {
       "id": "SEC-05",
@@ -65,15 +59,9 @@
       "description": "Passwords hashed with bcrypt or argon2",
       "severity": "CRITICAL",
       "category": "SEC",
-      "status": "FAIL",
-      "message": "Weak hashing algorithm (md5/sha1/sha256) detected",
-      "findings": [
-        {
-          "file": "backend/credentials_store.py",
-          "line": 23,
-          "snippet": "    digest = hashlib.sha256(secret.encode(\"utf-8\")).digest()"
-        }
-      ]
+      "status": "PASS",
+      "message": "",
+      "findings": []
     },
     {
       "id": "SEC-11",
@@ -98,35 +86,9 @@
       "description": "No sensitive data in URLs or logs",
       "severity": "HIGH",
       "category": "SEC",
-      "status": "FAIL",
-      "message": "Sensitive data may appear in URLs or logs",
-      "findings": [
-        {
-          "file": "scripts/quality/api_scorecard.py",
-          "line": 101,
-          "snippet": "                                   key=lambda x: x.weight, reverse=True):"
-        },
-        {
-          "file": "scripts/quality/api_scorecard.py",
-          "line": 1490,
-          "snippet": "            key=lambda x: x[1].weight,"
-        },
-        {
-          "file": "scripts/quality/breaking_change_detector.py",
-          "line": 907,
-          "snippet": "                for change in sorted(breaking_changes, key=lambda x: x.severity.value):"
-        },
-        {
-          "file": "scripts/quality/breaking_change_detector.py",
-          "line": 917,
-          "snippet": "                for change in sorted(potentially_breaking, key=lambda x: x.severity.value):"
-        },
-        {
-          "file": "scripts/quality/retrieval_evaluator.py",
-          "line": 106,
-          "snippet": "        sorted_results = sorted(scores.items(), key=lambda x: x[1], reverse=True)"
-        }
-      ]
+      "status": "PASS",
+      "message": "",
+      "findings": []
     },
     {
       "id": "SEC-17",
@@ -151,15 +113,9 @@
       "description": "Parameterized queries everywhere (no SQL injection)",
       "severity": "CRITICAL",
       "category": "DB",
-      "status": "FAIL",
-      "message": "1 potential SQL injection vector(s)",
-      "findings": [
-        {
-          "file": "scripts/quality/api_linter.py",
-          "line": 449,
-          "snippet": "                message=f\"DELETE request typically should not have request body: {method} {path}\","
-        }
-      ]
+      "status": "PASS",
+      "message": "",
+      "findings": []
     },
     {
       "id": "DB-05",
@@ -175,8 +131,8 @@
       "description": "Migrations in version control",
       "severity": "HIGH",
       "category": "DB",
-      "status": "FAIL",
-      "message": "Database usage found but no migrations directory detected",
+      "status": "SKIP",
+      "message": "No database usage detected",
       "findings": []
     },
     {
@@ -229,20 +185,9 @@
       "description": "No TODO-auth or TODO-security patterns",
       "severity": "CRITICAL",
       "category": "CODE",
-      "status": "FAIL",
-      "message": "2 deferred security TODO(s)",
-      "findings": [
-        {
-          "file": "scripts/quality/ship_gate_scanner.py",
-          "line": 325,
-          "snippet": "    \"CODE-07\": CheckDef(\"CODE-07\", \"No TODO-auth or TODO-security patterns\", Severity.CRITICAL, \"CODE\"),"
-        },
-        {
-          "file": "scripts/quality/ship_gate_scanner.py",
-          "line": 707,
-          "snippet": "        r\"(TODO|FIXME|HACK|XXX).{0,20}(auth|security|permission|validation|sanitiz)\","
-        }
-      ]
+      "status": "PASS",
+      "message": "",
+      "findings": []
     },
     {
       "id": "CODE-09",
@@ -276,8 +221,8 @@
       "description": "Lockfile committed",
       "severity": "HIGH",
       "category": "CODE",
-      "status": "FAIL",
-      "message": "No lockfile found \u2014 dependencies are not pinned",
+      "status": "PASS",
+      "message": "",
       "findings": []
     },
     {
@@ -375,8 +320,8 @@
       "description": "Structured logging (not raw console)",
       "severity": "HIGH",
       "category": "DEPLOY",
-      "status": "PASS",
-      "message": "",
+      "status": "SKIP",
+      "message": "No server-side code detected",
       "findings": []
     },
     {
@@ -420,8 +365,8 @@
       "description": "Error monitoring configured (Sentry, etc.)",
       "severity": "ADVISORY",
       "category": "OBS",
-      "status": "PASS",
-      "message": "",
+      "status": "FAIL",
+      "message": "No error monitoring library detected",
       "findings": []
     },
     {
@@ -570,8 +515,8 @@
     }
   ],
   "summary": {
-    "critical": 10,
-    "high": 9,
+    "critical": 6,
+    "high": 6,
     "verdict": "DO_NOT_SHIP"
   }
 }

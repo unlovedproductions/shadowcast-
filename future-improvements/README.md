@@ -16,5 +16,6 @@ Future rewrite planning is documented here for later execution. Rewrite-lite wor
 ## Constraints
 
 - No immediate architecture rewrite.
+- Migration Phases 0–4 in `20-migration-plan.md` remain deferred until rewrite trigger criteria are met.
 - No queue stack commitment yet (Redis/Celery deferred).
 - Preserve current API contract during future migration.

@@ -34,15 +34,15 @@ def _call_llm(
     if fmt:
         style = normalize_content_style(content_style or DEFAULT_CONTENT_STYLE)
 
-        def validate_fn(parsed: dict) -> bool:
-            ok, _ = validate_script_output(parsed, style, fmt)
-            return ok
+        def validate_fn(parsed: dict) -> tuple[bool, list[str]]:
+            return validate_script_output(parsed, style, fmt)
 
     return chat_completion_json(
         SCRIPT_SYSTEM_PROMPT,
         user,
         required_keys=required_keys,
         validate_fn=validate_fn,
+        call_label="script_generator",
     )
 
 

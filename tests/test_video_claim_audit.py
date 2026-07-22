@@ -1,5 +1,6 @@
 """Video claim audit tests."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -8,7 +9,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from script_postprocessor import enrich_script
-from video_claim_audit import audit_output
+from video_claim_audit import (
+    _expected_output_counts,
+    _validate_youtube_package,
+    audit_output,
+)
 from video_claims import (
     CLAIMED_ANIMATION_TOKENS,
     CLAIMED_TRANSITION_TOKENS,
@@ -29,8 +34,8 @@ def test_format_claim_registry_contract():
     long = FORMAT_CLAIMS[LONG_FORM]
     assert (short.width, short.height, short.fps) == (1080, 1920, 30)
     assert (long.width, long.height, long.fps) == (1920, 1080, 30)
-    assert (short.min_duration_seconds, short.max_duration_seconds) == (30.0, 60.0)
-    assert (long.min_duration_seconds, long.max_duration_seconds) == (300.0, 480.0)
+    assert (short.min_duration_seconds, short.max_duration_seconds) == (12.0, 90.0)
+    assert (long.min_duration_seconds, long.max_duration_seconds) == (120.0, 720.0)
 
 
 def test_expected_timeline_duration_short_form():
@@ -109,6 +114,45 @@ def test_unsupported_token_detection():
     assert unsupported_transition_tokens(script, SHORT_FORM) == {"whip_pan"}
     assert (CLAIMED_ANIMATION_TOKENS - SUPPORTED_ANIMATION_TOKENS) >= {"bounce", "wipe"}
     assert (CLAIMED_TRANSITION_TOKENS - SUPPORTED_TRANSITION_TOKENS) >= {"whip_pan", "zoom_through", "dissolve"}
+
+
+def test_expected_output_counts_from_job():
+    single = {"hook_types": ["curiosity", "honest_review"], "formats": ["short_form", "long_form"]}
+    assert _expected_output_counts(single) == (4, 4)
+    batch = {
+        "mode": "batch",
+        "hook_types": ["curiosity"],
+        "formats": ["short_form"],
+        "products": [{}, {}, {}],
+    }
+    assert _expected_output_counts(batch) == (3, 3)
+    assert _expected_output_counts({"hook_types": [], "formats": ["short_form"]}) is None
+
+
+def test_validate_youtube_package_rejects_stub(tmp_path):
+    stub = tmp_path / "pkg.json"
+    stub.write_text(json.dumps({"seo_title": "Title", "tags": ["a"] * 5, "_shadowcast_fallback": True}))
+    ok, detail = _validate_youtube_package(stub)
+    assert not ok
+    assert "stub" in detail
+
+    valid = tmp_path / "valid.json"
+    valid.write_text(json.dumps({"seo_title": "Real Title", "tags": ["a", "b", "c", "d", "e"]}))
+    ok, detail = _validate_youtube_package(valid)
+    assert ok, detail
+
+
+def test_audit_deliverables_warn_on_missing_posting_txt(tmp_path):
+    job_dir = tmp_path / "job1"
+    job_dir.mkdir()
+    (job_dir / "job.json").write_text(
+        json.dumps({"hook_types": ["curiosity"], "formats": ["short_form"], "mode": "single"})
+    )
+    (job_dir / "demo_curiosity_short.mp4").write_bytes(b"fake")
+    result = audit_output(tmp_path)
+    checks = {item["check"] for item in result["findings"]}
+    assert "posting_package_txt" in checks
+    assert "youtube_package_json" in checks
 
 
 def test_live_output_has_no_fail_findings_when_present():

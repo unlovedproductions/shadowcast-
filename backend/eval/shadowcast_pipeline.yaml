@@ -1,0 +1,27 @@
+name: shadowcast_generation_pipeline
+pattern: plan-execute
+description: ShadowCast single-product generation stages with token estimates
+max_iterations: 12
+system_prompt: Generate buyer-facing scripts, YouTube assets, thumbnails, and rendered videos from product research.
+tools:
+  - name: enrich_research
+    description: Scrape Amazon and YouTube research, ingest local RAG chunks
+    estimated_tokens: 120
+  - name: generate_scripts
+    description: LLM script generation for selected hooks and formats
+    estimated_tokens: 2400
+  - name: enrich_script
+    description: Deterministic post-processing for style layouts
+    estimated_tokens: 40
+  - name: generate_youtube_assets
+    description: SEO title, tags, description, pinned comment package
+    estimated_tokens: 900
+  - name: render_video
+    description: MoviePy/PIL render for short and long formats
+    estimated_tokens: 0
+  - name: generate_thumbnails
+    description: PIL thumbnail variants with style badge
+    estimated_tokens: 0
+  - name: video_claim_audit
+    description: Structural and visual QA on rendered outputs
+    estimated_tokens: 0

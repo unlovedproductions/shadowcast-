@@ -118,6 +118,30 @@ YOUTUBE RESEARCH (use for titles/tags, not verbatim copy):
 - Question keywords: {', '.join(questions[:8]) if questions else 'N/A'}
 """
 
+    retrieved_block = ""
+    retrieved = product_info.get("_retrieved_research") or []
+    if isinstance(retrieved, list) and retrieved:
+        lines = []
+        for hit in retrieved[:8]:
+            if not isinstance(hit, dict):
+                continue
+            source = hit.get("source", "research")
+            text = str(hit.get("text", "")).strip()
+            if text:
+                lines.append(f"- [{source}] {text[:320]}")
+        if lines:
+            retrieved_block = "\nRETRIEVED RESEARCH (ground claims here; do not invent beyond this):\n" + "\n".join(lines)
+
+    amazon_block = ""
+    amazon = product_info.get("_amazon_scrape")
+    if isinstance(amazon, dict) and amazon.get("product_name"):
+        amazon_block = f"""
+AMAZON SCRAPE SUMMARY:
+- Scraped title: {amazon.get('product_name', '')}
+- Scraped price: {amazon.get('price', 'N/A')}
+- Review samples ingested: +{amazon.get('positive_count', 0)} / -{amazon.get('negative_count', 0)}
+"""
+
     return f"""PRODUCT RESEARCH DATA:
 - Product Name: {product_info['product_name']}
 - Key Features: {', '.join(product_info.get('key_features', []))}
@@ -133,7 +157,7 @@ YOUTUBE RESEARCH (use for titles/tags, not verbatim copy):
 - Coupon Code: {product_info.get('coupon_code', '')}
 - Price Comparison Notes: {product_info.get('price_comparison', '')}
 - Series Name: {product_info.get('series_name', '')}
-{comparison_block}{youtube_block}"""
+{comparison_block}{amazon_block}{youtube_block}{retrieved_block}"""
 
 
 def build_research_context(product_info: dict) -> str:

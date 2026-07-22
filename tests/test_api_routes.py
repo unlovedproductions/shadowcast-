@@ -116,6 +116,12 @@ class TestInputRoutes:
         assert res.status_code == 400
         assert "detail" in res.json()
 
+    @patch("app.scrape_amazon_product", return_value={"product_name": "", "price": "$10"})
+    def test_scrape_amazon_empty_product_name_422(self, _mock_scrape, client):
+        res = client.post("/api/scrape-amazon", data={"url": "https://amazon.com/dp/B000"})
+        assert res.status_code == 422
+        assert "product name" in res.json()["detail"].lower()
+
     @patch("app.research_youtube_keywords", return_value={"recommended_tags": ["tag1"]})
     def test_youtube_research(self, _mock_research, client):
         res = client.post("/api/youtube-research", data={"query": "blender review"})
@@ -189,3 +195,11 @@ class TestJobRoutes:
     def test_audit_not_found(self, _mock_load, client):
         res = client.get("/api/audit/missing")
         assert res.status_code == 404
+
+
+class TestOAuthRoutes:
+    def test_oauth_callback_rejects_unknown_state(self, client):
+        res = client.get("/api/oauth/youtube/callback?code=fake-code&state=unknown-state", follow_redirects=False)
+        assert res.status_code == 302
+        assert "oauth_error" in res.headers["location"]
+        assert "state" in res.headers["location"].lower()

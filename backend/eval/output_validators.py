@@ -102,7 +102,11 @@ def validate_script_output(script: dict, content_style: str, fmt: str) -> tuple[
     return len(errors) == 0, errors
 
 
-def validate_youtube_assets(assets: dict, affiliate_link: str = "") -> tuple[bool, list[str]]:
+def validate_youtube_assets(
+    assets: dict,
+    affiliate_link: str = "",
+    product_info: dict | None = None,
+) -> tuple[bool, list[str]]:
     errors: list[str] = []
     if not isinstance(assets, dict):
         return False, ["output is not a dict"]
@@ -118,6 +122,13 @@ def validate_youtube_assets(assets: dict, affiliate_link: str = "") -> tuple[boo
     tags = assets.get("tags")
     if not isinstance(tags, list) or len(tags) < 5:
         errors.append("tags must be a list with at least 5 items")
+    elif product_info:
+        yt = product_info.get("_youtube_research") or {}
+        research_tags = [str(tag).lower() for tag in (yt.get("recommended_tags") or [])[:12]]
+        if research_tags:
+            asset_tags = {str(tag).lower() for tag in tags}
+            if not asset_tags.intersection(research_tags):
+                errors.append("tags should intersect YouTube research recommendations")
 
     errors.extend(check_buyer_language(_text_blob(assets)))
 

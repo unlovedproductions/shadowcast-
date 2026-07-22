@@ -96,7 +96,9 @@ class OAuthManager:
 
     def handle_callback(self, platform: str, code: str, state: str) -> dict[str, Any]:
         expected = _pending_states.pop(state, None)
-        if expected and expected != platform:
+        if expected is None:
+            raise ValueError("OAuth state missing or expired — restart authorization from the app")
+        if expected != platform:
             raise ValueError("OAuth state mismatch")
 
         if platform == "youtube":

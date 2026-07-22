@@ -65,6 +65,7 @@ from api_models import (
     YouTubeResearchRequest,
 )
 from research_enrichment import enrich_product_research
+from llm_context import clear_job_context, merge_llm_calls_into_job, set_job_context
 from script_generator import (
     generate_selected_scripts, HOOK_TYPES, HOOK_DESCRIPTIONS,
 )
@@ -394,6 +395,13 @@ def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[L
 
 def _add_job_warning(job: dict, message: str) -> None:
     job.setdefault("warnings", []).append(message)
+
+
+def _apply_llm_warnings(job: dict) -> None:
+    for call in job.get("llm_calls", [])[-8:]:
+        if call.get("validator_pass") is False and call.get("validator_errors"):
+            detail = "; ".join(str(item) for item in call["validator_errors"][:3])
+            _add_job_warning(job, f"LLM validator ({call.get('label', 'call')}): {detail}")
 
 
 def _save_job(job_id: str) -> None:
@@ -923,13 +931,15 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     job = jobs[job_id]
     slug = slugify(product["product_name"])
     step = step_offset
+    set_job_context(job_id)
 
     # Use product-level content_style if set, otherwise job-level
     effective_style = normalize_content_style(product.get("content_style") or content_style)
     product["content_style"] = effective_style
 
+    research_dir = OUTPUT_BASE / job_id / "research" / slug
     try:
-        product = enrich_product_research(product)
+        product = enrich_product_research(product, research_dir=research_dir)
     except Exception as exc:
         job.setdefault("warnings", []).append(f"Research enrichment skipped: {exc}")
 
@@ -1160,6 +1170,9 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     except Exception as e:
         _add_job_warning(job, f"[{product['product_name']}] Posting package TXT failed: {e}")
 
+    merge_llm_calls_into_job(jobs, job_id)
+    _apply_llm_warnings(job)
+    clear_job_context()
     _save_job(job_id)
     return product_results, step
 
@@ -1457,6 +1470,11 @@ async def scrape_amazon(url: str = Form(...)):
     result = await scrape_amazon_product(req.url)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    if not str(result.get("product_name", "")).strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract product name from Amazon page",
+        )
     # Map scraped data to ShadowCast product fields
     mapped = {
         "product_name": result.get("product_name", ""),

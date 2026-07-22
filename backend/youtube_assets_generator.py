@@ -116,8 +116,9 @@ def generate_youtube_assets(product_info: dict, script: dict, video_format: str)
         user_prompt,
         required_keys=["seo_title"],
         validate_fn=lambda payload: validate_youtube_assets(
-            payload, str(product_info.get("affiliate_link", ""))
-        )[0],
+            payload, str(product_info.get("affiliate_link", "")), product_info
+        ),
+        call_label="youtube_assets_generator",
     )
 
     if not isinstance(parsed, dict) or "seo_title" not in parsed:
