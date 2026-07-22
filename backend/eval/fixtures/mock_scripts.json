@@ -54,5 +54,49 @@
         ]
       }
     ]
+  },
+  "budget_long": {
+    "hook_type": "listicle",
+    "content_style": "budget_challenge",
+    "format": "long_form",
+    "title_suggestion": "Best Blender Under $50",
+    "chapters": [
+      {
+        "chapter_name": "Price Check",
+        "segments": [
+          {"segment_id": 1, "text": "Under $50 blender challenge", "text_style": "headline_bold", "layout": "price_compare", "duration": 4},
+          {"segment_id": 2, "text": "Beats $80 models on smoothies", "text_style": "stat_number", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Verdict",
+        "segments": [
+          {"segment_id": 3, "text": "Best budget pick for daily use", "text_style": "verdict", "duration": 4},
+          {"segment_id": 4, "text": "Check the link for current price", "text_style": "cta_button", "duration": 3}
+        ]
+      }
+    ]
+  },
+  "worth_long": {
+    "hook_type": "problem_agitation",
+    "content_style": "worth_it_or_waste",
+    "format": "long_form",
+    "title_suggestion": "Is This $40 Blender Worth It?",
+    "chapters": [
+      {
+        "chapter_name": "The Problem",
+        "segments": [
+          {"segment_id": 1, "text": "Cheap blenders die in six months", "text_style": "headline_bold", "duration": 4},
+          {"segment_id": 2, "text": "Motor burns out on frozen fruit", "text_style": "cons", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Verdict",
+        "segments": [
+          {"segment_id": 3, "text": "Worth it for occasional smoothies", "text_style": "verdict", "duration": 4},
+          {"segment_id": 4, "text": "Link below for current deal", "text_style": "cta_button", "duration": 3}
+        ]
+      }
+    ]
   }
 }

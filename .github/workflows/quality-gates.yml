@@ -50,6 +50,9 @@ jobs:
       - name: Product RAG eval gate
         run: python eval/run_rag_eval.py --min-relevance 0.80
 
+      - name: Corpus RAG eval gate
+        run: python eval/run_corpus_rag_eval.py --min-precision 0.80
+
       - name: Pytest (unit + API routes)
         run: pytest ../tests/test_api_routes.py ../tests/ -q -m "not llm"
 

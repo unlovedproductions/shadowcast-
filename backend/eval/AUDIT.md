@@ -59,9 +59,9 @@ python3 eval/eval_runner.py --compare eval_results.json eval/baselines/eval_base
 
 ## Live eval baseline
 
-Dry-run validator baseline: **13/13 passed** (`eval/baselines/eval_baseline.json`).
+Dry-run validator baseline: **16/16 passed** (`eval/baselines/eval_baseline.json`).
 
-Live LLM baseline: **4/13 passed**, 9 pending (`eval/baselines/eval_live_baseline.json`). Populate remaining cases with:
+Live LLM baseline: **4/16 passed**, 12 pending (`eval/baselines/eval_live_baseline.json`). Populate remaining cases with:
 
 ```bash
 cd backend
