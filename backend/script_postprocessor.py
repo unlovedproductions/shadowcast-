@@ -200,6 +200,21 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
     insert_at = min(1, len(segments))
     segments[insert_at:insert_at] = injected
 
+    if len(segments) < 3:
+        sid = _next_segment_id(script)
+        while len(segments) < 3:
+            segments.append(
+                {
+                    "segment_id": sid,
+                    "duration": 2.0,
+                    "text": f"Why {product_name} matters in this comparison",
+                    "text_style": "comparison",
+                    "animation": "fade_in",
+                    "transition_to_next": "fade",
+                }
+            )
+            sid += 1
+
 
 def _inject_elimination(script: dict, product_info: dict) -> None:
     product_name = product_info.get("product_name", "Our Pick")
