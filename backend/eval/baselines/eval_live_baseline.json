@@ -1,0 +1,114 @@
+{
+  "timestamp": "2026-07-20T16:58:22Z",
+  "live": true,
+  "required_pass_ids": [
+    "hr_short",
+    "hr_long",
+    "elim_short",
+    "elim_long",
+    "vs_short",
+    "vs_long",
+    "budget_short",
+    "budget_long",
+    "worth_short",
+    "worth_long",
+    "std_short",
+    "yt_assets_hr",
+    "yt_assets_vs"
+  ],
+  "total": 13,
+  "passed": 4,
+  "failed": 0,
+  "pending_live": 9,
+  "results": [
+    {
+      "id": "hr_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "hr_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "elim_short",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "elim_long",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "vs_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "vs_battle",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "vs_long",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "budget_short",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "budget_long",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "worth_short",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "worth_long",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "std_short",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "yt_assets_hr",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "yt_assets_vs",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    }
+  ]
+}

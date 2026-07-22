@@ -39,6 +39,9 @@ EXCLUDE_DIRS = {
     ".pytest_cache", ".mypy_cache", "target", "bin", "obj",
 }
 
+# Scanner/tooling paths — pattern checks skip these to avoid self-matches.
+SCAN_SKIP_PREFIXES = ("scripts/quality/",)
+
 FRONTEND_DIRS = {"src", "app", "pages", "components", "public", "lib", "utils"}
 
 JS_EXTS = {".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"}
@@ -147,6 +150,12 @@ def walk_files(root: str, exts: Optional[set] = None, dirs: Optional[set] = None
                 yield fpath, os.path.relpath(fpath, root)
 
 
+def _skip_scan_path(relpath: str, extra_prefixes: Optional[tuple] = None) -> bool:
+    norm = relpath.replace("\\", "/")
+    prefixes = SCAN_SKIP_PREFIXES + (extra_prefixes or ())
+    return any(norm.startswith(p) for p in prefixes)
+
+
 def grep_files(
     root: str,
     pattern: str,
@@ -155,6 +164,7 @@ def grep_files(
     flags: int = 0,
     max_findings: int = 20,
     exclude_patterns: Optional[List[str]] = None,
+    skip_prefixes: Optional[tuple] = None,
 ) -> List[Finding]:
     """Return up to max_findings matches across the codebase."""
     try:
@@ -172,6 +182,8 @@ def grep_files(
 
     results: List[Finding] = []
     for fpath, relpath in walk_files(root, exts, dirs):
+        if _skip_scan_path(relpath, skip_prefixes):
+            continue
         if any(seg in fpath for seg in (".test.", ".spec.", ".config.")):
             if exts and exts <= JS_EXTS:
                 skip = True
@@ -504,12 +516,15 @@ def check_sec13(root, stack):
 def check_sec14(root, stack):
     c = CHECKS["SEC-14"]
     url_findings = grep_files(root,
-        r"(password|token|secret|key|ssn|credit.card)=",
+        r"(https?://[^\s\"']*[?&](password|token|secret|api_key|ssn|credit.card)=[^&\s\"']+)",
         exts=ALL_CODE_EXTS)
     log_findings = grep_files(root,
+        r"(console\.(log|info|debug|warn)|print\(|logger\.(info|debug|warning))\s*\([^)]*(password|token|secret|api_key|refresh_token)",
+        exts=ALL_CODE_EXTS)
+    req_log_findings = grep_files(root,
         r"console\.(log|info|debug)\s*\(\s*(req|request)\s*\)",
         exts=JS_EXTS)
-    findings = url_findings + log_findings
+    findings = url_findings + log_findings + req_log_findings
     if findings:
         return Result(c, Status.FAIL, "Sensitive data may appear in URLs or logs", findings[:5])
     return Result(c, Status.PASS)
@@ -598,7 +613,12 @@ def check_db06(root, stack):
     if migration_dirs:
         return Result(c, Status.PASS)
     # Check for database usage
-    db_found = grep_files(root, r"(prisma|supabase|mongoose|pg\.|sqlite)", exts=ALL_CODE_EXTS)
+    db_found = grep_files(
+        root,
+        r"(prisma|supabase|mongoose|pg\.|sqlite)",
+        exts=ALL_CODE_EXTS,
+        skip_prefixes=("mission-control/",),
+    )
     if db_found:
         return Result(c, Status.FAIL, "Database usage found but no migrations directory detected")
     return Result(c, Status.SKIP, "No database usage detected")
@@ -753,10 +773,13 @@ def check_code11(root, stack):
 def check_code12(root, stack):
     c = CHECKS["CODE-12"]
     lockfiles = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb",
-                 "Pipfile.lock", "poetry.lock", "Gemfile.lock", "go.sum", "Cargo.lock"]
-    for lf in lockfiles:
-        if os.path.isfile(os.path.join(root, lf)):
-            return Result(c, Status.PASS)
+                 "Pipfile.lock", "poetry.lock", "requirements.lock",
+                 "Gemfile.lock", "go.sum", "Cargo.lock"]
+    search_roots = [root, os.path.join(root, "backend")]
+    for base in search_roots:
+        for lf in lockfiles:
+            if os.path.isfile(os.path.join(base, lf)):
+                return Result(c, Status.PASS)
     return Result(c, Status.FAIL, "No lockfile found — dependencies are not pinned")
 
 

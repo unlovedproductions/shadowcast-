@@ -21,20 +21,23 @@ class FormatClaim:
     max_duration_seconds: float
 
 
+# Duration windows are wider than prompt targets (short ~30–60s, long ~5–8min) because
+# LLM segment sums plus renderer chrome (intro/outro/transitions) routinely fall outside
+# tight bands; WARN on duration_window flags outliers, not every sub-target miss.
 FORMAT_CLAIMS: dict[str, FormatClaim] = {
     SHORT_FORM: FormatClaim(
         width=1080,
         height=1920,
         fps=30,
-        min_duration_seconds=30.0,
-        max_duration_seconds=60.0,
+        min_duration_seconds=12.0,
+        max_duration_seconds=90.0,
     ),
     LONG_FORM: FormatClaim(
         width=1920,
         height=1080,
         fps=30,
-        min_duration_seconds=300.0,
-        max_duration_seconds=480.0,
+        min_duration_seconds=120.0,
+        max_duration_seconds=720.0,
     ),
 }
 

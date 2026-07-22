@@ -57,6 +57,21 @@ python3 eval/eval_runner.py --live --filter hr_short,hr_long --output eval_resul
 python3 eval/eval_runner.py --compare eval_results.json eval/baselines/eval_baseline.json
 ```
 
-## Eval baseline
+## Live eval baseline
 
-Dry-run validator baseline: **13/13 passed** (`eval/baselines/eval_baseline.json`). Live LLM baseline requires provider (`--live`).
+Dry-run validator baseline: **13/13 passed** (`eval/baselines/eval_baseline.json`).
+
+Live LLM baseline: **4/13 passed**, 9 pending (`eval/baselines/eval_live_baseline.json`). Populate remaining cases with:
+
+```bash
+cd backend
+LLM_EVAL=1 python3 eval/eval_runner.py --live --output eval/baselines/eval_live_baseline.json
+```
+
+## RAG eval gates
+
+```bash
+cd backend
+python3 eval/run_corpus_rag_eval.py --min-precision 0.80
+python3 eval/run_rag_eval.py --min-relevance 0.80
+```

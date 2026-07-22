@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from credentials_store import CredentialsStore
 from oauth_manager import OAuthManager
@@ -100,6 +103,7 @@ class YouTubePublisher:
             service.thumbnails().set(videoId=video_id, media_body=thumb_media).execute()
 
         pinned = payload.get("pinned_comment")
+        pinned_comment_warning: str | None = None
         if pinned:
             try:
                 pinned = _sanitize_youtube_text(pinned, max_bytes=YOUTUBE_DESC_MAX_BYTES)
@@ -112,7 +116,16 @@ class YouTubePublisher:
                         }
                     },
                 ).execute()
-            except Exception:
-                pass
+            except Exception as exc:
+                pinned_comment_warning = str(exc)
+                logger.warning("YouTube pinned comment failed for %s: %s", video_id, exc)
 
-        return {"status": "success", "platform": "youtube", "post_id": video_id, "url": url}
+        result: dict[str, Any] = {
+            "status": "success",
+            "platform": "youtube",
+            "post_id": video_id,
+            "url": url,
+        }
+        if pinned_comment_warning:
+            result["pinned_comment_warning"] = pinned_comment_warning
+        return result

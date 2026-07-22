@@ -2394,6 +2394,10 @@
         state.page = 'progress';
         state.jobStatus = 'running';
         state.currentStep = state.currentStep || 'Retrying status...';
+        state.errors = [];
+        state.scriptErrors = [];
+        state.videoWarnings = [];
+        state.otherErrors = [];
         render();
         beginPolling();
     }

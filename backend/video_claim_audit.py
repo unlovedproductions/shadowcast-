@@ -155,6 +155,210 @@ def _discover_thumbnails(output_dir: Path) -> list[Path]:
     return sorted(output_dir.rglob("*_thumbnail_*.png"))
 
 
+def _probe_audio_stream(video_path: Path) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "json",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "ffprobe is not installed or not on PATH"
+    if result.returncode != 0:
+        return False, result.stderr.strip() or "ffprobe audio probe failed"
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False, "invalid ffprobe JSON"
+    streams = payload.get("streams") or []
+    return isinstance(streams, list) and len(streams) > 0, "no audio stream"
+
+
+def _validate_youtube_package(path: Path) -> tuple[bool, str]:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"invalid JSON: {exc}"
+    if not isinstance(data, dict):
+        return False, "root is not an object"
+    if data.get("_shadowcast_fallback", False):
+        return False, "LLM fallback stub (_shadowcast_fallback)"
+    if "__raw" in data and len(data) == 1:
+        return False, "JSON parse fallback (__raw only)"
+    seo_title = str(data.get("seo_title", "")).strip()
+    if not seo_title:
+        return False, "missing seo_title"
+    tags = data.get("tags")
+    if not isinstance(tags, list):
+        return False, "tags is not a list"
+    if len(tags) < 5:
+        return False, f"tags has {len(tags)} items (need >= 5)"
+    return True, ""
+
+
+def _expected_output_counts(job: dict[str, Any]) -> tuple[int, int] | None:
+    hook_types = job.get("hook_types") or []
+    formats = job.get("formats") or []
+    if not hook_types or not formats:
+        return None
+    per_product = len(hook_types) * len(formats)
+    if job.get("mode") == "batch":
+        product_count = len(job.get("product_results") or job.get("products") or [])
+        product_count = max(product_count, 1)
+        return per_product * product_count, per_product * product_count
+    return per_product, per_product
+
+
+def _load_job_config(job_dir: Path) -> dict[str, Any] | None:
+    job_path = job_dir / "job.json"
+    if not job_path.is_file():
+        return None
+    try:
+        payload = json.loads(job_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _audit_job_deliverables(output_dir: Path) -> list[Finding]:
+    findings: list[Finding] = []
+    if not output_dir.is_dir():
+        return findings
+
+    for job_dir in sorted(p for p in output_dir.iterdir() if p.is_dir()):
+        job = job_dir.name
+        mp4s = [p for p in sorted(job_dir.glob("*.mp4")) if not p.name.endswith("_video_only.mp4")]
+        yt_packages = sorted(job_dir.glob("*_youtube_package.json"))
+        posting_txt = sorted(job_dir.glob("*_YOUTUBE_POSTING_PACKAGE.txt"))
+        job_config = _load_job_config(job_dir)
+        expected_counts = _expected_output_counts(job_config) if job_config else None
+
+        if job_config is None and (mp4s or yt_packages):
+            findings.append(
+                Finding(
+                    job=job,
+                    path=str(job_dir.relative_to(output_dir)),
+                    check="job_config",
+                    severity=WARN,
+                    expected="job.json with hook_types and formats",
+                    actual="missing or invalid",
+                    detail="Cannot verify hook×format artifact counts without job.json.",
+                )
+            )
+
+        if mp4s and not posting_txt:
+            findings.append(
+                Finding(
+                    job=job,
+                    path=str(job_dir.relative_to(output_dir)),
+                    check="posting_package_txt",
+                    severity=WARN,
+                    expected="*_YOUTUBE_POSTING_PACKAGE.txt",
+                    actual="missing",
+                    detail="Job has MP4s but no readable YouTube posting package TXT.",
+                )
+            )
+
+        if mp4s and not yt_packages:
+            findings.append(
+                Finding(
+                    job=job,
+                    path=str(job_dir.relative_to(output_dir)),
+                    check="youtube_package_json",
+                    severity=WARN,
+                    expected="*_youtube_package.json",
+                    actual="missing",
+                    detail="Job has MP4s but no per-format YouTube package JSON.",
+                )
+            )
+
+        for pkg in yt_packages:
+            ok, detail = _validate_youtube_package(pkg)
+            if not ok:
+                findings.append(
+                    Finding(
+                        job=job,
+                        path=str(pkg.relative_to(output_dir)),
+                        check="youtube_package_schema",
+                        severity=WARN,
+                        expected="non-stub package with seo_title and >=5 tags",
+                        actual=detail,
+                        detail="YouTube package JSON failed schema or is an LLM fallback stub.",
+                    )
+                )
+
+        for mp4 in mp4s:
+            has_audio, detail = _probe_audio_stream(mp4)
+            if not has_audio:
+                findings.append(
+                    Finding(
+                        job=job,
+                        path=str(mp4.relative_to(output_dir)),
+                        check="audio_stream",
+                        severity=WARN,
+                        expected="audio stream present",
+                        actual=detail,
+                        detail="MP4 has no detectable audio stream (silent TTS drop risk).",
+                    )
+                )
+
+        if expected_counts and mp4s:
+            expected_videos, expected_packages = expected_counts
+            if len(mp4s) < expected_videos:
+                findings.append(
+                    Finding(
+                        job=job,
+                        path=str(job_dir.relative_to(output_dir)),
+                        check="artifact_count_videos",
+                        severity=WARN,
+                        expected=str(expected_videos),
+                        actual=str(len(mp4s)),
+                        detail="MP4 count below hook×format expectation from job.json.",
+                    )
+                )
+            if len(yt_packages) < expected_packages:
+                findings.append(
+                    Finding(
+                        job=job,
+                        path=str(job_dir.relative_to(output_dir)),
+                        check="artifact_count_packages",
+                        severity=WARN,
+                        expected=str(expected_packages),
+                        actual=str(len(yt_packages)),
+                        detail="YouTube package count below hook×format expectation from job.json.",
+                    )
+                )
+        elif mp4s:
+            artifact_count = len(list(job_dir.iterdir()))
+            expected_min = max(3, len(mp4s) + 2)
+            if artifact_count < expected_min:
+                findings.append(
+                    Finding(
+                        job=job,
+                        path=str(job_dir.relative_to(output_dir)),
+                        check="artifact_count",
+                        severity=WARN,
+                        expected=f">= {expected_min} artifacts",
+                        actual=str(artifact_count),
+                        detail="Job directory looks thin relative to MP4 count.",
+                    )
+                )
+
+    return findings
+
+
 def _probe_video(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     command = [
         "ffprobe",
@@ -401,6 +605,8 @@ def audit_output(output_dir: Path) -> dict[str, Any]:
                 detail=detail,
             )
         )
+
+    findings.extend(_audit_job_deliverables(output_dir))
 
     fail_count = sum(1 for f in findings if f.severity == FAIL)
     warn_count = sum(1 for f in findings if f.severity == WARN)

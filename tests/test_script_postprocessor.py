@@ -12,6 +12,10 @@ PRODUCT = {
     "key_features": ["ANC", "50hr battery"],
     "competitors": ["AirPods Pro 2", "Sony WF-1000XM5"],
     "price_comparison": "AirPods Pro 2 costs $249 for similar ANC",
+    "comparison_specs": [
+        {"spec_name": "ANC", "value_a": "Strong", "value_b": "Moderate", "winner": "a"},
+        {"spec_name": "Battery", "value_a": "50hr", "value_b": "30hr", "winner": "a"},
+    ],
 }
 
 

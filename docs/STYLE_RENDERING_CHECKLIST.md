@@ -2,6 +2,8 @@
 
 Local verification matrix for all 6 content styles × 2 video formats. No full video renders required — confirm script JSON, layout segments, and thumbnail badge only.
 
+> **Automated regression:** `tests/test_style_matrix.py` covers all 6 styles × short/long layout segments and thumbnail badges; `tests/test_content_styles.py`, `tests/test_script_postprocessor.py`, `tests/test_apf_import.py`, and `tests/test_audio_options.py` cover style normalization, postprocessor injection, APF mapping, and audio mood. Manual MP4 eyeball and full APF→ShadowCast E2E still required when services are up.
+
 ## Prerequisites
 
 - ShadowCast backend running (`localhost:8000`)
@@ -83,10 +85,10 @@ After generation, inspect saved script JSON under `output/`:
 
 ```bash
 cd shadowcast-
-.venv/bin/python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py -q
+.venv/bin/python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py tests/test_style_matrix.py tests/test_audio_options.py -q
 ```
 
-Expected: all tests pass (12 total).
+Automated layout/badge matrix covers all 6 styles × short/long script enrichment. Manual MP4 verification still required.
 
 ## Video Claim Audit
 
