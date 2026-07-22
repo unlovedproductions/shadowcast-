@@ -160,6 +160,26 @@ AMAZON SCRAPE SUMMARY:
 {comparison_block}{amazon_block}{youtube_block}{retrieved_block}"""
 
 
+def build_style_rules_block(product_info: dict) -> str:
+    hits = product_info.get("_style_rules_context") or []
+    if not isinstance(hits, list) or not hits:
+        return ""
+    lines: list[str] = []
+    for hit in hits[:4]:
+        if not isinstance(hit, dict):
+            continue
+        source = hit.get("source", "style_rules")
+        text = str(hit.get("text", "")).strip()
+        if text:
+            lines.append(f"- [{source}] {text[:320]}")
+    if not lines:
+        return ""
+    return (
+        "STYLE RULES (from project docs — follow these constraints):\n"
+        + "\n".join(lines)
+    )
+
+
 def build_research_context(product_info: dict) -> str:
     return build_product_research_block(product_info)
 
@@ -420,6 +440,8 @@ FACELESS TEXT-ONLY video — animated text overlays on dynamic backgrounds.
 
 {build_product_research_block(product_info)}
 
+{build_style_rules_block(product_info)}
+
 HOOK TYPE: {hook_type}
 {HOOK_DESCRIPTIONS[hook_type]}
 
@@ -442,6 +464,8 @@ SHORT-FORM RULES:
 FACELESS TEXT-ONLY video with animated text overlays.
 
 {build_product_research_block(product_info)}
+
+{build_style_rules_block(product_info)}
 
 HOOK TYPE: {hook_type}
 {HOOK_DESCRIPTIONS[hook_type]}

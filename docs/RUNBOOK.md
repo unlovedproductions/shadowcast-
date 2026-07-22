@@ -55,6 +55,16 @@ python3 eval/eval_runner.py --live --filter hr_short,hr_long --output eval_resul
 
 See `backend/eval/AUDIT.md` for baseline metrics and iteration gates.
 
+Corpus and product RAG gates:
+
+```bash
+cd backend
+python3 eval/run_corpus_rag_eval.py --min-precision 0.80
+python3 eval/run_rag_eval.py --min-relevance 0.80
+```
+
+Style-rules doc retrieval during generation is on by default; set `STYLE_RULES_RAG=0` to disable injection into script prompts.
+
 ## Quality Gates
 
 Local checks (from repo root):

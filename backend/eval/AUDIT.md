@@ -42,7 +42,7 @@ OpenAI path avoids redundant user suffix; local path keeps schema + suffix (requ
 
 | Priority | Change | When |
 |----------|--------|------|
-| 1 | Run `--live` eval against Ollama before prompt edits | Before next iteration |
+| 1 | Run `--live` eval against Ollama before prompt edits | **Done** — 16/16 live baseline (`eval/baselines/eval_live_baseline.json`) |
 | 2 | Add contrastive few-shot only if live eval shows JSON parse cluster failures | After live baseline |
 | 3 | Deduplicate comparison block vs product fields for vs_battle only | If token budget tightens |
 
@@ -61,12 +61,19 @@ python3 eval/eval_runner.py --compare eval_results.json eval/baselines/eval_base
 
 Dry-run validator baseline: **16/16 passed** (`eval/baselines/eval_baseline.json`).
 
-Live LLM baseline: **4/16 passed**, 12 pending (`eval/baselines/eval_live_baseline.json`). Populate remaining cases with:
+Live LLM baseline: **16/16 passed**, `pending_live: 0` (`eval/baselines/eval_live_baseline.json`).
+
+Re-run smoke subset before prompt-affecting changes:
 
 ```bash
 cd backend
-LLM_EVAL=1 python3 eval/eval_runner.py --live --output eval/baselines/eval_live_baseline.json
+LLM_EVAL=1 python3 eval/eval_runner.py --live --filter hr_short,vs_short,elim_short --output eval_results.json
+python3 eval/eval_runner.py --compare eval_results.json eval/baselines/eval_live_baseline.json
 ```
+
+## Style-rules RAG
+
+Style corpus retrieval is **enabled by default** during script generation (`style_rules_retrieval.py` → `_style_rules_context` in user prompt). Disable with `STYLE_RULES_RAG=0`. See [`docs/RAG_DESIGN.md`](../../docs/RAG_DESIGN.md).
 
 ## RAG eval gates
 
