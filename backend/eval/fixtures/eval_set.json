@@ -90,6 +90,14 @@
       "hook_type": "urgency"
     },
     {
+      "id": "std_long",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "standard",
+      "format": "long_form",
+      "hook_type": "urgency"
+    },
+    {
       "id": "yt_assets_hr",
       "type": "youtube_assets",
       "product": "soundcore_a40.json",
@@ -102,6 +110,20 @@
       "product": "soundcore_a40.json",
       "format": "long_form",
       "mock_script": "vs_long"
+    },
+    {
+      "id": "yt_assets_budget",
+      "type": "youtube_assets",
+      "product": "budget_blender.json",
+      "format": "long_form",
+      "mock_script": "budget_long"
+    },
+    {
+      "id": "yt_assets_worth",
+      "type": "youtube_assets",
+      "product": "budget_blender.json",
+      "format": "long_form",
+      "mock_script": "worth_long"
     }
   ]
 }

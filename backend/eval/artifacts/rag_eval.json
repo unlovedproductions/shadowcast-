@@ -3,13 +3,13 @@
     "mean_precision@3": 0.9333333333333333,
     "mean_precision@5": 0.9333333333333333,
     "mean_precision@10": 0.9333333333333333,
-    "mean_recall@3": 0.7,
-    "mean_recall@5": 0.7,
-    "mean_recall@10": 0.7,
-    "mean_ndcg@3": 0.75726880156447,
-    "mean_ndcg@5": 0.75726880156447,
-    "mean_ndcg@10": 0.75726880156447,
-    "mean_reciprocal_rank": 1.0
+    "mean_recall@3": 0.6,
+    "mean_recall@5": 0.6,
+    "mean_recall@10": 0.6,
+    "mean_ndcg@3": 0.6452588771061833,
+    "mean_ndcg@5": 0.6452588771061833,
+    "mean_ndcg@10": 0.6452588771061833,
+    "mean_reciprocal_rank": 0.9
   },
   "query_results": [
     {
@@ -20,27 +20,27 @@
       "metrics": {
         "precision@3": 0.6666666666666666,
         "recall@3": 0.6666666666666666,
-        "ndcg@3": 0.7039180890341347,
+        "ndcg@3": 0.5307212739772434,
         "precision@5": 0.6666666666666666,
         "recall@5": 0.6666666666666666,
-        "ndcg@5": 0.7039180890341347,
+        "ndcg@5": 0.5307212739772434,
         "precision@10": 0.6666666666666666,
         "recall@10": 0.6666666666666666,
-        "ndcg@10": 0.7039180890341347,
-        "reciprocal_rank": 1.0
+        "ndcg@10": 0.5307212739772434,
+        "reciprocal_rank": 0.5
       },
       "retrieved_docs": [
         [
-          "STYLE_RENDERING_CHECKLIST",
-          0.89
+          "BUYER_LANGUAGE_RULES",
+          0.87
         ],
         [
-          "BUYER_LANGUAGE_RULES",
-          0.8
+          "STYLE_RENDERING_CHECKLIST",
+          0.8576
         ],
         [
           "MOCK_SCRIPT_EXAMPLES",
-          0.75
+          0.7296
         ]
       ],
       "relevant_docs": [
@@ -69,7 +69,7 @@
       "retrieved_docs": [
         [
           "BUYER_LANGUAGE_RULES",
-          1.475
+          1.5625
         ]
       ],
       "relevant_docs": [
@@ -98,11 +98,11 @@
       "retrieved_docs": [
         [
           "AUDIT",
-          0.8143
+          1.0143
         ],
         [
           "RUNBOOK",
-          0.7786
+          0.9145
         ]
       ],
       "relevant_docs": [
@@ -130,7 +130,7 @@
       "retrieved_docs": [
         [
           "RUNBOOK",
-          0.9917
+          1.1667
         ]
       ],
       "relevant_docs": [
@@ -142,27 +142,23 @@
       "query_id": "q5",
       "query": "How does ShadowCast startup work locally?",
       "relevant_count": 2,
-      "retrieved_count": 2,
+      "retrieved_count": 1,
       "metrics": {
         "precision@3": 1.0,
-        "recall@3": 1.0,
-        "ndcg@3": 1.0,
+        "recall@3": 0.5,
+        "ndcg@3": 0.6131471927654584,
         "precision@5": 1.0,
-        "recall@5": 1.0,
-        "ndcg@5": 1.0,
+        "recall@5": 0.5,
+        "ndcg@5": 0.6131471927654584,
         "precision@10": 1.0,
-        "recall@10": 1.0,
-        "ndcg@10": 1.0,
+        "recall@10": 0.5,
+        "ndcg@10": 0.6131471927654584,
         "reciprocal_rank": 1.0
       },
       "retrieved_docs": [
         [
           "RUNBOOK",
-          0.8166
-        ],
-        [
-          "RECOVERY",
-          0.5084
+          1.05
         ]
       ],
       "relevant_docs": [
@@ -175,6 +171,6 @@
     "poor_precision_count": 0,
     "zero_results_count": 0
   },
-  "evaluation_summary": "Evaluation Summary (5 queries):\n==================================================\nPrecision@5:  0.933 (93.3%)\nRecall@10:    0.700 (70.0%)\nMRR:          1.000\n",
+  "evaluation_summary": "Evaluation Summary (5 queries):\n==================================================\nPrecision@5:  0.933 (93.3%)\nRecall@10:    0.600 (60.0%)\nMRR:          0.900\n",
   "recommendations": []
 }

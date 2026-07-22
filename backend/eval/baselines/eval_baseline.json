@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-07-22T08:35:54Z",
+  "timestamp": "2026-07-22T08:48:46Z",
   "live": false,
-  "total": 13,
-  "passed": 13,
+  "total": 16,
+  "passed": 16,
   "failed": 0,
   "results": [
     {
@@ -116,6 +116,16 @@
       "note": "dry-run with synthetic output"
     },
     {
+      "id": "std_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "standard",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
       "id": "yt_assets_hr",
       "type": "youtube_assets",
       "format": "long_form",
@@ -126,6 +136,24 @@
     },
     {
       "id": "yt_assets_vs",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_budget",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_worth",
       "type": "youtube_assets",
       "format": "long_form",
       "passed": true,

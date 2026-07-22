@@ -13,13 +13,16 @@
     "worth_short",
     "worth_long",
     "std_short",
+    "std_long",
     "yt_assets_hr",
-    "yt_assets_vs"
+    "yt_assets_vs",
+    "yt_assets_budget",
+    "yt_assets_worth"
   ],
-  "total": 13,
+  "total": 16,
   "passed": 4,
   "failed": 0,
-  "pending_live": 9,
+  "pending_live": 12,
   "results": [
     {
       "id": "hr_short",
@@ -97,6 +100,12 @@
       "note": "Run with LLM_EVAL=1 and --live to populate"
     },
     {
+      "id": "std_long",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
       "id": "yt_assets_hr",
       "type": "youtube_assets",
       "format": "long_form",
@@ -106,6 +115,18 @@
     },
     {
       "id": "yt_assets_vs",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "yt_assets_budget",
+      "passed": null,
+      "pending_live": true,
+      "note": "Run with LLM_EVAL=1 and --live to populate"
+    },
+    {
+      "id": "yt_assets_worth",
       "passed": null,
       "pending_live": true,
       "note": "Run with LLM_EVAL=1 and --live to populate"

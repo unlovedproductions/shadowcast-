@@ -418,7 +418,7 @@ class StyleCorpusStore:
         self.chunks: list[dict[str, Any]] = []
         self._load_documents(extra_paths or [])
         self._index_chunks()
-        self._bm25 = _BM25Index({c["doc_id"]: c["text"] for c in self.chunks})
+        self._bm25 = _BM25Index({c["id"]: c["text"] for c in self.chunks})
 
     def _load_documents(self, extra_paths: list[Path]) -> None:
         paths: list[Path] = []
