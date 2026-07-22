@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+/home/unloved/.local/bin/unloved-launchers/open-terminal.sh \
+  "APF" \
+  "/home/unloved/.local/bin/unloved-launchers/run-apf-terminal.sh"
+
+/home/unloved/.local/bin/unloved-launchers/wait-open-url.sh \
+  "http://localhost:3001" \
+  90
