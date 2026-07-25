@@ -2560,7 +2560,7 @@
     text = text.replace(/\s*-\s*(health|fitness|digistore\d*|clickbank|marketplace|supplements?)\s*$/i, "");
     text = text.replace(/\s*\(?\d+%\s+commission\)?/gi, "");
     text = text.replace(/\s*affiliate\s+offer/gi, "");
-    text = text.replace(/\s{2,}/g, " ").trim().replace(/^[ -:|]+|[ -:|]+$/g, "");
+    text = text.replace(/\s{2,}/g, " ").trim().replace(/^[- :|]+|[- :|]+$/g, "");
 
     if (!text) {
       const fallback = clean(name).split(" - ")[0].split(" | ")[0];
@@ -3032,8 +3032,10 @@
       productName: clean(normalized.productName || normalized.product_name),
       niche: clean(normalized.niche) || "Affiliate Product",
       keyFeatures: clean(
-        normalized.keyFeatures ||
-        (Array.isArray(normalized.key_features) ? normalized.key_features.join("\n") : normalized.key_features)
+        (Array.isArray(normalized.key_features) && normalized.key_features.length
+          ? normalized.key_features.join("\n")
+          : normalized.key_features) ||
+        normalized.keyFeatures
       ),
       price: clean(normalized.price) || "Varies",
       affiliateLink: clean(normalized.affiliateLink || normalized.affiliate_link),
