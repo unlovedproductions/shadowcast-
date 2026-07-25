@@ -131,3 +131,97 @@ def test_extract_apf_product_payloads_batch():
     single = extract_apf_product_payloads({"product": {"name": "Solo"}})
     assert len(single) == 1
     assert single[0]["product"]["name"] == "Solo"
+
+
+def test_digistore_recovers_name_and_sanitizes_price_from_vendor_materials():
+    payload = {
+        "product": {
+            "name": "Digistore24",
+            "category": "Digistore24 Marketplace",
+            "platform_product_id": "54669",
+            "affiliate_url": "https://www.digistore24-app.com/app/en/affiliate/account/marketplace/all/detail/54669",
+            "description": (
+                "Dashboard Marketplace Analytics Sales & partners Reports Settings Homepage "
+                "About Digistore24 JobsContact FAQCustomers Privacy policy"
+            ),
+        },
+        "review_brief": {
+            "recommended_content_style": "vs_battle",
+            "price_display": (
+                "Joseph's Well Our Affiliates Are Seeing 5%+ Conversion Rates "
+                "& Over $2 EPCs On ICE COLD Traffic!"
+            ),
+            "review_summary": "Trust us, it's for everyone's benefit.",
+            "positive_signals": [
+                'So don\'t bid on "Joseph\'s Well", "Joseph\'s Well review" or anything similar.',
+            ],
+            "common_claims": ["Trust us, it's for everyone's benefit."],
+            "suggested_competitors": [
+                "Top Digistore24 Marketplace alternative",
+                "Popular Digistore24 Marketplace competitor",
+            ],
+        },
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Compliance Guidelines (Read Before Launch)",
+            },
+            {
+                "source_type": "order_page",
+                "title": "Joseph's Well",
+            },
+            {
+                "source_type": "offer_page",
+                "title": "Joseph's Well – Blockbuster Offer From Top Diamond Vendor Book (printed)",
+            },
+        ],
+        "shadowcast_import": {
+            "product_name": "Digistore24",
+            "price": (
+                "Joseph's Well Our Affiliates Are Seeing 5%+ Conversion Rates "
+                "& Over $2 EPCs On ICE COLD Traffic!"
+            ),
+            "key_features": [
+                "Trust us, it's for everyone's benefit.",
+                'Keyword Caution: Don\'t bid on keywords that include our brand name, "Joseph\'s Well".',
+            ],
+            "competitors": [
+                "Top Digistore24 Marketplace alternative",
+                "Popular Digistore24 Marketplace competitor",
+            ],
+            "content_style": "vs_battle",
+        },
+    }
+
+    result = normalize_apf_payload(payload)
+    normalized = result["normalized"]
+
+    assert normalized["productName"].startswith("Joseph")
+    assert "Well" in normalized["productName"]
+    assert normalized["price"] == "See official offer page"
+    assert "EPC" not in normalized["price"]
+    assert "Dashboard Marketplace" not in normalized["keyFeatures"]
+    assert all("don't bid" not in f.lower() for f in normalized["key_features"])
+    assert normalized["competitors"] == []
+
+
+def test_digistore_commission_title_in_vendor_materials():
+    payload = {
+        "product": {
+            "name": "Digistore24",
+            "platform_product_id": "47238",
+        },
+        "review_brief": {
+            "price_display": "You’ll save $15.",
+        },
+        "vendor_materials": [
+            {"source_type": "sales_page", "title": "Compliance Guidelines (Read Before Launch)"},
+            {
+                "source_type": "offer_page",
+                "title": "Earn 60% Commission Promoting CircO2 Nitric Oxide Booster Supplements - health",
+            },
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["productName"] == "CircO2 Nitric Oxide Booster Supplements"
+    assert normalized["price"] == "See official offer page"
