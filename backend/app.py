@@ -454,6 +454,13 @@ def _run_job_audit(job_dir: Path) -> dict:
 
 def _finalize_job_status(job_id: str, job_dir: Path, *, done_message: str) -> None:
     job = jobs[job_id]
+    if job.get("cancel_requested"):
+        job["status"] = "cancelled"
+        job["current_step"] = "Cancelled by operator"
+        job["progress"] = int(job.get("progress") or 0)
+        _save_job(job_id)
+        return
+
     audit_result = _run_job_audit(job_dir)
     job["audit"] = audit_result
     summary = _summarize_job_output(job)
@@ -750,6 +757,18 @@ def _generate_scripts_with_retry(
     raise ValueError(f"Generated scripts invalid after {retries + 1} attempts: {last_reason}")
 
 
+class JobCancelled(Exception):
+    """Operator requested cooperative cancellation of a generation job."""
+
+
+def _raise_if_cancelled(job_id: str) -> None:
+    job = jobs.get(job_id)
+    if job is None:
+        job = _load_job(job_id)
+    if job and job.get("cancel_requested"):
+        raise JobCancelled(job_id)
+
+
 def _load_job(job_id: str) -> Optional[dict]:
     if job_id in jobs:
         return jobs[job_id]
@@ -890,6 +909,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     slug = slugify(product["product_name"])
     step = step_offset
     set_job_context(job_id)
+    _raise_if_cancelled(job_id)
 
     # Use product-level content_style if set, otherwise job-level
     effective_style = normalize_content_style(product.get("content_style") or content_style)
@@ -910,6 +930,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     # Phase 1: Scripts
     for hook_type in hook_types:
+        _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
         fname = f"{slug}_{hook_type}_scripts.json"
         script_path = product_dir / fname
@@ -980,10 +1001,12 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     # Phase 2: Videos
     for hook_type in hook_types:
+        _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
         scripts_data = all_scripts.get(hook_type, {})
 
         for fmt in formats:
+            _raise_if_cancelled(job_id)
             if fmt not in scripts_data:
                 step += 1
                 continue
@@ -1033,11 +1056,13 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     # Phase 3: YouTube Assets
     for hook_type in hook_types:
+        _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
         scripts_data = all_scripts.get(hook_type, {})
         all_yt_packages[hook_type] = {}
 
         for fmt in formats:
+            _raise_if_cancelled(job_id)
             if fmt not in scripts_data:
                 step += 1
                 continue
@@ -1106,6 +1131,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             _save_job(job_id)
 
     # Phase 4: Thumbnails
+    _raise_if_cancelled(job_id)
     job["current_step"] = f"[{product['product_name']}] Generating thumbnails..."
     _save_job(job_id)
     for hook_type in hook_types:
@@ -1190,6 +1216,10 @@ def _run_generation(job_id: str):
         )
         job["results"] = result.get("hooks", {})
         _finalize_job_status(job_id, job_dir, done_message="Done!")
+    except JobCancelled:
+        job["status"] = "cancelled"
+        job["current_step"] = "Cancelled by operator"
+        _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
@@ -1214,6 +1244,7 @@ def _run_batch_generation(job_id: str):
         all_product_results = []
 
         for i, product in enumerate(products):
+            _raise_if_cancelled(job_id)
             slug = slugify(product["product_name"])
             product_dir = job_dir / slug
             product_dir.mkdir(exist_ok=True)
@@ -1255,6 +1286,10 @@ def _run_batch_generation(job_id: str):
             job_dir,
             done_message=f"Done! {len(products)} products processed.",
         )
+    except JobCancelled:
+        job["status"] = "cancelled"
+        job["current_step"] = "Cancelled by operator"
+        _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
         job["current_step"] = f"Error: {str(e)}"
@@ -1787,6 +1822,7 @@ def retry_missing_outputs(job_id: str):
         }
 
     job["status"] = "running"
+    job["cancel_requested"] = False
     job["current_step"] = "Resuming missing outputs..."
     job["progress"] = max(int(job.get("progress") or 0), 0)
     _save_job(job_id)
@@ -1807,6 +1843,31 @@ def retry_missing_outputs(job_id: str):
         "status": "running",
         "message": "Retry started. Existing artifacts will be skipped.",
         "summary": summary,
+    }
+
+
+@app.post("/api/cancel/{job_id}", tags=["jobs"], responses=_COMMON_ERROR_RESPONSES)
+def cancel_job(job_id: str):
+    job = _load_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    status = str(job.get("status") or "")
+    active = job_id in _active_job_threads and not _job_thread_is_stale(job_id)
+    if status in ("complete", "cancelled", "error") and not active:
+        return {
+            "job_id": job_id,
+            "status": status,
+            "message": "Job is not running",
+        }
+
+    job["cancel_requested"] = True
+    job["current_step"] = "Cancel requested — stopping at next checkpoint..."
+    _save_job(job_id)
+    return {
+        "job_id": job_id,
+        "status": "cancelling",
+        "message": "Cancel requested. Worker stops at the next checkpoint.",
     }
 
 

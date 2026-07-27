@@ -223,9 +223,265 @@ class TestAuthAllowlist:
 
         assert is_public_path("/api/publish")
         assert is_public_path("/api/analytics/dashboard")
+        assert is_public_path("/api/cancel/abc")
         assert not is_public_path("/api/config")
         spec = client.get("/api/openapi.json").json()
         publish_sec = spec["paths"]["/api/publish/batch"]["post"].get("security")
         assert publish_sec == []
         config_sec = spec["paths"]["/api/config"]["post"].get("security")
         assert config_sec and any("ServiceKeyAuth" in (item or {}) for item in config_sec)
+
+class TestPublishSocialAnalyticsApf:
+    @patch("app.publish_service.publish_batch")
+    def test_publish_batch_dry_run(self, mock_batch, client):
+        mock_batch.return_value = [
+            {"status": "success", "dry_run": True, "post_id": "dry_run_youtube"}
+        ]
+        res = client.post(
+            "/api/publish/batch",
+            json={
+                "job_id": "jobtest1",
+                "hook_type": "curiosity",
+                "video_format": "short_form",
+                "platforms": ["youtube"],
+                "dry_run": True,
+            },
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert "results" in body
+        assert body["results"][0]["dry_run"] is True
+        mock_batch.assert_called_once()
+        assert mock_batch.call_args.kwargs.get("dry_run") is True
+
+    def test_social_schedule_with_video_path(self, client):
+        res = client.post(
+            "/api/social/schedule",
+            json={
+                "platform": "instagram",
+                "video_path": "/tmp/fake.mp4",
+                "caption": "test caption",
+                "hashtags": ["shadowcast"],
+                "scheduled_time": "2099-01-01T12:00:00",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data.get("status") == "scheduled"
+        assert data.get("platform") == "instagram"
+
+        queue = client.get("/api/social/queue")
+        assert queue.status_code == 200
+        assert isinstance(queue.json().get("queue"), list)
+
+    def test_analytics_track_and_dashboard(self, client):
+        track = client.post(
+            "/api/analytics/track",
+            data={
+                "product_name": "Test Gadget",
+                "hook_type": "curiosity",
+                "format_type": "short_form",
+                "video_path": "/tmp/test.mp4",
+            },
+        )
+        assert track.status_code == 200
+        video_id = track.json()["video_id"]
+        assert video_id
+
+        record = client.post(
+            "/api/analytics/record",
+            json={"video_id": video_id, "metric_type": "views", "value": 42},
+        )
+        assert record.status_code == 200
+
+        dash = client.get("/api/analytics/dashboard")
+        assert dash.status_code == 200
+        assert isinstance(dash.json(), dict)
+
+    def test_apf_direct_import_round_trip(self, client, tmp_path):
+        import app as app_mod
+
+        app_mod._UNLOVED_APF_IMPORT_DIR = tmp_path
+        tmp_path.mkdir(parents=True, exist_ok=True)
+
+        payload = {
+            "product": {
+                "name": "Audit Fix Widget",
+                "category": "Tech",
+                "affiliate_url": "https://example.com/aff",
+                "price": "$29.99",
+            }
+        }
+        post = client.post("/api/import-apf/direct", json=payload)
+        assert post.status_code == 200
+        body = post.json()
+        assert body.get("ok") is True
+        token = body["token"]
+        assert body.get("productName") or body.get("normalized", {}).get("productName")
+
+        get = client.get(f"/api/import-apf/direct/{token}")
+        assert get.status_code == 200
+        fetched = get.json()
+        assert fetched.get("token") == token
+        assert fetched.get("normalized", {}).get("productName")
+
+    def test_retry_missing_not_found(self, client):
+        res = client.post("/api/retry-missing/does-not-exist")
+        assert res.status_code == 404
+
+    @patch("app._summarize_job_output")
+    @patch("app._start_job_thread", return_value=True)
+    @patch("app._save_job")
+    def test_retry_missing_starts_when_partial(self, _save, _start, mock_summary, client):
+        mock_summary.return_value = {
+            "is_partial": True,
+            "videos_ready": 0,
+            "scripts_ready": 0,
+            "packages_ready": 0,
+            "videos_expected": 1,
+            "packages_expected": 1,
+            "warning_count": 0,
+        }
+        jobs["retry1"] = {
+            "id": "retry1",
+            "mode": "single",
+            "status": "partial",
+            "hook_types": ["curiosity"],
+            "formats": ["short_form"],
+            "progress": 50,
+            "errors": [],
+        }
+        res = client.post("/api/retry-missing/retry1")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "running"
+        assert body["job_id"] == "retry1"
+        _start.assert_called_once()
+
+    def test_cancel_job_not_found(self, client):
+        res = client.post("/api/cancel/missing-job")
+        assert res.status_code == 404
+
+    @patch("app._save_job")
+    def test_cancel_running_job(self, _save, client):
+        jobs["cxl1"] = {
+            "id": "cxl1",
+            "status": "running",
+            "current_step": "Rendering...",
+            "progress": 40,
+            "errors": [],
+        }
+        res = client.post("/api/cancel/cxl1")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "cancelling"
+        assert jobs["cxl1"]["cancel_requested"] is True
+
+
+    def test_analytics_dashboard_shape_after_track(self, client):
+        track = client.post(
+            "/api/analytics/track",
+            data={
+                "product_name": "Shape Widget",
+                "hook_type": "curiosity",
+                "format_type": "short_form",
+                "video_path": "/tmp/shape.mp4",
+            },
+        )
+        assert track.status_code == 200
+        video_id = track.json()["video_id"]
+        client.post(
+            "/api/analytics/record",
+            json={"video_id": video_id, "metric_type": "views", "value": 100},
+        )
+        client.post(
+            "/api/analytics/record",
+            json={"video_id": video_id, "metric_type": "affiliate_clicks", "value": 5},
+        )
+        client.post(
+            "/api/analytics/record",
+            json={"video_id": video_id, "metric_type": "revenue", "value": 12.5},
+        )
+        dash = client.get("/api/analytics/dashboard").json()
+        assert isinstance(dash.get("hook_performance"), list)
+        assert isinstance(dash.get("format_performance"), list)
+        assert "summary" in dash
+        assert "avg_conversion_rate" in dash["summary"]
+        assert "revenue_report" in dash
+        if dash["hook_performance"]:
+            row = dash["hook_performance"][0]
+            assert "hook" in row and "avg_views" in row
+
+    @patch("app.publish_service.publish")
+    def test_social_post_dry_run_via_job(self, mock_publish, client):
+        mock_publish.return_value = {"status": "success", "dry_run": True, "post_id": "dry"}
+        res = client.post(
+            "/api/social/post",
+            json={
+                "platform": "youtube",
+                "job_id": "job1",
+                "hook_type": "curiosity",
+                "video_format": "short_form",
+                "dry_run": True,
+                "caption": "",
+                "hashtags": [],
+            },
+        )
+        assert res.status_code == 200
+        assert res.json().get("dry_run") is True
+        mock_publish.assert_called_once()
+        assert mock_publish.call_args.kwargs.get("dry_run") is True
+
+    @patch("app._start_job_thread", return_value=True)
+    @patch("app._ensure_generation_ready")
+    def test_batch_generate_starts_job(self, _ready, _thread, client):
+        res = client.post(
+            "/api/batch-generate",
+            json={
+                "products": [
+                    {
+                        "product_name": "Batch A",
+                        "niche": "Tech",
+                        "key_features": ["fast"],
+                    },
+                    {
+                        "product_name": "Batch B",
+                        "niche": "Tech",
+                        "key_features": ["cheap"],
+                    },
+                ],
+                "hook_types": ["curiosity"],
+                "formats": ["short_form"],
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "running"
+        assert data["mode"] == "batch"
+        assert data.get("product_count") == 2 or "job_id" in data
+        _thread.assert_called_once()
+
+    def test_bg_recommend_returns_known_style(self, client):
+        res = client.get(
+            "/api/bg-recommend",
+            params={"content_style": "honest_review", "hook_type": "curiosity"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["recommended_style"] in data["all_styles"]
+        assert "gradient" in data["all_styles"]
+
+    def test_tracking_link_embeds_video_id(self, client):
+        res = client.get(
+            "/api/tracking-link",
+            params={
+                "affiliate_url": "https://amzn.to/example",
+                "video_id": "job-abc",
+                "platform": "youtube",
+            },
+        )
+        assert res.status_code == 200
+        url = res.json()["tracking_url"]
+        assert "job-abc" in url
+        assert "amzn.to/example" in url or "amzn.to" in url
+

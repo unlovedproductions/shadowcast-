@@ -69,8 +69,7 @@
         .upload-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
         .upload-actions button { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
         .btn-template { background: var(--blue); color: #fff; }
-        .btn-gsheet { background: var(--green); color: #fff; }
-        .btn-template:hover, .btn-gsheet:hover { opacity: .85; }
+        .btn-template:hover { opacity: .85; }
         .preview-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
         .preview-table th { background: var(--bg3); color: var(--text2); padding: 8px 10px; text-align: left; font-weight: 600; }
         .preview-table td { padding: 8px 10px; border-bottom: 1px solid var(--bg3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -254,7 +253,22 @@
         pollActive = false;
         clearPollTimer();
         pollBackoffMs = 2000;
-        showToast('Stopped status polling. The job may still run on the server.');
+        const jobId = state.jobId;
+        if (jobId) {
+            fetch(`${API}/cancel/${jobId}`, { method: 'POST' })
+                .then(async (res) => {
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        showToast('Cancel failed: ' + (data.detail || res.status));
+                        return;
+                    }
+                    showToast(data.message || 'Cancel requested');
+                    if (data.status) state.jobStatus = data.status;
+                })
+                .catch((e) => showToast('Cancel failed: ' + e.message));
+        } else {
+            showToast('Stopped status polling.');
+        }
         render();
     }
 
@@ -319,7 +333,8 @@
         navPage: 'generate',
         // Analytics
         analyticsData: null, analyticsLoading: false, youtubeSyncLoading: false,
-        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: '',
+        llmModels: [], llmModelsLoading: false, llmModelsSource: '',
+        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: 'short_form',
         metricVideoId: '', metricType: 'views', metricValue: '',
         // Social
         socialStatus: null, socialLoading: false,
@@ -331,6 +346,8 @@
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
+        bgRecommend: '',
+        trackAffiliateUrl: '', trackingLinkResult: '',
         rumbleUsername: '', rumblePassword: '',
     };
 
@@ -586,6 +603,9 @@
             <div class="style-grid">
                 ${Object.entries(contentStyles).map(([id,s])=>`<div class="style-option ${state.contentStyle===id?'selected':''}" onclick="setContentStyle('${id}')"><h3>${s.name}</h3><p>${s.desc}</p></div>`).join('')}
             </div>
+            ${state.bgRecommend ? `<p style="font-size:12px;color:var(--text2);margin-top:12px;">Recommended background for this style: <strong style="color:var(--pink);">${esc(state.bgRecommend)}</strong>
+                <a href="${API}/bg-preview/${encodeURIComponent(state.bgRecommend)}" target="_blank" rel="noopener" style="margin-left:8px;">Preview</a>
+            </p>` : ''}
         </div>`;
     }
 
@@ -816,7 +836,7 @@
             ${warningBlock}
             ${staleHint}
             <div style="margin-top:14px;text-align:center;">
-                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Stop Watching (job keeps running)</button>
+                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Cancel Job</button>
             </div>
         </div>`;
     }
@@ -1191,12 +1211,17 @@
                         <option value="long_form" ${state.trackFormat==='long_form'?'selected':''}>Long Form</option>
                     </select>
                 </div>
+                <div class="form-group full"><label>Affiliate URL (for tracking link)</label><input id="trackAffiliateUrl" value="${esc(state.trackAffiliateUrl)}" placeholder="https://amzn.to/..."></div>
             </div>
-            <button class="btn-primary" onclick="trackVideo()" style="margin-top:10px;">Track Video</button>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
+                <button class="btn-sm btn-template" onclick="buildTrackingLink()">Build Tracking Link</button>
+            </div>
+            ${state.trackingLinkResult ? `<div class="result-block" style="margin-top:12px;"><h3>Tracking URL</h3><div class="content">${esc(state.trackingLinkResult)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(state.trackingLinkResult)}\`)">Copy</button></div></div>` : ''}
         </div>
 
         <div class="card">
-            <h2>📈 Record Metrics</h2>
+            <h2>Record Metrics</h2>
             <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Update performance data for a tracked video.</p>
             <div class="form-grid">
                 <div class="form-group"><label>Video ID</label><input id="metricVideoId" value="${esc(state.metricVideoId)}" placeholder="Video ID from above"></div>
@@ -1278,14 +1303,14 @@
         const tr = d.top_revenue_videos || [];
         if (tr.length) {
             html += `<div class="card">
-                <h2>💰 Top Revenue Videos</h2>
+                <h2>Top Revenue Videos</h2>
                 <div style="overflow-x:auto;"><table class="analytics-table">
                     <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Revenue</th><th>Views</th></tr>
                     ${tr.map((v,i)=>`<tr>
                         <td>${i+1}</td>
                         <td>${esc(v.video_id||'')}</td>
-                        <td>${esc(v.product||'')}</td>
-                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td>${esc(v.product||v.product_name||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||v.hook_type||'')}</span></td>
                         <td style="color:var(--green);font-weight:700;">${(v.total_revenue||v.revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
                         <td>${(v.total_views||v.views||0).toLocaleString()}</td>
                     </tr>`).join('')}
@@ -1297,18 +1322,35 @@
         const tc = d.top_conversion_videos || [];
         if (tc.length) {
             html += `<div class="card">
-                <h2>🎯 Top Converting Videos</h2>
+                <h2>Top Converting Videos</h2>
                 <div style="overflow-x:auto;"><table class="analytics-table">
                     <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Conversion Rate</th><th>Clicks</th></tr>
                     ${tc.map((v,i)=>`<tr>
                         <td>${i+1}</td>
                         <td>${esc(v.video_id||'')}</td>
-                        <td>${esc(v.product||'')}</td>
-                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td>${esc(v.product||v.product_name||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||v.hook_type||'')}</span></td>
                         <td style="color:var(--pink);font-weight:700;">${(v.conversion_rate||0).toFixed(2)}%</td>
                         <td>${(v.total_affiliate_clicks||v.clicks||0).toLocaleString()}</td>
                     </tr>`).join('')}
                 </table></div>
+            </div>`;
+        }
+
+        const rr = d.revenue_report || {};
+        const byHook = rr.revenue_per_hook_type || {};
+        const hookKeys = Object.keys(byHook);
+        if (hookKeys.length) {
+            html += `<div class="card">
+                <h2>Revenue by Hook</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Hook</th><th>Revenue</th></tr>
+                    ${hookKeys.map(k=>`<tr>
+                        <td><span class="hook-badge">${esc(k)}</span></td>
+                        <td>${(byHook[k]||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                    </tr>`).join('')}
+                </table></div>
+                <p style="font-size:12px;color:var(--text2);margin-top:10px;">Total revenue: ${(rr.total_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</p>
             </div>`;
         }
 
@@ -1597,6 +1639,15 @@
                     <input id="settingsModel" value="${esc(state.llmModel||p.default_model||'')}" placeholder="e.g., gpt-4.1-mini, qwen2.5:14b-instruct-q5_K_M">
                     <span class="hint">For Ollama: run "ollama list" to see models. For LM Studio: check loaded model name.</span>
                 </div>
+                <div class="form-group">
+                    <label>Detected Models ${state.llmModelsSource?`(${esc(state.llmModelsSource)})`:''}</label>
+                    ${state.llmModelsLoading ? '<span class="hint">Loading models…</span>' : ''}
+                    ${!state.llmModelsLoading && !(state.llmModels||[]).length ? '<span class="hint">No models returned. Save settings / start Ollama, then reopen.</span>' : ''}
+                    ${(state.llmModels||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                        ${state.llmModels.slice(0,24).map(m=>`<button type="button" class="btn-sm btn-template" onclick="pickLlmModel('${esc(m).replace(/'/g,"\\'")}')">${esc(m)}</button>`).join('')}
+                    </div>` : ''}
+                    <button type="button" class="btn-sm btn-template" style="margin-top:8px;" onclick="loadLlmModels()" ${state.llmModelsLoading?'disabled':''}>Refresh Models</button>
+                </div>
                 ${recs.length?`<div class="model-rec">
                     <p style="font-weight:600;margin-bottom:6px;color:var(--cyan);">Recommended for your RTX 3080 (16GB VRAM):</p>
                     <table>
@@ -1771,6 +1822,50 @@
         finally { state.youtubeSyncLoading = false; render(); }
     }
 
+    async function refreshBgRecommend() {
+        const hook = (state.selectedHooks && state.selectedHooks[0]) || 'curiosity';
+        try {
+            const res = await fetch(
+                `${API}/bg-recommend?content_style=${encodeURIComponent(state.contentStyle || 'honest_review')}&hook_type=${encodeURIComponent(hook)}`
+            );
+            const data = await res.json().catch(() => ({}));
+            state.bgRecommend = res.ok ? (data.recommended_style || '') : '';
+        } catch (e) {
+            state.bgRecommend = '';
+        }
+    }
+
+    async function buildTrackingLink() {
+        const affiliateUrl = document.getElementById('trackAffiliateUrl')?.value?.trim()
+            || state.trackAffiliateUrl
+            || (state.resultsProductInfo && state.resultsProductInfo.affiliate_link)
+            || '';
+        const videoId = document.getElementById('trackVideoId')?.value?.trim()
+            || state.trackVideoId
+            || state.jobId
+            || 'manual';
+        if (!affiliateUrl) { showToast('Enter an affiliate URL first'); return; }
+        state.trackAffiliateUrl = affiliateUrl;
+        try {
+            const qs = new URLSearchParams({
+                affiliate_url: affiliateUrl,
+                video_id: videoId,
+                platform: 'youtube',
+            });
+            const res = await fetch(`${API}/tracking-link?${qs.toString()}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast('Error: ' + (data.detail || 'tracking link failed'));
+                return;
+            }
+            state.trackingLinkResult = data.tracking_url || '';
+            showToast('Tracking link ready');
+            render();
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
+    }
+
     async function trackVideo() {
         const videoId = document.getElementById('trackVideoId')?.value?.trim();
         const product = document.getElementById('trackProduct')?.value?.trim();
@@ -1879,26 +1974,49 @@
         } catch(e) { showToast('Error: ' + e.message); }
     }
 
+    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun }) {
+        const res = await fetch(`${API}/publish/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                job_id: jobId,
+                hook_type: hookType,
+                video_format: videoFormat || 'short_form',
+                platforms,
+                product_slug: productSlug || null,
+                dry_run: !!dryRun,
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const detail = data.detail;
+            const msg = typeof detail === 'string'
+                ? detail
+                : (Array.isArray(detail) ? detail.map((d) => d.msg || d).join(', ') : 'Publish failed');
+            throw new Error(msg);
+        }
+        return data;
+    }
+
     async function publishFromResults(dryRun, productSlug) {
         if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.activeTab) { showToast('Select a hook tab first'); return; }
         if (!state.publishPlatforms.length) { showToast('Select at least one platform'); return; }
         state.publishLoading = true; state.publishResults = null; render();
         try {
-            const res = await fetch(`${API}/publish/batch`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({
-                    job_id: state.jobId,
-                    hook_type: state.activeTab,
-                    video_format: state.activeFormat,
-                    platforms: state.publishPlatforms,
-                    product_slug: productSlug || null,
-                    dry_run: !!dryRun,
-                })
+            const data = await publishJobBatch({
+                jobId: state.jobId,
+                hookType: state.activeTab,
+                videoFormat: state.activeFormat,
+                platforms: state.publishPlatforms,
+                productSlug: productSlug || null,
+                dryRun: !!dryRun,
             });
-            const data = await res.json();
             state.publishResults = data;
             showToast(dryRun ? 'Dry run complete' : 'Publish complete');
-        } catch(e) { showToast('Error: ' + e.message); }
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
         state.publishLoading = false; render();
     }
 
@@ -1965,34 +2083,65 @@
         const scheduleTime = document.getElementById('socialSchedule')?.value;
         const hashtags = hashtagsRaw ? hashtagsRaw.split(/[,\s]+/).filter(Boolean) : [];
         if (!jobId && !videoPath) { showToast('Select a completed job or enter a video path'); return; }
-        const body = { platform, caption: caption || '', hashtags, dry_run: !!dryRun };
-        if (jobId && hookType) {
-            body.job_id = jobId;
-            body.hook_type = hookType;
-            body.video_format = videoFormat;
-            if (variant?.product_slug) body.product_slug = variant.product_slug;
-        } else {
-            body.video_path = videoPath;
-        }
+
         try {
-            let endpoint = `${API}/social/post`;
             if (schedule) {
                 if (!scheduleTime) {
                     showToast('Set a schedule date/time, or use Post Now');
                     return;
                 }
-                endpoint = `${API}/social/schedule`;
-                body.scheduled_time = new Date(scheduleTime).toISOString();
+                const body = { platform, caption: caption || '', hashtags, scheduled_time: new Date(scheduleTime).toISOString() };
+                if (jobId && hookType) {
+                    body.job_id = jobId;
+                    body.hook_type = hookType;
+                    body.video_format = videoFormat;
+                    if (variant?.product_slug) body.product_slug = variant.product_slug;
+                } else {
+                    body.video_path = videoPath;
+                }
+                const res = await fetch(`${API}/social/schedule`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (!res.ok) { showToast('Error: ' + (data.detail || 'Failed')); return; }
+                showToast('Post scheduled!');
+                loadPostingQueue();
+                return;
             }
-            const res = await fetch(endpoint, {
-                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+
+            // Job-backed posts go through publish_service (same path as Results).
+            if (jobId && hookType) {
+                const data = await publishJobBatch({
+                    jobId,
+                    hookType,
+                    videoFormat,
+                    platforms: [platform],
+                    productSlug: variant?.product_slug || null,
+                    dryRun: !!dryRun,
+                });
+                state.publishResults = data;
+                showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
+                return;
+            }
+
+            if (!videoPath) { showToast('Enter a video path for manual posts'); return; }
+            const res = await fetch(`${API}/social/post`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    platform,
+                    video_path: videoPath,
+                    caption: caption || '',
+                    hashtags,
+                    dry_run: !!dryRun,
+                }),
             });
             const data = await res.json();
-            if (res.ok) {
-                showToast(dryRun ? 'Dry run successful!' : (schedule ? 'Post scheduled!' : 'Posted successfully!'));
-                if (schedule) loadPostingQueue();
-            } else { showToast('Error: ' + (data.detail || 'Failed')); }
-        } catch(e) { showToast('Error: ' + e.message); }
+            if (!res.ok) { showToast('Error: ' + (data.detail || 'Failed')); return; }
+            showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
     }
 
     async function processQueue() {
@@ -2023,20 +2172,31 @@
             state.activeBatchIdx = idx;
             if (state.batchProducts[idx]) state.batchProducts[idx].content_style = s;
         }
-        render();
+        refreshBgRecommend().finally(() => render());
     }
     function toggleHook(id) {
-        const i=state.selectedHooks.indexOf(id);
-        if(i>=0){if(state.selectedHooks.length>1)state.selectedHooks.splice(i,1);}
-        else state.selectedHooks.push(id);
-        render();
+        const idx = state.selectedHooks.indexOf(id);
+        if (idx >= 0) {
+            if (state.selectedHooks.length === 1) return;
+            state.selectedHooks.splice(idx, 1);
+        } else {
+            state.selectedHooks.push(id);
+        }
+        refreshBgRecommend().finally(() => render());
     }
-    function toggleAllHooks() { state.selectedHooks=state.selectedHooks.length===hooks.length?['curiosity']:hooks.map(h=>h.id); render(); }
+    function toggleAllHooks() {
+        state.selectedHooks = state.selectedHooks.length === hooks.length ? ['curiosity'] : hooks.map((h) => h.id);
+        refreshBgRecommend().finally(() => render());
+    }
     function setFormats(f) { state.selectedFormats=f; render(); }
     function setTab(t) { state.activeTab=t; render(); }
     function setFormat(f) { state.activeFormat=f; render(); }
     function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
-    function toggleSettings() { state.showSettings=!state.showSettings; render(); }
+    function toggleSettings() {
+        state.showSettings = !state.showSettings;
+        render();
+        if (state.showSettings) loadLlmModels();
+    }
     function resetToForm() {
         state.page='form'; state.results=null; state.batchResults=null; state.resultsSummary=null; state.resultsProductInfo=null; state.trustInputs=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
         state.errors=[]; state.scriptErrors=[]; state.videoWarnings=[]; state.otherErrors=[];
@@ -2047,7 +2207,38 @@
         state.llmProvider=p;
         const pr=state.providerPresets[p]||{};
         state.llmBaseUrl=pr.base_url||''; state.llmModel=pr.default_model||'';
+        state.llmModels=[]; state.llmModelsSource='';
         render();
+        loadLlmModels();
+    }
+
+    async function loadLlmModels() {
+        state.llmModelsLoading = true;
+        try {
+            const res = await fetch(`${API}/llm/models`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                state.llmModels = [];
+                state.llmModelsSource = '';
+                return;
+            }
+            const models = Array.isArray(data.models) ? data.models : [];
+            state.llmModels = models.map((m) => (typeof m === 'string' ? m : (m.name || m.id || String(m))));
+            state.llmModelsSource = data.source || '';
+        } catch (e) {
+            state.llmModels = [];
+            state.llmModelsSource = '';
+        } finally {
+            state.llmModelsLoading = false;
+            if (state.showSettings) render();
+        }
+    }
+
+    function pickLlmModel(name) {
+        const el = document.getElementById('settingsModel');
+        if (el) el.value = name;
+        state.llmModel = name;
+        showToast('Model set: ' + name);
     }
 
     async function saveSettings() {
@@ -2085,6 +2276,26 @@
         const reader = new FileReader();
         reader.onload = function(e) { parseCSVPreview(e.target.result); };
         reader.readAsText(file);
+    }
+
+    async function handleAPFFileUpload(input) {
+        const file = input && input.files && input.files[0];
+        if (!file) {
+            showToast('Please choose an APF JSON file.');
+            return;
+        }
+        state.batchFileName = file.name;
+        try {
+            const payload = JSON.parse(await file.text());
+            if (typeof window.importAPFViaBackend === 'function') {
+                await window.importAPFViaBackend(payload);
+                return;
+            }
+            showToast('APF importer not ready — refresh and try again');
+        } catch (err) {
+            console.error('[APF upload] failed:', err);
+            showToast('Could not read APF JSON: ' + err.message);
+        }
     }
 
     function parseCSVPreview(text) {
@@ -2450,6 +2661,7 @@
                 }));
             }
         } catch (e) {}
+        await refreshBgRecommend();
         render();
         if (state.navPage === 'social') {
             await Promise.all([loadOAuthConfig(), loadOAuthStatus(), loadPostableJobs()]);
@@ -2937,23 +3149,8 @@
       alert("Imported enriched APF review brief for: " + (mapped.productName || "product"));
     }, 50);
   }
-  window.handleAPFFileUpload = async function(input){
-    const file = input?.files?.[0];
-    if (!file) return alert("Please choose an APF JSON file.");
-    try {
-      const payload = JSON.parse(await file.text());
-      if (typeof window.importAPFViaBackend === "function") {
-        await window.importAPFViaBackend(payload);
-        return;
-      }
-      const mapped = normalize(payload);
-      if (!mapped.productName) return alert("APF JSON was read, but no product name was found.");
-      hydrate(mapped);
-    } catch (err) {
-      console.error("[APF review brief importer] failed:", err);
-      alert("Could not read APF JSON: " + err.message);
-    }
-  };
+  window.normalizeAPFReviewBrief = normalize;
+  window.hydrateAPFReviewBrief = hydrate;
   console.log("[APF review brief importer] installed");
 })();
 </script>

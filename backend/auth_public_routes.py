@@ -30,6 +30,7 @@ PUBLIC_PREFIXES = (
     "/api/status/",
     "/api/results/",
     "/api/retry-missing/",
+    "/api/cancel/",
     "/api/audit/",
     "/api/download/",
     "/api/files/",

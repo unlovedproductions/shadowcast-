@@ -374,6 +374,7 @@ class AnalyticsTracker:
         total_views_all = 0
         total_affiliate_clicks_all = 0
         total_revenue_all = 0.0
+        ctr_values = []
 
         for video_id in self.data["videos"]:
             stats = self.get_video_stats(video_id)
@@ -381,13 +382,46 @@ class AnalyticsTracker:
                 total_views_all += stats.get("total_views", 0)
                 total_affiliate_clicks_all += stats.get("total_affiliate_clicks", 0)
                 total_revenue_all += stats.get("total_revenue", 0.0)
+                if stats.get("latest_ctr"):
+                    ctr_values.append(float(stats["latest_ctr"]))
 
         conversion_rate_all = (total_affiliate_clicks_all / total_views_all) if total_views_all > 0 else 0.0
         revenue_per_view_all = (total_revenue_all / total_views_all) if total_views_all > 0 else 0.0
+        avg_ctr = (sum(ctr_values) / len(ctr_values)) if ctr_values else 0.0
 
         # Get top performers for dashboard display
         top_revenue_videos = self.get_top_performers(metric="total_revenue", limit=5)
         top_conversion_videos = self.get_top_performers(metric="conversion_rate", limit=5)
+
+        hook_rows = []
+        for hook_type, data in self.get_hook_performance().items():
+            count = int(data.get("video_count") or 0)
+            hook_rows.append({
+                "hook": hook_type,
+                "hook_type": hook_type,
+                "count": count,
+                "video_count": count,
+                "avg_views": data.get("avg_views_per_video", 0),
+                "avg_ctr": 0.0,
+                "avg_revenue": (data.get("total_revenue", 0.0) / count) if count else 0.0,
+                "avg_conversion": float(data.get("conversion_rate") or 0.0) * 100.0,
+                "avg_conversion_rate": float(data.get("conversion_rate") or 0.0) * 100.0,
+            })
+        hook_rows.sort(key=lambda row: row["avg_revenue"], reverse=True)
+
+        format_rows = []
+        for format_type, data in self.get_format_performance().items():
+            count = int(data.get("video_count") or 0)
+            format_rows.append({
+                "format": format_type,
+                "count": count,
+                "video_count": count,
+                "avg_views": data.get("avg_views_per_video", 0),
+                "avg_ctr": 0.0,
+                "avg_revenue": (data.get("total_revenue", 0.0) / count) if count else 0.0,
+            })
+
+        revenue_report = self.get_revenue_report()
 
         return {
             "summary": {
@@ -396,20 +430,32 @@ class AnalyticsTracker:
                 "total_affiliate_clicks": total_affiliate_clicks_all,
                 "total_revenue": total_revenue_all,
                 "overall_conversion_rate": conversion_rate_all,
-                "overall_revenue_per_view": revenue_per_view_all
+                "overall_revenue_per_view": revenue_per_view_all,
+                "avg_ctr": avg_ctr,
+                "avg_conversion_rate": conversion_rate_all * 100.0,
             },
-            "hook_performance": self.get_hook_performance(),
-            "format_performance": self.get_format_performance(),
+            "hook_performance": hook_rows,
+            "format_performance": format_rows,
             "top_revenue_videos": [{
                 "video_id": v["video_id"],
-                "product_name": v["product_name"],
-                "revenue": v["total_revenue"]
+                "product": v.get("product_name", ""),
+                "product_name": v.get("product_name", ""),
+                "hook": v.get("hook_type", ""),
+                "revenue": v.get("total_revenue", 0),
+                "total_revenue": v.get("total_revenue", 0),
+                "views": v.get("total_views", 0),
+                "total_views": v.get("total_views", 0),
             } for v in top_revenue_videos],
             "top_conversion_videos": [{
                 "video_id": v["video_id"],
-                "product_name": v["product_name"],
-                "conversion_rate": v["conversion_rate"]
-            } for v in top_conversion_videos]
+                "product": v.get("product_name", ""),
+                "product_name": v.get("product_name", ""),
+                "hook": v.get("hook_type", ""),
+                "conversion_rate": float(v.get("conversion_rate") or 0.0) * 100.0,
+                "clicks": v.get("total_affiliate_clicks", 0),
+                "total_affiliate_clicks": v.get("total_affiliate_clicks", 0),
+            } for v in top_conversion_videos],
+            "revenue_report": revenue_report,
         }
 
     def sync_youtube_stats(self, yt_stats_by_id: dict) -> dict:
