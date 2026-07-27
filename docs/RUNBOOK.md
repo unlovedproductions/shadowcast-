@@ -19,6 +19,33 @@
 - HTTP health:
   - `curl -fsS http://localhost:8000/api/health >/dev/null`
 
+## Playwright E2E
+
+Two tiers against the real FastAPI + SPA (`http://127.0.0.1:8000`). Playwright starts uvicorn via `webServer` when nothing is already listening.
+
+Prerequisites (shared):
+- Root `.venv` with backend deps (`uvicorn`), or `python -m uvicorn` on PATH
+- `npm install` at repo root
+- `npx playwright install chromium`
+
+### Tier 1 — mocked (default, CI)
+
+Stubs generate/status/cancel/publish/OAuth; exercises SPA wiring.
+
+```bash
+npm run e2e
+```
+
+### Tier 2 — live generate (opt-in)
+
+Runs a real 1-hook short_form generate. Skips unless env is set **and** `/api/readiness` is ready (ffmpeg + reachable LLM).
+
+```bash
+SHADOWCAST_E2E_LIVE=1 npm run e2e:live
+```
+
+Expect 5–15+ minutes. Do not run in CI.
+
 ## Daily Operations
 - Process job creation via UI or Mission Control.
 - Confirm generated files are written to expected output locations.
