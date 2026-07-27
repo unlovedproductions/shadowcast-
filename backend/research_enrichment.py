@@ -51,8 +51,7 @@ def _merge_youtube_research(product: dict, research: dict) -> dict:
     if tags and not out.get("keywords"):
         out["keywords"] = tags[:20]
     titles = research.get("recommended_titles") or []
-    if titles and _is_blank(out.get("unique_selling_point")):
-        out["unique_selling_point"] = titles[0][:200]
+    # Titles stay in _youtube_research only — never write into unique_selling_point.
     out["_youtube_research"] = {
         "recommended_tags": tags[:20],
         "recommended_titles": titles[:5],

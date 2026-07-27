@@ -36,6 +36,12 @@ _SOURCE_TYPE_PRIORITY = {
 _DIGISTORE_CHROME_RE = re.compile(
     r"(?i)dashboard\s+marketplace\s+analytics|skip to content digistore"
 )
+_MARKETPLACE_NICHE_RE = re.compile(
+    r"(?i)^(digistore24?\s*marketplace|clickbank(\s*marketplace)?|"
+    r"jvzoo|warrior\+?plus|marketplace|affiliate\s*marketplace)$"
+)
+_VENDOR_SLOGAN_RE = re.compile(r"(?i)^(trust us[,']?\s*|for everyone'?s benefit)")
+_PRIMARY_PRICE_RE = re.compile(r"\$\s*\d{1,6}(?:[.,]\d{1,2})?")
 
 
 def _clean(value):
@@ -206,6 +212,20 @@ def _resolve_product_name(product: dict, vendor_materials, shadowcast_import: di
     return f"Digistore24 Product {platform_id or 'unknown'}"[:120]
 
 
+def _sanitize_niche(value: str) -> str:
+    text = _clean(value)
+    if not text or _MARKETPLACE_NICHE_RE.match(text):
+        return ""
+    return text[:80]
+
+
+def _extract_primary_price(text: str) -> str:
+    match = _PRIMARY_PRICE_RE.search(_clean(text))
+    if not match:
+        return ""
+    return _money_label(match.group(0).replace(" ", ""), fallback="")
+
+
 def _sanitize_buyer_price(value, cart_value=None, fallback="See official offer page") -> str:
     text = _clean(value)
     lowered = text.lower()
@@ -235,6 +255,18 @@ def _sanitize_buyer_price(value, cart_value=None, fallback="See official offer p
 
     if text and not looks_affiliate and not looks_marketing and len(text) <= 40:
         return text
+
+    # Long buyer copy like "$49.95 per box … $134.25 bundle" → keep first retail amount.
+    # Do not treat "save $15" / discount slogans as retail price.
+    if text and not looks_affiliate:
+        discountish = bool(
+            re.search(r"(?i)\b(save|off|discount|you.?ll save)\b", text)
+            and not re.search(r"(?i)\b(per\s+box|bundle|purchase|retail|single)\b", text)
+        )
+        if not discountish:
+            primary = _extract_primary_price(text)
+            if primary:
+                return primary
 
     try:
         cart = float(cart_value)
@@ -278,9 +310,20 @@ def _is_affiliate_meta_line(text: str) -> bool:
         return True
     if _DIGISTORE_CHROME_RE.search(lowered):
         return True
+    if _VENDOR_SLOGAN_RE.search(lowered):
+        return True
     if "don't bid on" in lowered or "do not bid on" in lowered:
         return True
     return any(marker in lowered for marker in _AFFILIATE_META_MARKERS)
+
+
+def _buyer_trust_text(items) -> str:
+    lines = []
+    for item in items or []:
+        line = _clean(item)
+        if line and not _is_affiliate_meta_line(line):
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def _buyer_key_features(brief, product, key_features_text: str, shadowcast_import=None) -> list:
@@ -397,10 +440,9 @@ def normalize_apf_payload(payload: dict) -> dict:
         _pick(shadowcast_import, ["vendor"])
         or _pick(product, ["vendor", "vendor_name", "seller", "brand"])
     )
-    niche = (
+    niche = _sanitize_niche(
         _clean(_pick(shadowcast_import, ["niche", "product_category", "productCategory"]))
-        or _clean(_pick(product, ["category", "niche", "product_category"]))
-        or "ClickBank"
+        or _clean(_pick(product, ["niche", "product_category", "productCategory", "category"]))
     )
     affiliate_link = _clean(
         _pick(shadowcast_import, ["affiliate_link", "affiliateLink"])
@@ -457,7 +499,6 @@ def normalize_apf_payload(payload: dict) -> dict:
 
     key_features_text = "\n".join([
         part for part in [
-            _clean(brief.get("review_summary")),
             "Positive signals: " + _clean(positives) if positives else "",
             "Common claims: " + _clean(claims) if claims else "",
             _clean(_pick(product, ["description", "summary", "keyFeatures", "key_features"]))
@@ -484,11 +525,8 @@ def normalize_apf_payload(payload: dict) -> dict:
         or brief.get("target_audience")
         or brief.get("who_it_may_help")
     )
-    usp = _clean(
-        _pick(shadowcast_import, ["unique_selling_point", "uniqueSellingPoint"])
-        or (angles[0] if isinstance(angles, list) and angles else "")
-        or brief.get("review_summary")
-    )
+    # Never invent USP from angles / review_summary (titles and slogans ≠ selling point).
+    usp = _clean(_pick(shadowcast_import, ["unique_selling_point", "uniqueSellingPoint"]))
     who_not_for = _clean(
         _pick(shadowcast_import, ["who_not_for", "whoNotFor"])
         or brief.get("who_should_skip_it")
@@ -523,8 +561,8 @@ def normalize_apf_payload(payload: dict) -> dict:
         "target_audience": target_audience,
         "uniqueSellingPoint": usp,
         "unique_selling_point": usp,
-        "commonPraises": _clean(positives),
-        "common_praises": _clean(positives),
+        "commonPraises": _buyer_trust_text(positives),
+        "common_praises": _buyer_trust_text(positives),
         "commonComplaints": common_complaints,
         "common_complaints": common_complaints,
         "whoNotFor": who_not_for,
