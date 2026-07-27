@@ -344,7 +344,7 @@ def short_form_json_schema(hook_type: str, content_style: str) -> str:
       "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pro_point|con_point|verdict|elimination",
       "text_color": string,
       "bg_color": string,
-      "animation": "pop_in|slide_up|fade_in|zoom_in|shake|typewriter|bounce",
+      "animation": "pop_in|slide_up|fade_in|zoom_in|shake|typewriter|word_by_word|impact_scale|highlight_sweep",
       "transition_to_next": "cut|fade|glitch|flash|swipe|zoom",
       "visual_note": string
     }}
@@ -376,7 +376,7 @@ def long_form_json_schema(hook_type: str, content_style: str) -> str:
           "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pro_point|con_point|verdict|elimination|comparison|scorecard",
           "text_color": string,
           "bg_color": string,
-          "animation": "pop_in|slide_up|slide_left|fade_in|zoom_in|shake|typewriter|bounce|wipe",
+          "animation": "pop_in|slide_up|slide_left|fade_in|zoom_in|shake|typewriter|word_by_word|impact_scale|highlight_sweep",
           "transition_to_next": "cut|fade|glitch|flash|swipe|zoom",
           "is_pattern_interrupt": boolean,
           "visual_note": string

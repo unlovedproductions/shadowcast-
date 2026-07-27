@@ -203,3 +203,29 @@ class TestOAuthRoutes:
         assert res.status_code == 302
         assert "oauth_error" in res.headers["location"]
         assert "state" in res.headers["location"].lower()
+
+
+class TestAuthAllowlist:
+    def test_config_requires_service_key_when_secret_set(self, monkeypatch):
+        monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "test-secret")
+        bare = TestClient(app)
+        res = bare.post("/api/config", json={"provider": "ollama"})
+        assert res.status_code == 401
+
+    def test_publish_batch_not_blocked_by_service_key(self, monkeypatch):
+        monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "test-secret")
+        bare = TestClient(app)
+        res = bare.post("/api/publish/batch", json={})
+        assert res.status_code != 401
+
+    def test_openapi_marks_publish_public(self, client):
+        from auth_public_routes import is_public_path
+
+        assert is_public_path("/api/publish")
+        assert is_public_path("/api/analytics/dashboard")
+        assert not is_public_path("/api/config")
+        spec = client.get("/api/openapi.json").json()
+        publish_sec = spec["paths"]["/api/publish/batch"]["post"].get("security")
+        assert publish_sec == []
+        config_sec = spec["paths"]["/api/config"]["post"].get("security")
+        assert config_sec and any("ServiceKeyAuth" in (item or {}) for item in config_sec)

@@ -342,7 +342,7 @@
         { id: 'rumble', label: 'Rumble' },
     ];
 
-    const hooks = [
+    let hooks = [
         { id: 'curiosity', name: 'Curiosity', desc: 'Provocative questions, surprising reveals that make viewers click', adv: false },
         { id: 'problem_agitation', name: 'Problem-Agitation', desc: 'Pain point \u2192 agitate \u2192 tease the solution', adv: false },
         { id: 'listicle', name: 'Listicle', desc: 'Top X reasons / numbered format for easy consumption', adv: false },
@@ -353,6 +353,7 @@
         { id: 'comparison_trap', name: 'Comparison Trap', desc: 'Price comparison that makes viewers feel smart', adv: true },
         { id: 'myth_buster', name: 'Myth Buster', desc: 'Challenge conventional wisdom to spark engagement', adv: true },
     ];
+    const ADVANCED_HOOK_IDS = new Set(['data_bomb', 'confession', 'comparison_trap', 'myth_buster']);
 
     const contentStyles = {
         honest_review: { name: 'Honest Review', desc: 'Balanced pros AND cons. "Who This Is NOT For" section. Builds trust.' },
@@ -554,7 +555,6 @@
             </div>
             <div class="upload-actions">
                 <button class="btn-sm btn-template" onclick="downloadTemplate()">Download CSV Template</button>
-                <button class="btn-sm btn-gsheet" onclick="openGoogleSheet()">Open Google Sheets Template</button>
             </div>
             ${preview}
         </div>`;
@@ -816,7 +816,7 @@
             ${warningBlock}
             ${staleHint}
             <div style="margin-top:14px;text-align:center;">
-                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Stop Watching</button>
+                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Stop Watching (job keeps running)</button>
             </div>
         </div>`;
     }
@@ -1610,6 +1610,7 @@
                 </div>`:''}
                 <div class="modal-actions">
                     <button class="cancel" onclick="toggleSettings()">Cancel</button>
+                    <button class="cancel" type="button" onclick="testLlmConnection()">Test LLM</button>
                     <button class="save" onclick="saveSettings()">Save Settings</button>
                 </div>
             </div>
@@ -1696,7 +1697,7 @@
                 html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Suggested Video Titles:</p>';
                 d.recommended_titles.forEach(t => { html += `<p style="font-size:12px;color:var(--text);margin-left:8px;">• ${t}</p>`; });
             }
-            html += '<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>';
+            html += `<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>`;
             html += '</div>';
             results.innerHTML = html;
             showToast(`Found ${tags.length} keywords + ${d.long_tail_keywords?.length || 0} long-tail terms!`);
@@ -1738,6 +1739,9 @@
             loadOAuthConfig();
             loadOAuthStatus();
             loadPostableJobs();
+        }
+        if (p === 'analytics') {
+            loadDashboard();
         }
     }
 
@@ -1972,7 +1976,11 @@
         }
         try {
             let endpoint = `${API}/social/post`;
-            if (schedule && scheduleTime) {
+            if (schedule) {
+                if (!scheduleTime) {
+                    showToast('Set a schedule date/time, or use Post Now');
+                    return;
+                }
                 endpoint = `${API}/social/schedule`;
                 body.scheduled_time = new Date(scheduleTime).toISOString();
             }
@@ -2055,6 +2063,20 @@
         state.showSettings=false; render();
     }
 
+    async function testLlmConnection() {
+        try {
+            const res = await fetch(`${API}/llm/test`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast('LLM test failed: ' + (data.detail || res.status));
+                return;
+            }
+            showToast(data.ok === false ? ('LLM test failed: ' + (data.detail || data.error || 'unknown')) : 'LLM connection OK');
+        } catch (e) {
+            showToast('LLM test failed: ' + e.message);
+        }
+    }
+
     // ── CSV Upload ──────────────────────────────────────────
     function handleFileUpload(input) {
         const file = input.files[0];
@@ -2063,53 +2085,6 @@
         const reader = new FileReader();
         reader.onload = function(e) { parseCSVPreview(e.target.result); };
         reader.readAsText(file);
-    }
-
-    function handleAPFFileUpload(input) {
-        const file = input.files[0];
-        if (!file) return;
-        state.batchFileName = file.name;
-        const reader = new FileReader();
-        reader.onload = function(e) { parseAPFPreview(e.target.result); };
-        reader.readAsText(file);
-    }
-
-    function parseAPFPreview(text) {
-        try {
-            const data = JSON.parse(text);
-            if (!Array.isArray(data)) {
-                showToast('JSON must be an array of products');
-                return;
-            }
-            const products = data.map(item => ({
-                product_name: item.product_name || '',
-                niche: item.niche || 'General',
-                key_features: Array.isArray(item.key_features) ? item.key_features : (item.key_features ? [item.key_features] : []),
-                price: item.price || '$49.99',
-                affiliate_link: item.affiliate_link || '[YOUR_AFFILIATE_LINK]',
-                keywords: Array.isArray(item.keywords) ? item.keywords : (item.keywords ? [item.keywords] : []),
-                target_audience: item.target_audience || 'General consumers',
-                product_category: item.product_category || item.niche || 'General',
-                competitors: Array.isArray(item.competitors) ? item.competitors : (item.competitors ? [item.competitors] : []),
-                unique_selling_point: item.unique_selling_point || '',
-                discount_info: item.discount_info || '',
-                coupon_code: item.coupon_code || '',
-                common_complaints: item.common_complaints || '',
-                common_praises: item.common_praises || '',
-                who_not_for: item.who_not_for || '',
-                series_name: item.series_name || '',
-                price_comparison: item.price_comparison || '',
-                content_style: item.content_style || 'honest_review',
-            })).filter(p => p.product_name);
-            state.batchProducts = products;
-            state.activeBatchIdx = 0;
-            if (products.length && products[0].content_style) state.contentStyle = products[0].content_style;
-            render();
-            if (products.length) showToast(`Imported ${products.length} products from APF!`);
-            else showToast('No valid products found in JSON.');
-        } catch (err) {
-            showToast(`Error parsing JSON: ${err.message}`);
-        }
     }
 
     function parseCSVPreview(text) {
@@ -2165,9 +2140,6 @@
     }
 
     function downloadTemplate() { window.open(`${API}/csv-template`,'_blank'); }
-    function openGoogleSheet() {
-        window.open('https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/copy','_blank');
-    }
 
     // ── Generation ──────────────────────────────────────────
     function readFormValues() {
@@ -2464,6 +2436,20 @@
             const sdata=await sres.json();
             if(sdata.default) state.contentStyle=sdata.default;
         } catch(e) {}
+        try {
+            const hres = await fetch(`${API}/hooks`);
+            const hdata = await hres.json();
+            const types = Array.isArray(hdata.hooks) ? hdata.hooks : [];
+            const descs = hdata.descriptions || {};
+            if (types.length) {
+                hooks = types.map((id) => ({
+                    id,
+                    name: String(id).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+                    desc: descs[id] || '',
+                    adv: ADVANCED_HOOK_IDS.has(id),
+                }));
+            }
+        } catch (e) {}
         render();
         if (state.navPage === 'social') {
             await Promise.all([loadOAuthConfig(), loadOAuthStatus(), loadPostableJobs()]);
@@ -2857,30 +2843,6 @@
   }
 
   window.normalizeAPFProductForShadowCast = normalizeAPFProduct;
-
-  window.handleAPFFileUpload = async function handleAPFFileUpload(input) {
-    const file = input && input.files && input.files[0];
-    if (!file) {
-      alert("Please choose an APF JSON file.");
-      return;
-    }
-    try {
-      const payload = JSON.parse(await file.text());
-      if (typeof window.importAPFViaBackend === "function") {
-        await window.importAPFViaBackend(payload);
-        return;
-      }
-      const mapped = normalizeAPFProduct(payload);
-      if (!mapped.productName) {
-        alert("APF JSON was read, but no product name was found. Check the APF export format.");
-        return;
-      }
-      hydrateShadowCastState(mapped);
-    } catch (err) {
-      console.error("[APF JSON normalizer] JSON import failed:", err);
-      alert("Could not read APF JSON: " + err.message);
-    }
-  };
 
   console.log("[APF JSON normalizer] enhanced patch installed");
 })();

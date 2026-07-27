@@ -91,6 +91,7 @@ from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
 from openapi_customize import customize_openapi
+from auth_public_routes import is_public_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -183,57 +184,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content=_error_payload(422, "Request validation failed", details),
     )
 
-def check_internal_auth(request):
-    service_key = request.headers.get("X-Service-Key")
-    internal_secret = os.getenv("INTERNAL_SERVICE_SECRET")
-    if internal_secret and service_key != internal_secret:
-        # We don't raise 401 here to maintain backward compatibility 
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-
 # Global middleware to enforce internal service auth for non-GET requests
-from fastapi.responses import JSONResponse
 
 
 @app.middleware("http")
 async def enforce_internal_auth_middleware(request: Request, call_next):
-    # UNLOVED_PUBLIC_UI_ROUTE_AUTH_BYPASS
+    # UNLOVED_PUBLIC_UI_ROUTE_AUTH_BYPASS — allowlist shared with openapi_customize
     path = request.url.path
-    public_paths = {
-        "/",
-        "/api/health",
-        "/api/providers",
-        "/api/hooks",
-        "/api/content-styles",
-        "/api/tts-providers",
-        "/api/csv-template",
-        "/api/generate",
-        "/api/batch-upload",
-        "/api/import-apf",
-        "/api/import-apf/direct",  # UNLOVED_APF_DIRECT_IMPORT_AUTH_BYPASS
-        "/api/batch-generate",
-        "/api/scrape-amazon",
-        "/api/youtube-research",
-        "/api/readiness",
-        "/api/openapi.json",
-    }
-    public_prefixes = (
-        "/api/status/",
-        "/api/results/",
-        "/api/retry-missing/",
-        "/api/audit/",
-        "/api/download/",
-        "/api/files/",
-        "/api/bg-",
-        "/api/analytics",
-        "/api/social",
-        "/api/oauth",
-        "/api/publish",
-        "/api/media",
-        "/api/tracking-link",
-        "/api/jobs/",
-    )
-    if path in public_paths or any(path.startswith(prefix) for prefix in public_prefixes):
+    if is_public_path(path):
         return await call_next(request)
     internal_secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
     if internal_secret and request.method != "GET":
@@ -1108,10 +1066,24 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                 else:
                     assets = generate_youtube_assets(product, scripts_data[fmt], fmt)
                     if assets.get("_shadowcast_fallback"):
-                        _add_job_warning(
-                            job,
-                            f"[{product['product_name']}] YT package ({hook_type} {fmt}): LLM fallback stub used",
+                        debug_path = yt_path.with_suffix(".fallback.json")
+                        with open(str(debug_path), "w") as f:
+                            json.dump(assets, f, indent=2)
+                        try:
+                            if yt_path.exists():
+                                yt_path.unlink()
+                        except OSError:
+                            pass
+                        msg = (
+                            f"[{product['product_name']}] YT package ({hook_type} {fmt}): "
+                            "LLM fallback stub — not registered as deliverable"
                         )
+                        _add_job_warning(job, msg)
+                        job["errors"].append(msg)
+                        step += 1
+                        job["progress"] = int(step / total_steps * 100)
+                        _save_job(job_id)
+                        continue
                     with open(str(yt_path), "w") as f:
                         json.dump(assets, f, indent=2)
 

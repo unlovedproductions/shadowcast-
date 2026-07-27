@@ -282,12 +282,6 @@ def get_style_for_content(content_style, hook_type):
         "elimination": "circuit",
         "worth_it_or_waste": "noise",
         "standard": "gradient",
-        "tutorial": "grid",
-        "news": "circuit",
-        "storytime": "wave",
-        "meditation": "radial",
-        "action": "noise",
-        "abstract_art": "abstract",
         "default": "gradient",
     }
     # Prioritize content_style if it exists, otherwise check hook_type
@@ -374,5 +368,5 @@ if __name__ == "__main__":
     print(f"vs_battle -> {get_style_for_content('vs_battle', '')}")
     print(f"honest_review -> {get_style_for_content('honest_review', '')}")
     print(f"budget_challenge -> {get_style_for_content('budget_challenge', '')}")
-    print(f"unknown_content -> {get_style_for_content('unknown_content', 'tutorial')}")
+    print(f"unknown_content -> {get_style_for_content('unknown_content', 'curiosity')}")
     print(f"unknown_content_unknown_hook -> {get_style_for_content('unknown_content_unknown_hook', '')}")
