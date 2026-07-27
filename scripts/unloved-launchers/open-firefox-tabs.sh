@@ -13,6 +13,7 @@ fi
 
 urls=("$@")
 
+# Already-running Firefox: open each URL as a new tab in the existing session.
 if pgrep -x firefox >/dev/null 2>&1 || pgrep -x firefox-bin >/dev/null 2>&1; then
   for url in "${urls[@]}"; do
     firefox --new-tab "$url" >/dev/null 2>&1 &
@@ -20,9 +21,6 @@ if pgrep -x firefox >/dev/null 2>&1 || pgrep -x firefox-bin >/dev/null 2>&1; the
   exit 0
 fi
 
-firefox --new-window "${urls[0]}" >/dev/null 2>&1 &
-sleep 2
-
-for url in "${urls[@]:1}"; do
-  firefox --new-tab "$url" >/dev/null 2>&1 &
-done
+# Cold start: one process with all URLs so Firefox shows at most one profile picker
+# instead of one picker window per URL.
+firefox --new-window "${urls[@]}" >/dev/null 2>&1 &

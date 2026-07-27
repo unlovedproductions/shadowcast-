@@ -40,7 +40,10 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-if command -v systemctl >/dev/null 2>&1; then
+# Prefer Docker MySQL (apf-mysql) started by preflight; only touch systemctl when that is absent.
+if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'apf-mysql'; then
+  :
+elif command -v systemctl >/dev/null 2>&1; then
   if ! systemctl is-active --quiet mysql; then
     echo "MySQL is not active. Attempting to start it..."
     sudo systemctl start mysql || true
