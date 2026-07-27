@@ -113,8 +113,9 @@ def test_unsupported_token_detection():
     }
     assert unsupported_animation_tokens(script, SHORT_FORM) == {"bounce"}
     assert unsupported_transition_tokens(script, SHORT_FORM) == {"whip_pan"}
-    assert (CLAIMED_ANIMATION_TOKENS - SUPPORTED_ANIMATION_TOKENS) >= {"bounce", "wipe"}
-    assert (CLAIMED_TRANSITION_TOKENS - SUPPORTED_TRANSITION_TOKENS) >= {"whip_pan", "zoom_through", "dissolve"}
+    assert CLAIMED_ANIMATION_TOKENS <= SUPPORTED_ANIMATION_TOKENS
+    assert CLAIMED_TRANSITION_TOKENS <= SUPPORTED_TRANSITION_TOKENS
+    assert CLAIMED_TRANSITION_TOKENS == SUPPORTED_TRANSITION_TOKENS
 
 
 def test_expected_output_counts_from_job():

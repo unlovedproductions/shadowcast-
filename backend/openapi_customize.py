@@ -4,42 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-PUBLIC_PATHS = {
-    "/api/health",
-    "/api/openapi.json",
-    "/api/readiness",
-    "/api/providers",
-    "/api/hooks",
-    "/api/content-styles",
-    "/api/tts-providers",
-    "/api/csv-template",
-    "/api/generate",
-    "/api/batch-upload",
-    "/api/import-apf",
-    "/api/import-apf/direct",
-    "/api/batch-generate",
-    "/api/scrape-amazon",
-    "/api/youtube-research",
-}
-
-PUBLIC_PREFIXES = (
-    "/api/status/",
-    "/api/results/",
-    "/api/retry-missing/",
-    "/api/audit/",
-    "/api/download/",
-    "/api/files/",
-    "/api/bg-",
-    "/api/import-apf/direct/",
-)
+from auth_public_routes import PUBLIC_PATHS, PUBLIC_PREFIXES, is_public_path
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
 def _is_public_path(path: str) -> bool:
-    if path in PUBLIC_PATHS:
-        return True
-    return any(path.startswith(prefix) for prefix in PUBLIC_PREFIXES)
+    return is_public_path(path)
 
 
 def customize_openapi(schema: dict[str, Any]) -> dict[str, Any]:
@@ -74,7 +45,11 @@ def customize_openapi(schema: dict[str, Any]) -> dict[str, Any]:
             "type": "apiKey",
             "in": "header",
             "name": "X-Service-Key",
-            "description": "Internal service key required for admin and publishing routes.",
+            "description": (
+                "Required on non-public non-GET routes when INTERNAL_SERVICE_SECRET is set "
+                "(notably POST /api/config). SPA job/publish/social/oauth/analytics routes "
+                "are public allowlisted — see auth_public_routes."
+            ),
         },
         "OAuth2": {
             "type": "oauth2",

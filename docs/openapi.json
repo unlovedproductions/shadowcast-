@@ -2286,16 +2286,7 @@
           }
         },
         "description": "List Postable Jobs. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -2368,16 +2359,7 @@
           }
         },
         "description": "Social Status. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -2510,16 +2492,7 @@
             }
           }
         },
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/oauth/status": {
@@ -2551,16 +2524,7 @@
           }
         },
         "description": "Oauth Status. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -2633,16 +2597,7 @@
           }
         },
         "description": "Oauth Config. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -2745,16 +2700,7 @@
           }
         },
         "description": "Oauth Authorize. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/oauth/{platform}/callback": {
@@ -2846,16 +2792,7 @@
           }
         },
         "description": "Oauth Callback. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/oauth/rumble/login": {
@@ -2893,16 +2830,7 @@
           }
         },
         "description": "Oauth Rumble Login. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/oauth/{platform}": {
@@ -2941,16 +2869,7 @@
           }
         },
         "description": "Oauth Disconnect. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/publish": {
@@ -2988,16 +2907,7 @@
           }
         },
         "description": "Publish Video. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/publish/batch": {
@@ -3035,16 +2945,7 @@
           }
         },
         "description": "Publish Video Batch. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/social/post": {
@@ -3082,16 +2983,7 @@
           }
         },
         "description": "Social Post. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/social/queue": {
@@ -3123,16 +3015,7 @@
           }
         },
         "description": "Social Queue. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -3211,16 +3094,7 @@
           }
         },
         "description": "Schedule Social Post. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/social/queue/process": {
@@ -3260,16 +3134,7 @@
           }
         },
         "description": "Process Social Queue. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/analytics/track": {
@@ -3307,16 +3172,7 @@
           }
         },
         "description": "Track Video. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/analytics/record": {
@@ -3354,16 +3210,7 @@
           }
         },
         "description": "Record Metric. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/analytics/sync-youtube": {
@@ -3381,16 +3228,7 @@
           }
         },
         "description": "Sync Youtube Analytics. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/analytics/dashboard": {
@@ -3422,16 +3260,7 @@
           }
         },
         "description": "Analytics Dashboard. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -3504,16 +3333,7 @@
           }
         },
         "description": "Hook Performance. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -3586,16 +3406,7 @@
           }
         },
         "description": "Format Performance. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -3728,16 +3539,7 @@
           }
         },
         "description": "Top Performers. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/analytics/revenue": {
@@ -3769,16 +3571,7 @@
           }
         },
         "description": "Revenue Report. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -3851,16 +3644,7 @@
           }
         },
         "description": "Export Analytics. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ],
+        "security": [],
         "parameters": [
           {
             "name": "fields",
@@ -4012,16 +3796,7 @@
           }
         },
         "description": "Get Tracking Link. ShadowCast endpoint for affiliate video generation workflows.",
-        "security": [
-          {
-            "ServiceKeyAuth": []
-          },
-          {
-            "OAuth2": [
-              "publish"
-            ]
-          }
-        ]
+        "security": []
       }
     },
     "/api/bg-styles": {
@@ -6376,7 +6151,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Service-Key",
-        "description": "Internal service key required for admin and publishing routes."
+        "description": "Required on non-public non-GET routes when INTERNAL_SERVICE_SECRET is set (notably POST /api/config). SPA job/publish/social/oauth/analytics routes are public allowlisted \u2014 see auth_public_routes."
       },
       "OAuth2": {
         "type": "oauth2",

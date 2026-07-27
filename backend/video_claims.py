@@ -73,6 +73,7 @@ OPTIONAL_LAYOUTS_BY_STYLE: dict[str, set[str]] = {
     "vs_battle": {"spec_compare"},
 }
 
+# Must match prompt schema enums in prompts.py (subset of SUPPORTED_*).
 CLAIMED_ANIMATION_TOKENS = {
     "pop_in",
     "slide_up",
@@ -81,8 +82,9 @@ CLAIMED_ANIMATION_TOKENS = {
     "zoom_in",
     "shake",
     "typewriter",
-    "bounce",
-    "wipe",
+    "word_by_word",
+    "impact_scale",
+    "highlight_sweep",
 }
 
 SUPPORTED_ANIMATION_TOKENS = {
@@ -100,11 +102,11 @@ SUPPORTED_ANIMATION_TOKENS = {
 
 CLAIMED_TRANSITION_TOKENS = {
     "cut",
-    "whip_pan",
     "fade",
-    "zoom_through",
     "glitch",
-    "dissolve",
+    "flash",
+    "swipe",
+    "zoom",
 }
 
 SUPPORTED_TRANSITION_TOKENS = {"cut", "fade", "glitch", "flash", "swipe", "zoom"}
