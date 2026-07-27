@@ -2767,6 +2767,20 @@
     return text.slice(0, 120);
   }
 
+  function sanitizeNiche(value) {
+    const text = clean(value);
+    if (!text) return "";
+    if (/^(digistore24?\s*marketplace|clickbank(\s*marketplace)?|jvzoo|warrior\+?plus|marketplace|affiliate\s*marketplace)$/i.test(text)) {
+      return "";
+    }
+    return text.slice(0, 80);
+  }
+
+  function extractPrimaryPrice(value) {
+    const match = clean(value).match(/\$\s*\d{1,6}(?:[.,]\d{1,2})?/);
+    return match ? moneyLabel(match[0].replace(/\s/g, ""), "") : "";
+  }
+
   function inferAudience(category, productName) {
     const c = clean(category).toLowerCase();
 
@@ -2856,9 +2870,10 @@
       "vendor", "vendor_name", "seller", "brand", "author"
     ]));
 
-    const category = clean(pick(product, [
+    const rawCategory = clean(pick(product, [
       "niche", "category", "product_category", "marketplace_category", "vertical"
-    ])) || "General";
+    ]));
+    const category = sanitizeNiche(rawCategory);
 
     const rank = clean(pick(product, [
       "rank", "product_rank", "gravity_rank"
@@ -2888,39 +2903,41 @@
       "url", "link"
     ]));
 
-    const price = clean(pick(product, [
-      "price", "product_price"
-    ])) || (apv ? "Avg order value: " + moneyLabel(apv) : "Varies");
+    const rawPrice = clean(pick(product, [
+      "price", "product_price", "price_display", "priceDisplay"
+    ]));
+    const price = (() => {
+      if (!rawPrice) {
+        return apv ? "" : "Varies";
+      }
+      if (/epc|commission|conversion rate|affiliates are seeing|avg payout|per sale/i.test(rawPrice)) {
+        return extractPrimaryPrice(rawPrice) || (apv ? "" : "See official offer page");
+      }
+      if (rawPrice.length <= 40) return rawPrice;
+      return extractPrimaryPrice(rawPrice) || (apv ? "" : "See official offer page");
+    })() || (apv ? moneyLabel(apv) : "Varies");
 
     const explicitFeatures = clean(pick(product, [
-      "key_features", "keyFeatures", "features", "benefits", "bullets", "description", "summary"
+      "key_features", "keyFeatures", "features", "benefits", "bullets"
     ]));
 
-    const keyFeatures = explicitFeatures || inferBenefits(
-      productName,
-      category,
-      vendor
-    );
+    const keyFeatures = explicitFeatures || "";
 
     const targetAudience = clean(pick(product, [
       "target_audience", "targetAudience", "audience", "customer_avatar", "customerAvatar"
     ])) || inferAudience(category, productName);
 
-    const painPoints = clean(pick(product, [
-      "pain_points", "painPoints", "problems", "common_complaints", "commonComplaints"
-    ])) || inferPainPoints(category);
-
     const commonPraises = clean(pick(product, [
       "common_praises", "commonPraises", "praises", "positive_reviews"
-    ])) || "Reviewers and product-page details should be checked before assuming the claims are accurate.";
+    ]));
 
     const commonComplaints = clean(pick(product, [
       "common_complaints", "commonComplaints", "complaints", "negative_reviews"
-    ])) || painPoints;
+    ]));
 
     const uniqueSellingPoint = clean(pick(product, [
       "unique_selling_point", "uniqueSellingPoint", "usp"
-    ])) || inferHook(productName, category);
+    ]));
 
     const keywords = clean(pick(product, [
       "keywords", "tags", "search_terms", "searchTerms"
@@ -2946,12 +2963,11 @@
       uniqueSellingPoint: uniqueSellingPoint,
       commonComplaints: commonComplaints,
       commonPraises: commonPraises,
-      painPoints: painPoints,
-      whoNotFor: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
+      whoNotFor: clean(pick(product, ["who_not_for", "whoNotFor"])) || "",
       discountInfo: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
       couponCode: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
       priceComparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
-      seriesName: "Hidden Gem Review",
+      seriesName: clean(pick(product, ["series_name", "seriesName"])) || "",
       contentStyle: clean(pick(product, ["content_style", "contentStyle"])) || "honest_review",
       cta: cta,
 
@@ -2964,11 +2980,11 @@
       unique_selling_point: uniqueSellingPoint,
       common_complaints: commonComplaints,
       common_praises: commonPraises,
-      who_not_for: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
+      who_not_for: clean(pick(product, ["who_not_for", "whoNotFor"])) || "",
       discount_info: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
       coupon_code: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
       price_comparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
-      series_name: "Hidden Gem Review",
+      series_name: clean(pick(product, ["series_name", "seriesName"])) || "",
 
       // Preserve APF facts
       marketplace: clean(pick(product, ["marketplace"])) || "clickbank",
@@ -2994,7 +3010,13 @@
       if (typeof state !== "undefined" && state) {
         for (const [key, value] of Object.entries(mapped)) {
           if (value !== undefined && value !== null && clean(value) !== "") {
-            state[key] = value;
+            if (key === "uniqueSellingPoint" || key === "unique_selling_point") {
+              state.usp = value;
+            } else if (key === "painPoints" || key === "pain_points") {
+              continue;
+            } else {
+              state[key] = value;
+            }
           }
         }
 
@@ -3020,14 +3042,14 @@
       setInput("targetAudience", mapped.targetAudience);
 
       // Fill optional fields if the current UI has them.
-      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
+      setInput("usp", mapped.uniqueSellingPoint || mapped.usp);
       setInput("commonComplaints", mapped.commonComplaints);
       setInput("commonPraises", mapped.commonPraises);
-      setInput("painPoints", mapped.painPoints);
       setInput("whoNotFor", mapped.whoNotFor);
       setInput("discountInfo", mapped.discountInfo);
       setInput("couponCode", mapped.couponCode);
       setInput("seriesName", mapped.seriesName);
+      setInput("productCategory", mapped.productCategory || mapped.niche);
 
       console.log("[APF JSON normalizer] mapped creative brief:", mapped);
 
@@ -3055,6 +3077,8 @@
   }
 
   window.normalizeAPFProductForShadowCast = normalizeAPFProduct;
+  window.sanitizeAPFProductName = sanitizeProductName;
+  window.sanitizeAPFNiche = sanitizeNiche;
 
   console.log("[APF JSON normalizer] enhanced patch installed");
 })();
@@ -3097,11 +3121,22 @@
     const negative = brief?.negative_signals || [];
     const claims = brief?.common_claims || [];
     const complaints = brief?.common_complaints || [];
-    const angles = brief?.best_video_angles || [];
 
-    const productName = base.productName || product.name || product.product_name || "";
-    const niche = base.niche || product.category || product.niche || "ClickBank";
+    const productName = (typeof window.sanitizeAPFProductName === "function"
+      ? window.sanitizeAPFProductName(base.productName || product.name || product.product_name || "")
+      : clean(base.productName || product.name || product.product_name || ""));
+    const nicheRaw = base.niche || product.niche || product.product_category || product.category || "";
+    const niche = (typeof window.sanitizeAPFNiche === "function"
+      ? window.sanitizeAPFNiche(nicheRaw)
+      : clean(nicheRaw));
     const affiliateLink = base.affiliateLink || product.affiliate_url || product.affiliateLink || product.affiliate_link || product.product_url || "";
+
+    const positiveLines = (positive || []).map(clean).filter(Boolean);
+    const claimLines = (claims || []).map(clean).filter(Boolean);
+    const complaintLines = [
+      ...(negative || []).map(clean),
+      ...(complaints || []).map(clean),
+    ].filter(Boolean);
 
     return {
       ...base,
@@ -3109,17 +3144,15 @@
       niche,
       affiliateLink,
       keyFeatures: brief
-        ? [brief.review_summary, positive.length ? "Positive signals: " + positive.map(clean).join("; ") : "", claims.length ? "Common claims: " + claims.map(clean).join("; ") : ""].filter(Boolean).join("\n")
+        ? [...positiveLines, ...claimLines].filter(Boolean).join("\n")
         : base.keyFeatures,
-      commonComplaints: brief
-        ? [negative.length ? "Negative signals: " + negative.map(clean).join("; ") : "", complaints.length ? "Common complaints: " + complaints.map(clean).join("; ") : ""].filter(Boolean).join("\n")
-        : base.commonComplaints,
+      commonComplaints: brief ? complaintLines.join("\n") : base.commonComplaints,
       targetAudience: brief ? clean(brief.target_audience || brief.who_it_may_help) : base.targetAudience,
-      uniqueSellingPoint: brief ? clean(angles[0] || brief.review_summary) : base.uniqueSellingPoint,
-      commonPraises: positive.map(clean).join("; ") || base.commonPraises,
+      uniqueSellingPoint: base.uniqueSellingPoint || "",
+      commonPraises: positiveLines.join("\n") || base.commonPraises,
       whoNotFor: brief ? clean(brief.who_should_skip_it) : base.whoNotFor,
       cta: brief ? clean(brief.cta_guidance) : base.cta,
-      keywords: base.keywords || [productName, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"].filter(Boolean).join(", "),
+      keywords: base.keywords || [productName, niche, "review", "pros and cons", "worth it"].filter(Boolean).join(", "),
       reviewBrief: brief,
       reviewSources: payload.review_sources || []
     };
@@ -3127,7 +3160,11 @@
   function hydrate(mapped){
     try {
       if (typeof state !== "undefined" && state) {
-        Object.entries(mapped).forEach(([k,v]) => { if (clean(v)) state[k] = v; });
+        Object.entries(mapped).forEach(([k,v]) => {
+          if (!clean(v)) return;
+          if (k === "uniqueSellingPoint" || k === "unique_selling_point") state.usp = v;
+          else if (k !== "painPoints" && k !== "pain_points") state[k] = v;
+        });
         if ("mode" in state) state.mode = "single";
       }
     } catch {}
@@ -3141,7 +3178,7 @@
       setInput("affiliateLink", mapped.affiliateLink);
       setInput("keywords", mapped.keywords);
       setInput("targetAudience", mapped.targetAudience);
-      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
+      setInput("usp", mapped.uniqueSellingPoint || mapped.usp);
       setInput("commonComplaints", mapped.commonComplaints);
       setInput("commonPraises", mapped.commonPraises);
       setInput("whoNotFor", mapped.whoNotFor);

@@ -225,3 +225,47 @@ def test_digistore_commission_title_in_vendor_materials():
     normalized = normalize_apf_payload(payload)["normalized"]
     assert normalized["productName"] == "CircO2 Nitric Oxide Booster Supplements"
     assert normalized["price"] == "See official offer page"
+
+
+def test_fill_pipeline_rejects_marketplace_niche_and_junk_usp():
+    payload = {
+        "product": {
+            "name": "Earn 60% Commission Promoting CircO2 Nitric Oxide Booster Supplements - health",
+            "category": "Digistore24 Marketplace",
+        },
+        "review_brief": {
+            "price_display": (
+                "$49.95 per box (single purchase) - $134.25 for a bundle with multiple boxes"
+            ),
+            "review_summary": "Trust us, it's for everyone's benefit.",
+            "best_video_angles": [
+                "CircO2 Nitric Oxide Booster Supplements Review; Boost Your Energy and Health with CircO2"
+            ],
+            "positive_signals": [
+                "Nitric oxide levels increase significantly within minutes of use.",
+                'So don\'t bid on "CircO2" brand keywords.',
+            ],
+            "common_claims": ["Trust us, it's for everyone's benefit."],
+        },
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["productName"] == "CircO2 Nitric Oxide Booster Supplements"
+    assert normalized["niche"] == ""
+    assert normalized["price"] == "$49.95"
+    assert normalized["uniqueSellingPoint"] == ""
+    assert "Trust us" not in (normalized.get("commonPraises") or "")
+    assert "don't bid" not in (normalized.get("commonPraises") or "").lower()
+    assert "digistore24 marketplace" not in (normalized.get("keywords") or "").lower()
+
+
+def test_youtube_research_does_not_fill_usp():
+    from research_enrichment import _merge_youtube_research
+
+    product = {"product_name": "CircO2", "unique_selling_point": ""}
+    out = _merge_youtube_research(
+        product,
+        {"recommended_tags": ["nitric oxide"], "recommended_titles": ["CircO2 Review 2026"]},
+    )
+    assert out["keywords"] == ["nitric oxide"]
+    assert not out.get("unique_selling_point")
+    assert out["_youtube_research"]["recommended_titles"][0].startswith("CircO2")
