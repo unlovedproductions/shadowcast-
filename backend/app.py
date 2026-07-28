@@ -227,6 +227,34 @@ async def security_headers_and_rate_limit(request: Request, call_next):
 
 OUTPUT_BASE = Path(__file__).parent / "output"
 OUTPUT_BASE.mkdir(exist_ok=True)
+# Job ids that must never be served via /api/download or /api/files (creds live off-tree now;
+# keep the name blocked so legacy output/credentials cannot be fetched as a "job").
+_PROTECTED_OUTPUT_NAMES = frozenset({"credentials"})
+
+
+def _safe_job_file(job_id: str, rel_path: str) -> Path:
+    """Resolve a job-relative file under OUTPUT_BASE; reject traversal and protected names."""
+    if (
+        not job_id
+        or job_id in _PROTECTED_OUTPUT_NAMES
+        or job_id in {".", ".."}
+        or "/" in job_id
+        or "\\" in job_id
+        or ".." in job_id
+    ):
+        raise HTTPException(status_code=404, detail="File not found")
+    if not rel_path or Path(rel_path).is_absolute():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    output_root = OUTPUT_BASE.resolve()
+    job_root = (OUTPUT_BASE / job_id).resolve()
+    if not job_root.is_relative_to(output_root) or job_root == output_root:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    candidate = (job_root / rel_path).resolve()
+    if not candidate.is_relative_to(job_root):
+        raise HTTPException(status_code=404, detail="File not found")
+    return candidate
 
 # ── Job store (RAM cache + disk persistence) ───────────────────────────
 jobs = {}
@@ -1902,8 +1930,8 @@ def _on_startup_resume_jobs():
 
 @app.get("/api/download/{job_id}/{path:path}")
 def download_file(job_id: str, path: str):
-    file_path = OUTPUT_BASE / job_id / path
-    if not file_path.exists():
+    file_path = _safe_job_file(job_id, path)
+    if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     media_type = "video/mp4" if path.endswith(".mp4") else "application/json"
     if path.endswith(".txt"):
@@ -1915,8 +1943,18 @@ def download_file(job_id: str, path: str):
 
 @app.get("/api/files/{job_id}")
 def list_files(job_id: str):
-    job_dir = OUTPUT_BASE / job_id
-    if not job_dir.exists():
+    if (
+        not job_id
+        or job_id in _PROTECTED_OUTPUT_NAMES
+        or job_id in {".", ".."}
+        or "/" in job_id
+        or "\\" in job_id
+        or ".." in job_id
+    ):
+        raise HTTPException(status_code=404, detail="Job not found")
+    output_root = OUTPUT_BASE.resolve()
+    job_dir = (OUTPUT_BASE / job_id).resolve()
+    if not job_dir.is_relative_to(output_root) or job_dir == output_root or not job_dir.is_dir():
         raise HTTPException(status_code=404, detail="Job not found")
     files = []
     for root, dirs, filenames in os.walk(str(job_dir)):
@@ -1973,14 +2011,19 @@ def social_status():
 @app.get("/api/media/serve")
 def serve_media_for_platforms(path: str):
     """Serve job output files at a stable URL for Instagram video_url requirements."""
-    if ".." in path or path.startswith("/"):
+    if not path or path.startswith("/") or "\\" in path:
         raise HTTPException(status_code=400, detail="Invalid path")
     parts = Path(path).parts
     if len(parts) < 2:
         raise HTTPException(status_code=400, detail="Path must be job_id/relative/file")
     job_id, rel = parts[0], str(Path(*parts[1:]))
-    candidate = OUTPUT_BASE / job_id / rel
-    if candidate.exists() and candidate.is_file():
+    try:
+        candidate = _safe_job_file(job_id, rel)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=400, detail="Invalid path") from exc
+        raise
+    if candidate.is_file():
         media_type = "video/mp4" if path.endswith(".mp4") else "image/png" if path.endswith(".png") else "application/octet-stream"
         return FileResponse(str(candidate), media_type=media_type)
     raise HTTPException(status_code=404, detail="File not found")
@@ -2423,5 +2466,8 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Localhost-only trust model: default bind is loopback. Override with HOST=0.0.0.0 only if intentional.
+    _host = os.getenv("HOST", "127.0.0.1")
+    _port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host=_host, port=_port)
 
