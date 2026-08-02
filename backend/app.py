@@ -232,45 +232,25 @@ async def security_headers_and_rate_limit(request: Request, call_next):
     return response
 
 
-OUTPUT_BASE = Path(__file__).parent / "output"
-OUTPUT_BASE.mkdir(exist_ok=True)
-# Job ids that must never be served via /api/download or /api/files (creds live off-tree now;
-# keep the name blocked so legacy output/credentials cannot be fetched as a "job").
-_PROTECTED_OUTPUT_NAMES = frozenset({"credentials"})
+from path_safety import OUTPUT_BASE, _PROTECTED_OUTPUT_NAMES, _safe_job_file
+from job_store import (
+    JobCancelled,
+    _active_job_threads,
+    _add_job_warning,
+    _job_heartbeats,
+    _job_path,
+    _job_state_lock,
+    _job_thread_lock,
+    _load_job,
+    _output_max_age_days,
+    _raise_if_cancelled,
+    _save_job,
+    _start_job_thread,
+    cleanup_old_job_outputs,
+    jobs,
+)
 
-
-def _safe_job_file(job_id: str, rel_path: str) -> Path:
-    """Resolve a job-relative file under OUTPUT_BASE; reject traversal and protected names."""
-    if (
-        not job_id
-        or job_id in _PROTECTED_OUTPUT_NAMES
-        or job_id in {".", ".."}
-        or "/" in job_id
-        or "\\" in job_id
-        or ".." in job_id
-    ):
-        raise HTTPException(status_code=404, detail="File not found")
-    if not rel_path or Path(rel_path).is_absolute():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    output_root = OUTPUT_BASE.resolve()
-    job_root = (OUTPUT_BASE / job_id).resolve()
-    if not job_root.is_relative_to(output_root) or job_root == output_root:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    candidate = (job_root / rel_path).resolve()
-    if not candidate.is_relative_to(job_root):
-        raise HTTPException(status_code=404, detail="File not found")
-    return candidate
-
-# ── Job store (RAM cache + disk persistence) ───────────────────────────
-jobs = {}
-_active_job_threads = set()
-_job_thread_lock = threading.Lock()
-_job_state_lock = threading.RLock()
-_job_heartbeats: dict[str, float] = {}
-_JOB_HEARTBEAT_STALE_SECONDS = 120
-
+# ── Job store (imported from job_store; path helpers from path_safety) ─
 
 def _batch_workers() -> int:
     """Max concurrent products in a batch job. Default 1 = sequential."""
@@ -398,30 +378,11 @@ def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[L
     return True
 
 
-def _add_job_warning(job: dict, message: str) -> None:
-    with _job_state_lock:
-        job.setdefault("warnings", []).append(message)
-
-
 def _apply_llm_warnings(job: dict) -> None:
     for call in job.get("llm_calls", [])[-8:]:
         if call.get("validator_pass") is False and call.get("validator_errors"):
             detail = "; ".join(str(item) for item in call["validator_errors"][:3])
             _add_job_warning(job, f"LLM validator ({call.get('label', 'call')}): {detail}")
-
-
-def _save_job(job_id: str) -> None:
-    with _job_state_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return
-        _job_heartbeats[job_id] = time.time()
-        path = _job_path(job_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        with open(tmp, "w") as f:
-            json.dump(job, f, indent=2)
-        tmp.replace(path)
 
 
 def _split_job_messages(messages: list) -> tuple[list, list, list]:
@@ -540,13 +501,6 @@ def _finalize_job_status(job_id: str, job_dir: Path, *, done_message: str) -> No
 
     job["progress"] = 100
     _save_job(job_id)
-
-
-def _job_thread_is_stale(job_id: str) -> bool:
-    last = _job_heartbeats.get(job_id)
-    if last is None:
-        return True
-    return (time.time() - last) > _JOB_HEARTBEAT_STALE_SECONDS
 
 
 _VARIANT_MP4_RE = re.compile(r"_(?P<hook>[^_/]+)_(?P<fmt>short_form|long_form)\.mp4$")
@@ -806,54 +760,6 @@ def _generate_scripts_with_retry(
     raise ValueError(f"Generated scripts invalid after {retries + 1} attempts: {last_reason}")
 
 
-class JobCancelled(Exception):
-    """Operator requested cooperative cancellation of a generation job."""
-
-
-def _raise_if_cancelled(job_id: str) -> None:
-    job = jobs.get(job_id)
-    if job is None:
-        job = _load_job(job_id)
-    if job and job.get("cancel_requested"):
-        raise JobCancelled(job_id)
-
-
-def _load_job(job_id: str) -> Optional[dict]:
-    if job_id in jobs:
-        return jobs[job_id]
-    path = _job_path(job_id)
-    if not path.exists():
-        return None
-    try:
-        with open(path) as f:
-            job = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return None
-    jobs[job_id] = job
-    return job
-
-
-def _start_job_thread(job_id: str, target) -> bool:
-    with _job_thread_lock:
-        if job_id in _active_job_threads:
-            if not _job_thread_is_stale(job_id):
-                return False
-            _active_job_threads.discard(job_id)
-        _active_job_threads.add(job_id)
-
-    _job_heartbeats[job_id] = time.time()
-
-    def _runner():
-        try:
-            target(job_id)
-        finally:
-            with _job_thread_lock:
-                _active_job_threads.discard(job_id)
-
-    threading.Thread(target=_runner, daemon=True).start()
-    return True
-
-
 def _resume_incomplete_jobs() -> None:
     if not OUTPUT_BASE.exists():
         return
@@ -874,80 +780,6 @@ def _resume_incomplete_jobs() -> None:
             _start_job_thread(job_id, _run_batch_generation)
         else:
             _start_job_thread(job_id, _run_generation)
-
-
-def _output_max_age_days() -> Optional[float]:
-    """Return retention days from env, or None when GC is disabled."""
-    raw = (os.getenv("SHADOWCAST_OUTPUT_MAX_AGE_DAYS") or "").strip()
-    if not raw:
-        return None
-    try:
-        days = float(raw)
-    except ValueError:
-        logging.warning("Invalid SHADOWCAST_OUTPUT_MAX_AGE_DAYS=%r; output GC disabled", raw)
-        return None
-    if days <= 0:
-        return None
-    return days
-
-
-def cleanup_old_job_outputs(
-    *,
-    output_base: Optional[Path] = None,
-    max_age_days: Optional[float] = None,
-    now_ts: Optional[float] = None,
-) -> int:
-    """Delete aged job dirs under OUTPUT_BASE. Returns count removed.
-
-    Off unless SHADOWCAST_OUTPUT_MAX_AGE_DAYS > 0 (or max_age_days is passed).
-    Skips protected names, root files (e.g. analytics.json), and running/active jobs.
-    Never touches backend/credentials/.
-    """
-    base = OUTPUT_BASE if output_base is None else output_base
-    days = _output_max_age_days() if max_age_days is None else max_age_days
-    if days is None or days <= 0 or not base.exists():
-        return 0
-
-    cutoff = (time.time() if now_ts is None else now_ts) - (days * 86400.0)
-    with _job_thread_lock:
-        active_ids = set(_active_job_threads)
-    deleted = 0
-
-    for job_dir in list(base.iterdir()):
-        if not job_dir.is_dir():
-            continue
-        name = job_dir.name
-        if name in _PROTECTED_OUTPUT_NAMES or name in {".", ".."}:
-            continue
-        job_json = job_dir / "job.json"
-        if not job_json.is_file():
-            continue
-        try:
-            mtime = job_json.stat().st_mtime
-        except OSError:
-            continue
-        if mtime >= cutoff:
-            continue
-        if name in active_ids:
-            continue
-        mem_job = jobs.get(name) or {}
-        if mem_job.get("status") == "running":
-            continue
-        try:
-            disk_job = json.loads(job_json.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError):
-            disk_job = {}
-        if isinstance(disk_job, dict) and disk_job.get("status") == "running":
-            continue
-        try:
-            shutil.rmtree(job_dir)
-        except OSError as exc:
-            logging.warning("Output GC failed for %s: %s", name, exc)
-            continue
-        jobs.pop(name, None)
-        deleted += 1
-        logging.info("Output GC removed aged job dir: %s", name)
-    return deleted
 
 
 # ── Helpers ────────────────────────────────────────────────────────────

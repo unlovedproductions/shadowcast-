@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app import OUTPUT_BASE, _safe_job_file, app  # noqa: E402
+from app import app  # noqa: E402
+from path_safety import OUTPUT_BASE, _safe_job_file  # noqa: E402
 from credentials_store import (  # noqa: E402
     DEFAULT_STORE_DIR,
     CredentialsStore,
@@ -47,7 +48,7 @@ def test_encryption_secret_dev_escape(monkeypatch):
 
 
 def test_safe_job_file_blocks_credentials_and_traversal(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.OUTPUT_BASE", tmp_path)
+    monkeypatch.setattr("path_safety.OUTPUT_BASE", tmp_path)
     (tmp_path / "credentials").mkdir()
     (tmp_path / "credentials" / "youtube.json").write_text("secret", encoding="utf-8")
     job = tmp_path / "abc123"
@@ -65,7 +66,7 @@ def test_safe_job_file_blocks_credentials_and_traversal(tmp_path, monkeypatch):
 
 
 def test_download_rejects_credentials_job(client, tmp_path, monkeypatch):
-    monkeypatch.setattr("app.OUTPUT_BASE", tmp_path)
+    monkeypatch.setattr("path_safety.OUTPUT_BASE", tmp_path)
     cred = tmp_path / "credentials"
     cred.mkdir()
     (cred / "youtube.json").write_text("nope", encoding="utf-8")
@@ -74,7 +75,7 @@ def test_download_rejects_credentials_job(client, tmp_path, monkeypatch):
 
 
 def test_download_rejects_traversal(client, tmp_path, monkeypatch):
-    monkeypatch.setattr("app.OUTPUT_BASE", tmp_path)
+    monkeypatch.setattr("path_safety.OUTPUT_BASE", tmp_path)
     job = tmp_path / "job1"
     job.mkdir()
     (job / "a.txt").write_text("a", encoding="utf-8")
