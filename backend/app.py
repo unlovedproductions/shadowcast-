@@ -18,6 +18,7 @@ import threading
 import traceback
 import zipfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -266,8 +267,20 @@ def _safe_job_file(job_id: str, rel_path: str) -> Path:
 jobs = {}
 _active_job_threads = set()
 _job_thread_lock = threading.Lock()
+_job_state_lock = threading.RLock()
 _job_heartbeats: dict[str, float] = {}
 _JOB_HEARTBEAT_STALE_SECONDS = 120
+
+
+def _batch_workers() -> int:
+    """Max concurrent products in a batch job. Default 1 = sequential."""
+    raw = (os.getenv("SHADOWCAST_BATCH_WORKERS") or "1").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        logging.warning("Invalid SHADOWCAST_BATCH_WORKERS=%r; using 1", raw)
+        return 1
+    return 1 if n < 1 else n
 
 
 def _job_path(job_id: str) -> Path:
@@ -386,7 +399,8 @@ def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[L
 
 
 def _add_job_warning(job: dict, message: str) -> None:
-    job.setdefault("warnings", []).append(message)
+    with _job_state_lock:
+        job.setdefault("warnings", []).append(message)
 
 
 def _apply_llm_warnings(job: dict) -> None:
@@ -397,16 +411,17 @@ def _apply_llm_warnings(job: dict) -> None:
 
 
 def _save_job(job_id: str) -> None:
-    job = jobs.get(job_id)
-    if not job:
-        return
-    _job_heartbeats[job_id] = time.time()
-    path = _job_path(job_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    with open(tmp, "w") as f:
-        json.dump(job, f, indent=2)
-    tmp.replace(path)
+    with _job_state_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return
+        _job_heartbeats[job_id] = time.time()
+        path = _job_path(job_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(job, f, indent=2)
+        tmp.replace(path)
 
 
 def _split_job_messages(messages: list) -> tuple[list, list, list]:
@@ -1410,33 +1425,91 @@ def _run_batch_generation(job_id: str):
 
     steps_per = _steps_per_product(hook_types, formats)
     total_steps = steps_per * len(products)
-    step_offset = 0
+    workers = min(_batch_workers(), max(len(products), 1))
+    render_kwargs = dict(
+        audio_enabled=job.get("audio_enabled", True),
+        audio_mood=job.get("audio_mood", "auto"),
+        use_tts=job.get("use_tts", False),
+        tts_provider=job.get("tts_provider", "auto"),
+        tts_voice=job.get("tts_voice"),
+        video_preset=job.get("video_preset", "medium"),
+    )
+
+    def _process_product(index: int, product: dict):
+        _raise_if_cancelled(job_id)
+        slug = slugify(product["product_name"])
+        product_dir = job_dir / slug
+        product_dir.mkdir(exist_ok=True)
+        with _job_state_lock:
+            job["current_step"] = (
+                f"Product {index + 1}/{len(products)}: {product['product_name']}"
+            )
+            _save_job(job_id)
+        result, _ = _run_single_product(
+            job_id,
+            product,
+            product_dir,
+            hook_types,
+            formats,
+            content_style,
+            index * steps_per,
+            total_steps,
+            **render_kwargs,
+        )
+        return result
 
     try:
         all_product_results = []
 
-        for i, product in enumerate(products):
-            _raise_if_cancelled(job_id)
-            slug = slugify(product["product_name"])
-            product_dir = job_dir / slug
-            product_dir.mkdir(exist_ok=True)
+        if workers == 1:
+            step_offset = 0
+            for i, product in enumerate(products):
+                _raise_if_cancelled(job_id)
+                slug = slugify(product["product_name"])
+                product_dir = job_dir / slug
+                product_dir.mkdir(exist_ok=True)
 
-            job["current_step"] = f"Product {i+1}/{len(products)}: {product['product_name']}"
-            _save_job(job_id)
+                job["current_step"] = f"Product {i+1}/{len(products)}: {product['product_name']}"
+                _save_job(job_id)
 
-            result, step_offset = _run_single_product(
-                job_id, product, product_dir, hook_types, formats,
-                content_style, step_offset, total_steps,
-                audio_enabled=job.get("audio_enabled", True),
-                audio_mood=job.get("audio_mood", "auto"),
-                use_tts=job.get("use_tts", False),
-                tts_provider=job.get("tts_provider", "auto"),
-                tts_voice=job.get("tts_voice"),
-                video_preset=job.get("video_preset", "medium"),
-            )
-            all_product_results.append(result)
-            job["product_results"] = all_product_results
-            _save_job(job_id)
+                result, step_offset = _run_single_product(
+                    job_id, product, product_dir, hook_types, formats,
+                    content_style, step_offset, total_steps,
+                    **render_kwargs,
+                )
+                all_product_results.append(result)
+                job["product_results"] = all_product_results
+                _save_job(job_id)
+        else:
+            slot_results: list = [None] * len(products)
+            cancelled = False
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                future_map = {
+                    executor.submit(_process_product, i, product): i
+                    for i, product in enumerate(products)
+                }
+                for future in as_completed(future_map):
+                    i = future_map[future]
+                    try:
+                        slot_results[i] = future.result()
+                    except JobCancelled:
+                        cancelled = True
+                        for pending in future_map:
+                            pending.cancel()
+                        break
+                    except Exception as exc:
+                        name = products[i].get("product_name", f"product_{i}")
+                        with _job_state_lock:
+                            job.setdefault("errors", []).append(
+                                f"[{name}] Product failed: {exc}"
+                            )
+                        traceback.print_exc()
+                    with _job_state_lock:
+                        job["product_results"] = [r for r in slot_results if r is not None]
+                        _save_job(job_id)
+            if cancelled:
+                raise JobCancelled(job_id)
+            all_product_results = [r for r in slot_results if r is not None]
 
         job["product_results"] = all_product_results
 
