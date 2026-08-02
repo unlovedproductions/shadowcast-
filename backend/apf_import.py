@@ -1,9 +1,10 @@
 """APF payload normalization for ShadowCast ProductInfo."""
 
 import json
+import os
 import re
 
-from content_styles import normalize_content_style, series_name_for_style
+from content_styles import normalize_content_style, series_name_for_style, style_requires_competitors
 
 STYLE_FROM_ANGLE = [
     (("worth it", "hype", "waste"), "worth_it_or_waste"),
@@ -589,3 +590,160 @@ def normalize_apf_payload(payload: dict) -> dict:
         "normalized": normalized,
         "recommended_content_style": recommended_style,
     }
+
+
+_TRUST_SIGNAL_STYLES = frozenset({"honest_review", "elimination", "worth_it_or_waste"})
+_WEAK_PRICE_VALUES = frozenset({"", "varies", "see official offer page", "n/a", "na", "tbd"})
+_PLACEHOLDER_AFFILIATE = frozenset({"", "[your_affiliate_link]", "your_affiliate_link", "n/a", "na"})
+
+_SNAKE_PRODUCT_KEYS = (
+    "product_name",
+    "niche",
+    "key_features",
+    "price",
+    "affiliate_link",
+    "keywords",
+    "target_audience",
+    "product_category",
+    "competitors",
+    "unique_selling_point",
+    "discount_info",
+    "coupon_code",
+    "common_complaints",
+    "common_praises",
+    "who_not_for",
+    "series_name",
+    "price_comparison",
+    "content_style",
+    "amazon_url",
+    "cta",
+)
+
+
+def as_snake_product_info(normalized: dict) -> dict:
+    """Canonical ProductInfo-shaped dict (snake_case only) from APF normalize output."""
+    if not isinstance(normalized, dict):
+        return {}
+    out = {}
+    aliases = {
+        "product_name": ("product_name", "productName"),
+        "niche": ("niche",),
+        "key_features": ("key_features", "keyFeatures"),
+        "price": ("price",),
+        "affiliate_link": ("affiliate_link", "affiliateLink"),
+        "keywords": ("keywords",),
+        "target_audience": ("target_audience", "targetAudience"),
+        "product_category": ("product_category", "productCategory", "niche"),
+        "competitors": ("competitors",),
+        "unique_selling_point": ("unique_selling_point", "uniqueSellingPoint"),
+        "discount_info": ("discount_info", "discountInfo"),
+        "coupon_code": ("coupon_code", "couponCode"),
+        "common_complaints": ("common_complaints", "commonComplaints"),
+        "common_praises": ("common_praises", "commonPraises"),
+        "who_not_for": ("who_not_for", "whoNotFor"),
+        "series_name": ("series_name", "seriesName"),
+        "price_comparison": ("price_comparison", "priceComparison"),
+        "content_style": ("content_style", "contentStyle"),
+        "amazon_url": ("amazon_url", "amazonUrl"),
+        "cta": ("cta",),
+    }
+    for key in _SNAKE_PRODUCT_KEYS:
+        for src in aliases.get(key, (key,)):
+            if src in normalized and normalized[src] not in (None,):
+                out[key] = normalized[src]
+                break
+        else:
+            out[key] = [] if key in ("key_features", "keywords", "competitors") else ""
+    if isinstance(out.get("key_features"), str):
+        text = out["key_features"].strip()
+        out["key_features"] = [line.strip() for line in text.split("\n") if line.strip()] if text else []
+    if isinstance(out.get("keywords"), str):
+        out["keywords"] = [k.strip() for k in re.split(r"[,;]", out["keywords"]) if k.strip()]
+    if isinstance(out.get("competitors"), str):
+        out["competitors"] = [c.strip() for c in re.split(r"[,;]", out["competitors"]) if c.strip()]
+    out["content_style"] = normalize_content_style(out.get("content_style") or "honest_review")
+    if not out.get("product_category"):
+        out["product_category"] = out.get("niche") or "General"
+    return out
+
+
+def _field_blank(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return not str(value).strip()
+
+
+def assess_product_completeness(product: dict, content_style: str | None = None) -> dict:
+    """Return blocking gaps and warnings for generate/import readiness."""
+    info = as_snake_product_info(product)
+    for k in _SNAKE_PRODUCT_KEYS:
+        if k in product and product[k] not in (None,):
+            info[k] = product[k]
+
+    style = normalize_content_style(
+        content_style or info.get("content_style") or product.get("content_style") or "honest_review"
+    )
+    blocking: list[str] = []
+    warnings: list[str] = []
+
+    name = str(info.get("product_name") or product.get("productName") or "").strip()
+    if not name:
+        blocking.append("product_name")
+
+    price = str(info.get("price") or "").strip()
+    if price.lower() in _WEAK_PRICE_VALUES:
+        warnings.append("price")
+
+    affiliate = str(info.get("affiliate_link") or "").strip()
+    if affiliate.lower() in _PLACEHOLDER_AFFILIATE:
+        warnings.append("affiliate_link")
+
+    praises = info.get("common_praises") or ""
+    complaints = info.get("common_complaints") or ""
+    if style in _TRUST_SIGNAL_STYLES and _field_blank(praises) and _field_blank(complaints):
+        warnings.append("common_praises_or_common_complaints")
+
+    if style_requires_competitors(style) and _field_blank(info.get("competitors")):
+        warnings.append("competitors")
+
+    strict = os.getenv("SHADOWCAST_STRICT_PRODUCT_GATE", "").lower() in ("1", "true", "yes")
+    if strict:
+        promoted = []
+        for field in list(warnings):
+            if field in ("common_praises_or_common_complaints", "affiliate_link"):
+                warnings.remove(field)
+                promoted.append(field)
+        blocking.extend(promoted)
+
+    return {
+        "blocking": blocking,
+        "warnings": warnings,
+        "content_style": style,
+        "product_name": name,
+    }
+
+
+def dedupe_products_by_name(products: list) -> tuple[list, list[str]]:
+    """Keep last occurrence per sanitized product name. Returns (deduped, dropped_names)."""
+    by_key: dict[str, dict] = {}
+    order: list[str] = []
+    dropped: list[str] = []
+    for raw in products:
+        if not isinstance(raw, dict):
+            continue
+        info = as_snake_product_info(raw)
+        name = str(info.get("product_name") or raw.get("product_name") or raw.get("productName") or "").strip()
+        if not name:
+            continue
+        key = _sanitize_product_name(name).lower() or name.lower()
+        if key in by_key:
+            dropped.append(name)
+        else:
+            order.append(key)
+        merged = {**info, **{k: raw[k] for k in raw if k in _SNAKE_PRODUCT_KEYS}}
+        merged["product_name"] = name
+        by_key[key] = merged
+    return [by_key[k] for k in order if k in by_key], dropped
+

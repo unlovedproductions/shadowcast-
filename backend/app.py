@@ -77,7 +77,13 @@ from content_styles import (
     style_requires_competitors,
 )
 from script_postprocessor import enrich_script
-from apf_import import extract_apf_product_payloads, normalize_apf_payload
+from apf_import import (
+    assess_product_completeness,
+    as_snake_product_info,
+    dedupe_products_by_name,
+    extract_apf_product_payloads,
+    normalize_apf_payload,
+)
 from video_renderer import render_short_form_video, render_long_form_video, resolve_video_preset
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
@@ -922,6 +928,50 @@ def parse_csv_products(csv_text: str) -> List[dict]:
     return products
 
 
+def _completeness_gate(product: dict, content_style: str | None = None) -> list[str]:
+    """Raise HTTP 422 on blocking gaps; return warning field names."""
+    assessment = assess_product_completeness(product, content_style)
+    if assessment["blocking"]:
+        name = assessment.get("product_name") or product.get("product_name") or "(unnamed)"
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": f"Product incomplete for generate: {name}",
+                "blocking": assessment["blocking"],
+                "warnings": assessment["warnings"],
+                "content_style": assessment["content_style"],
+            },
+        )
+    return assessment["warnings"]
+
+
+def _prepare_products_for_generate(
+    products: list[dict],
+    *,
+    default_style: str,
+) -> tuple[list[dict], list[str]]:
+    deduped, dropped = dedupe_products_by_name(products)
+    warnings: list[str] = []
+    if dropped:
+        warnings.append(f"Dropped {len(dropped)} duplicate product name(s): {', '.join(dropped[:5])}")
+    prepared = []
+    for product in deduped:
+        item = as_snake_product_info(product)
+        item.update({k: product[k] for k in product if k.startswith("_")})
+        if not item.get("product_category"):
+            item["product_category"] = item.get("niche", "General")
+        item["content_style"] = normalize_content_style(
+            item.get("content_style") or default_style
+        )
+        field_warnings = _completeness_gate(item, item["content_style"])
+        for field in field_warnings:
+            warnings.append(f"{item.get('product_name', '?')}: weak/missing {field}")
+        prepared.append(item)
+    if not prepared:
+        raise HTTPException(status_code=400, detail="No valid products after completeness/dedupe.")
+    return prepared, warnings
+
+
 # ── Single Product Generation Worker ──────────────────────────────────
 def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         hook_types: list, formats: list,
@@ -955,8 +1005,13 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     all_scripts = {}
     all_yt_packages = {}
     product_results = {"product_name": product["product_name"], "hooks": {}}
+    phase_timings_ms: dict[str, float] = {}
+
+    def _mark_phase(name: str, started: float) -> None:
+        phase_timings_ms[name] = round((time.perf_counter() - started) * 1000, 1)
 
     # Phase 1: Scripts
+    _phase_t0 = time.perf_counter()
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
@@ -1027,7 +1082,10 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
         job["progress"] = int(step / total_steps * 100)
         _save_job(job_id)
 
+    _mark_phase("scripts", _phase_t0)
+
     # Phase 2: Videos
+    _phase_t0 = time.perf_counter()
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
@@ -1082,7 +1140,10 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             job["progress"] = int(step / total_steps * 100)
             _save_job(job_id)
 
+    _mark_phase("videos", _phase_t0)
+
     # Phase 3: YouTube Assets
+    _phase_t0 = time.perf_counter()
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
@@ -1158,7 +1219,10 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             job["progress"] = int(step / total_steps * 100)
             _save_job(job_id)
 
+    _mark_phase("youtube_assets", _phase_t0)
+
     # Phase 4: Thumbnails
+    _phase_t0 = time.perf_counter()
     _raise_if_cancelled(job_id)
     job["current_step"] = f"[{product['product_name']}] Generating thumbnails..."
     _save_job(job_id)
@@ -1199,6 +1263,12 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
         except Exception as e:
             job["errors"].append(f"[{product['product_name']}] Thumbnails ({hook_type}): {str(e)}")
             traceback.print_exc()
+
+    _mark_phase("thumbnails", _phase_t0)
+    product_results["phase_timings_ms"] = phase_timings_ms
+    job.setdefault("phase_timings", []).append(
+        {"product_name": product["product_name"], **phase_timings_ms}
+    )
 
     # Save combined posting package
     try:
@@ -1566,16 +1636,14 @@ def start_generation(req: GenerateRequest):
     job_dir.mkdir(exist_ok=True)
 
     product = req.product_info.dict()
-    if not product.get("product_category"):
-        product["product_category"] = product.get("niche", "General")
     req_style = normalize_content_style(req.content_style)
-    product_style = normalize_content_style(product.get("content_style") or req_style)
-    if not product.get("content_style") or normalize_content_style(product["content_style"]) == DEFAULT_CONTENT_STYLE:
-        product["content_style"] = req_style
-    else:
-        product["content_style"] = product_style
+    prepared, completeness_warnings = _prepare_products_for_generate(
+        [product],
+        default_style=req_style,
+    )
+    product = prepared[0]
 
-    warnings = []
+    warnings = list(completeness_warnings)
     if style_requires_competitors(product["content_style"]) and not product.get("competitors"):
         warnings.append(
             "Competitors recommended for this content style — import from APF or add manually."
@@ -1592,7 +1660,8 @@ def start_generation(req: GenerateRequest):
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
-        "results": {}, "errors": [], "warnings": [],
+        "results": {}, "errors": [], "warnings": warnings,
+        "phase_timings": [],
         "created_at": time.time(),
     }
     _save_job(job_id)
@@ -1632,6 +1701,8 @@ async def batch_upload(
 
     hook_list = [h.strip() for h in hook_types.split(",") if h.strip()]
     fmt_list = [f.strip() for f in formats.split(",") if f.strip()]
+    style = normalize_content_style(content_style)
+    products, completeness_warnings = _prepare_products_for_generate(products, default_style=style)
 
     job_id = str(uuid.uuid4())[:8]
     job_dir = OUTPUT_BASE / job_id
@@ -1642,7 +1713,7 @@ async def batch_upload(
         "status": "running", "progress": 0,
         "current_step": f"Starting batch: {len(products)} products...",
         "products": products, "hook_types": hook_list,
-        "formats": fmt_list, "content_style": content_style,
+        "formats": fmt_list, "content_style": style,
         "audio_enabled": audio_enabled,
         "audio_mood": audio_mood,
         "use_tts": use_tts,
@@ -1650,7 +1721,8 @@ async def batch_upload(
         "tts_voice": tts_voice or None,
         "video_preset": resolve_video_preset(video_preset),
         "product_results": [],
-        "errors": [], "warnings": [], "created_at": time.time(),
+        "errors": [], "warnings": completeness_warnings, "created_at": time.time(),
+        "phase_timings": [],
     }
     _save_job(job_id)
 
@@ -1661,6 +1733,7 @@ async def batch_upload(
         "job_id": job_id, "status": "running", "mode": "batch",
         "product_count": len(products),
         "products_found": [p["product_name"] for p in products],
+        "warnings": completeness_warnings,
     }
 
 
@@ -1720,15 +1793,12 @@ async def import_apf(file: UploadFile = File(...)):
 @app.post("/api/batch-generate")
 def batch_generate(req: BatchGenerateRequest):
     _ensure_generation_ready()
-    products = []
-    for p in req.products:
-        item = p.dict()
-        if not item.get("product_category"):
-            item["product_category"] = item.get("niche", "General")
-        item["content_style"] = normalize_content_style(
-            item.get("content_style") or req.content_style
-        )
-        products.append(item)
+    style = normalize_content_style(req.content_style)
+    raw_products = [p.dict() for p in req.products]
+    products, completeness_warnings = _prepare_products_for_generate(
+        raw_products,
+        default_style=style,
+    )
 
     job_id = str(uuid.uuid4())[:8]
     job_dir = OUTPUT_BASE / job_id
@@ -1739,7 +1809,7 @@ def batch_generate(req: BatchGenerateRequest):
         "status": "running", "progress": 0,
         "current_step": f"Starting batch: {len(products)} products...",
         "products": products, "hook_types": req.hook_types,
-        "formats": req.formats, "content_style": normalize_content_style(req.content_style),
+        "formats": req.formats, "content_style": style,
         "audio_enabled": req.audio_enabled,
         "audio_mood": req.audio_mood,
         "use_tts": req.use_tts,
@@ -1747,7 +1817,8 @@ def batch_generate(req: BatchGenerateRequest):
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
         "product_results": [],
-        "errors": [], "warnings": [], "created_at": time.time(),
+        "errors": [], "warnings": completeness_warnings, "created_at": time.time(),
+        "phase_timings": [],
     }
     _save_job(job_id)
 
@@ -1758,6 +1829,7 @@ def batch_generate(req: BatchGenerateRequest):
         "job_id": job_id, "status": "running", "mode": "batch",
         "product_count": len(products),
         "products_found": [p["product_name"] for p in products],
+        "warnings": completeness_warnings,
     }
 
 
@@ -2349,10 +2421,14 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
         for item in product_payloads:
             import_result = normalize_apf_payload(item if isinstance(item, dict) else {"product": item})
             normalized = import_result["normalized"]
-            if not normalized.get("productName"):
+            if not normalized.get("productName") and not normalized.get("product_name"):
                 continue
+            snake = as_snake_product_info(normalized)
+            assessment = assess_product_completeness(snake)
             products.append({
                 "normalized": normalized,
+                "product_info": snake,
+                "completeness": assessment,
                 "recommended_content_style": import_result["recommended_content_style"],
                 "payload": item,
             })
@@ -2378,10 +2454,24 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
             "batch": True,
             "token": token,
             "product_count": len(products),
-            "productName": products[0]["normalized"].get("productName"),
-            "product_names": [p["normalized"].get("productName") for p in products],
+            "productName": products[0]["normalized"].get("productName")
+            or products[0]["normalized"].get("product_name"),
+            "product_names": [
+                p["normalized"].get("productName") or p["normalized"].get("product_name")
+                for p in products
+            ],
             "recommended_content_style": products[0]["recommended_content_style"],
             "normalized": products[0]["normalized"],
+            "product_info": products[0].get("product_info"),
+            "completeness_warnings": [
+                {
+                    "product_name": p.get("completeness", {}).get("product_name"),
+                    "warnings": p.get("completeness", {}).get("warnings", []),
+                    "blocking": p.get("completeness", {}).get("blocking", []),
+                }
+                for p in products
+                if p.get("completeness", {}).get("warnings") or p.get("completeness", {}).get("blocking")
+            ],
             "open_url": f"{base}/?apf_draft={token}",
         }
 
@@ -2390,8 +2480,11 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
     normalized = import_result["normalized"]
     recommended_content_style = import_result["recommended_content_style"]
 
-    if not normalized.get("productName"):
+    if not normalized.get("productName") and not normalized.get("product_name"):
         raise _UnlovedHTTPException(status_code=400, detail="APF payload did not include a product name.")
+
+    snake = as_snake_product_info(normalized)
+    assessment = assess_product_completeness(snake)
 
     doc = {
         "ok": True,
@@ -2399,6 +2492,8 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
         "created_at": _unloved_datetime.now(_unloved_timezone.utc).isoformat(),
         "payload": payload,
         "normalized": normalized,
+        "product_info": snake,
+        "completeness": assessment,
         "recommended_content_style": recommended_content_style,
     }
 
@@ -2409,9 +2504,11 @@ async def unloved_apf_direct_import(request: _UnlovedRequest):
     return {
         "ok": True,
         "token": token,
-        "productName": normalized.get("productName"),
+        "productName": normalized.get("productName") or normalized.get("product_name"),
         "recommended_content_style": recommended_content_style,
         "normalized": normalized,
+        "product_info": snake,
+        "completeness": assessment,
         "open_url": f"{base}/?apf_draft={token}",
     }
 

@@ -13,7 +13,6 @@ from llm_config import (
     get_config,
     get_provider_defaults,
     parse_llm_json,
-    set_config,
     supports_json_response_format,
 )
 from llm_context import append_llm_call, get_job_id
@@ -88,11 +87,9 @@ def chat_completion(
     fallback_used = False
 
     for index, provider in enumerate(_provider_attempt_order()):
-        cfg = _config_for_provider(provider, original)
+        active = _config_for_provider(provider, original)
         if index > 0:
             fallback_used = True
-        set_config(provider=cfg.provider, api_key=cfg.api_key, base_url=cfg.base_url, model=cfg.model)
-        active = get_config()
         defaults = get_provider_defaults(active.provider)
         client = active.get_client()
 
@@ -143,12 +140,6 @@ def chat_completion(
                         fallback_used=fallback_used,
                     )
                 )
-            set_config(
-                provider=original.provider,
-                api_key=original.api_key,
-                base_url=original.base_url,
-                model=original.model,
-            )
             return content
         except Exception as exc:
             last_error = str(exc)
@@ -172,12 +163,6 @@ def chat_completion(
                 )
             continue
 
-    set_config(
-        provider=original.provider,
-        api_key=original.api_key,
-        base_url=original.base_url,
-        model=original.model,
-    )
     raise RuntimeError(last_error)
 
 
@@ -285,7 +270,13 @@ def chat_completion_json(
                 error="LLM output failed validation",
             )
         )
-    return last_parsed
+    detail = "; ".join(last_validator_errors) if last_validator_errors else ""
+    raw = last_parsed.get("__raw", "") if isinstance(last_parsed, dict) else ""
+    raise RuntimeError(
+        f"LLM JSON failed after {retries + 1} attempts"
+        + (f": {detail}" if detail else "")
+        + (f" ({raw[:200]})" if raw else "")
+    )
 
 
 def test_chat_completion(timeout: float = 10.0) -> tuple[bool, str, Optional[str]]:
