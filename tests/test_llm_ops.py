@@ -81,6 +81,17 @@ def test_job_token_budget_env(monkeypatch):
     assert get_job_token_budget() == 5000
 
 
+def test_chat_completion_json_raises_after_exhausted_retries(monkeypatch):
+    from llm_client import chat_completion_json
+
+    monkeypatch.setattr(
+        "llm_client.chat_completion",
+        lambda *args, **kwargs: "not-json-at-all {{{",
+    )
+    with pytest.raises(RuntimeError, match="LLM JSON failed"):
+        chat_completion_json("sys", "user", max_retries=0, required_keys=["seo_title"])
+
+
 def test_build_call_record_shape():
     record = build_call_record(
         call_label="script",

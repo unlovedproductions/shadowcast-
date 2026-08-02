@@ -3,7 +3,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from apf_import import extract_apf_product_payloads, normalize_apf_payload
+from apf_import import (
+    as_snake_product_info,
+    assess_product_completeness,
+    dedupe_products_by_name,
+    extract_apf_product_payloads,
+    normalize_apf_payload,
+)
 
 
 def test_maps_review_brief_fields():
@@ -269,3 +275,52 @@ def test_youtube_research_does_not_fill_usp():
     assert out["keywords"] == ["nitric oxide"]
     assert not out.get("unique_selling_point")
     assert out["_youtube_research"]["recommended_titles"][0].startswith("CircO2")
+
+
+def test_as_snake_product_info_drops_dual_schema_noise():
+    payload = {
+        "product": {
+            "name": "Clean Offer",
+            "affiliate_url": "https://example.com/hop",
+        },
+        "review_brief": {
+            "price_display": "$19.00",
+            "positive_signals": ["Works"],
+            "recommended_content_style": "honest_review",
+        },
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    snake = as_snake_product_info(normalized)
+    assert "productName" not in snake
+    assert snake["product_name"] == "Clean Offer"
+    assert snake["affiliate_link"] == "https://example.com/hop"
+    assert snake["price"] == "$19.00"
+
+
+def test_assess_completeness_warns_on_thin_trust_product():
+    assessment = assess_product_completeness(
+        {
+            "product_name": "Thin Product",
+            "content_style": "honest_review",
+            "price": "Varies",
+            "affiliate_link": "[YOUR_AFFILIATE_LINK]",
+        }
+    )
+    assert assessment["blocking"] == []
+    assert "common_praises_or_common_complaints" in assessment["warnings"]
+    assert "price" in assessment["warnings"]
+    assert "affiliate_link" in assessment["warnings"]
+
+
+def test_dedupe_products_by_name_keeps_last():
+    products, dropped = dedupe_products_by_name(
+        [
+            {"product_name": "Same Thing", "price": "$1"},
+            {"product_name": "Same Thing", "price": "$2"},
+            {"product_name": "Other", "price": "$3"},
+        ]
+    )
+    assert len(products) == 2
+    assert len(dropped) == 1
+    same = next(p for p in products if p["product_name"] == "Same Thing")
+    assert same["price"] == "$2"
