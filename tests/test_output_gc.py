@@ -8,7 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app import (  # noqa: E402
+from job_store import (  # noqa: E402
+    _active_job_threads,
     _output_max_age_days,
     cleanup_old_job_outputs,
     jobs,
@@ -78,7 +79,7 @@ def test_cleanup_skips_active_thread_and_noop_when_disabled(tmp_path, monkeypatc
     old = now - (30 * 86400)
     _write_job(tmp_path / "active_old", "complete", mtime=old)
 
-    monkeypatch.setattr("app._active_job_threads", {"active_old"})
+    monkeypatch.setattr("job_store._active_job_threads", {"active_old"})
     assert cleanup_old_job_outputs(output_base=tmp_path, max_age_days=14, now_ts=now) == 0
     assert (tmp_path / "active_old").exists()
 
