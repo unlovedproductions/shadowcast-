@@ -861,6 +861,80 @@ def _resume_incomplete_jobs() -> None:
             _start_job_thread(job_id, _run_generation)
 
 
+def _output_max_age_days() -> Optional[float]:
+    """Return retention days from env, or None when GC is disabled."""
+    raw = (os.getenv("SHADOWCAST_OUTPUT_MAX_AGE_DAYS") or "").strip()
+    if not raw:
+        return None
+    try:
+        days = float(raw)
+    except ValueError:
+        logging.warning("Invalid SHADOWCAST_OUTPUT_MAX_AGE_DAYS=%r; output GC disabled", raw)
+        return None
+    if days <= 0:
+        return None
+    return days
+
+
+def cleanup_old_job_outputs(
+    *,
+    output_base: Optional[Path] = None,
+    max_age_days: Optional[float] = None,
+    now_ts: Optional[float] = None,
+) -> int:
+    """Delete aged job dirs under OUTPUT_BASE. Returns count removed.
+
+    Off unless SHADOWCAST_OUTPUT_MAX_AGE_DAYS > 0 (or max_age_days is passed).
+    Skips protected names, root files (e.g. analytics.json), and running/active jobs.
+    Never touches backend/credentials/.
+    """
+    base = OUTPUT_BASE if output_base is None else output_base
+    days = _output_max_age_days() if max_age_days is None else max_age_days
+    if days is None or days <= 0 or not base.exists():
+        return 0
+
+    cutoff = (time.time() if now_ts is None else now_ts) - (days * 86400.0)
+    with _job_thread_lock:
+        active_ids = set(_active_job_threads)
+    deleted = 0
+
+    for job_dir in list(base.iterdir()):
+        if not job_dir.is_dir():
+            continue
+        name = job_dir.name
+        if name in _PROTECTED_OUTPUT_NAMES or name in {".", ".."}:
+            continue
+        job_json = job_dir / "job.json"
+        if not job_json.is_file():
+            continue
+        try:
+            mtime = job_json.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        if name in active_ids:
+            continue
+        mem_job = jobs.get(name) or {}
+        if mem_job.get("status") == "running":
+            continue
+        try:
+            disk_job = json.loads(job_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            disk_job = {}
+        if isinstance(disk_job, dict) and disk_job.get("status") == "running":
+            continue
+        try:
+            shutil.rmtree(job_dir)
+        except OSError as exc:
+            logging.warning("Output GC failed for %s: %s", name, exc)
+            continue
+        jobs.pop(name, None)
+        deleted += 1
+        logging.info("Output GC removed aged job dir: %s", name)
+    return deleted
+
+
 # ── Helpers ────────────────────────────────────────────────────────────
 def slugify(text: str) -> str:
     text = text.strip().lower()
@@ -1997,6 +2071,7 @@ def get_job_audit(job_id: str, refresh: bool = False):
 
 @app.on_event("startup")
 def _on_startup_resume_jobs():
+    cleanup_old_job_outputs()
     _resume_incomplete_jobs()
 
 
