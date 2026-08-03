@@ -19,6 +19,7 @@ import traceback
 import zipfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -110,6 +111,14 @@ _oauth_rate_buckets: dict[str, list[float]] = defaultdict(list)
 _OAUTH_RATE_LIMIT = 60
 _OAUTH_RATE_WINDOW = 60.0
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    cleanup_old_job_outputs()
+    _resume_incomplete_jobs()
+    yield
+
+
 app = FastAPI(
     title="ShadowCast by Unloved Productions",
     version="4.0",
@@ -118,6 +127,7 @@ app = FastAPI(
         "video rendering, publishing, and analytics."
     ),
     servers=[{"url": "/", "description": "Current deployment host"}],
+    lifespan=lifespan,
 )
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
@@ -1974,12 +1984,6 @@ def get_job_audit(job_id: str, refresh: bool = False):
         "audit": audit_result,
         "summary": _summarize_job_output(job),
     }
-
-
-@app.on_event("startup")
-def _on_startup_resume_jobs():
-    cleanup_old_job_outputs()
-    _resume_incomplete_jobs()
 
 
 @app.get("/api/download/{job_id}/{path:path}")

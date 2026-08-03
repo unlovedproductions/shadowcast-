@@ -43,6 +43,20 @@ class TestOpsRoutes:
         assert data["app"] == "ShadowCast"
         assert "version" in data
 
+    def test_lifespan_runs_cleanup_and_resume(self, monkeypatch):
+        called = {"cleanup": 0, "resume": 0}
+
+        monkeypatch.setattr("app.cleanup_old_job_outputs", lambda: called.__setitem__("cleanup", called["cleanup"] + 1))
+        monkeypatch.setattr("app._resume_incomplete_jobs", lambda: called.__setitem__("resume", called["resume"] + 1))
+        monkeypatch.delenv("INTERNAL_SERVICE_SECRET", raising=False)
+
+        with TestClient(app) as lifespan_client:
+            res = lifespan_client.get("/api/health")
+            assert res.status_code == 200
+
+        assert called["cleanup"] == 1
+        assert called["resume"] == 1
+
     def test_openapi_json_available(self, client):
         res = client.get("/api/openapi.json")
         assert res.status_code == 200
