@@ -16,6 +16,12 @@ def _is_blank(value: Any) -> bool:
     return not str(value or "").strip()
 
 
+def _append_warning(product: dict, message: str) -> None:
+    warnings = product.setdefault("_research_warnings", [])
+    if message and message not in warnings:
+        warnings.append(message)
+
+
 def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
     out = dict(product)
     if scraped.get("product_name") and _is_blank(out.get("product_name")):
@@ -42,6 +48,8 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
         "positive_count": len(positives),
         "negative_count": len(negatives),
     }
+    if not positives and not negatives:
+        _append_warning(out, "Amazon scrape returned no review signals.")
     return out
 
 
@@ -57,6 +65,8 @@ def _merge_youtube_research(product: dict, research: dict) -> dict:
         "recommended_titles": titles[:5],
         "question_keywords": (research.get("question_keywords") or [])[:10],
     }
+    if not tags and not titles:
+        _append_warning(out, "YouTube research returned no tags or titles.")
     return out
 
 
@@ -88,6 +98,7 @@ async def enrich_product_research_async(
     research_dir: Optional[Path] = None,
 ) -> dict:
     enriched = dict(product)
+    enriched.setdefault("_research_warnings", [])
     store = None
     if research_dir is not None:
         cfg = get_config()
@@ -100,20 +111,45 @@ async def enrich_product_research_async(
             enriched = _merge_amazon_scrape(enriched, scraped)
             if store is not None:
                 store.ingest_scrape(scraped)
+        else:
+            detail = ""
+            if isinstance(scraped, dict):
+                detail = str(scraped.get("error") or "").strip()
+            _append_warning(
+                enriched,
+                f"Amazon scrape failed{': ' + detail if detail else '.'}".rstrip("."),
+            )
 
     name = str(enriched.get("product_name") or "").strip()
-    needs_yt = _is_blank(enriched.get("keywords")) or _is_blank(enriched.get("unique_selling_point"))
+    # Keywords only — blank USP is intentional and must not force YT research.
+    needs_yt = _is_blank(enriched.get("keywords"))
     if name and needs_yt:
         research = await research_youtube_keywords(name)
         if isinstance(research, dict):
             enriched = _merge_youtube_research(enriched, research)
             if store is not None:
                 store.ingest_youtube(research)
+        else:
+            _append_warning(enriched, "YouTube research returned an empty response.")
+    elif needs_yt and not name:
+        _append_warning(enriched, "Skipped YouTube research: product name is blank.")
 
     if store is not None and store.chunks:
         store.save()
         retrieved = store.retrieve_for_product(name or "product")
         enriched = _apply_retrieved_research(enriched, retrieved)
+        if not retrieved:
+            _append_warning(enriched, "Research store had chunks but retrieve returned none.")
+
+    # Soft signal when enrichment produced no secondary research artifacts at all.
+    has_signals = bool(
+        enriched.get("_amazon_scrape")
+        or enriched.get("_youtube_research")
+        or enriched.get("_retrieved_research")
+    )
+    if amazon_url or needs_yt:
+        if not has_signals and not enriched.get("_research_warnings"):
+            _append_warning(enriched, "Research enrichment produced no usable signals.")
 
     return enriched
 

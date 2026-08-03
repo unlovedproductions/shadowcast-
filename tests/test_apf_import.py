@@ -277,6 +277,43 @@ def test_youtube_research_does_not_fill_usp():
     assert out["_youtube_research"]["recommended_titles"][0].startswith("CircO2")
 
 
+def test_enrichment_skips_yt_when_keywords_present(monkeypatch):
+    from research_enrichment import enrich_product_research
+
+    called = {"yt": False}
+
+    async def _boom(_query):
+        called["yt"] = True
+        return {"recommended_tags": ["should-not-run"]}
+
+    monkeypatch.setattr("research_enrichment.research_youtube_keywords", _boom)
+    out = enrich_product_research(
+        {"product_name": "Widget", "keywords": ["already", "set"], "unique_selling_point": ""},
+        research_dir=None,
+    )
+    assert called["yt"] is False
+    assert out["keywords"] == ["already", "set"]
+
+
+def test_enrichment_records_warning_when_amazon_fails(monkeypatch):
+    from research_enrichment import enrich_product_research
+
+    async def _fail(_url):
+        return {"error": "timeout"}
+
+    async def _yt(_query):
+        return {"recommended_tags": ["tag1"], "recommended_titles": ["Title"]}
+
+    monkeypatch.setattr("research_enrichment.scrape_amazon_product", _fail)
+    monkeypatch.setattr("research_enrichment.research_youtube_keywords", _yt)
+    out = enrich_product_research(
+        {"product_name": "Widget", "amazon_url": "https://amazon.com/dp/B000", "keywords": []},
+        research_dir=None,
+    )
+    assert any("Amazon scrape failed" in w for w in out.get("_research_warnings", []))
+    assert out.get("keywords") == ["tag1"]
+
+
 def test_as_snake_product_info_drops_dual_schema_noise():
     payload = {
         "product": {

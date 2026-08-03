@@ -204,6 +204,24 @@ class TestOAuthRoutes:
         assert "oauth_error" in res.headers["location"]
         assert "state" in res.headers["location"].lower()
 
+    def test_oauth_status_shape(self, client):
+        res = client.get("/api/oauth/status")
+        assert res.status_code == 200
+        data = res.json()
+        assert isinstance(data, dict)
+        for platform in ("youtube", "instagram", "facebook", "tiktok", "rumble"):
+            assert platform in data
+            assert "connected" in data[platform]
+
+    def test_oauth_config_shape(self, client):
+        res = client.get("/api/oauth/config")
+        assert res.status_code == 200
+        data = res.json()
+        assert isinstance(data, dict)
+        for key in ("youtube", "meta", "tiktok"):
+            assert key in data
+            assert isinstance(data[key], bool)
+
 
 class TestAuthAllowlist:
     def test_config_requires_service_key_when_secret_set(self, monkeypatch):
