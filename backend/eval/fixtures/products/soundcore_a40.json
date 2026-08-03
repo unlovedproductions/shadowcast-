@@ -1,0 +1,18 @@
+{
+  "product_name": "SoundCore Space A40",
+  "price": "$79.99",
+  "key_features": ["ANC", "50hr battery", "LDAC", "Multipoint"],
+  "target_audience": "Commuters and travelers",
+  "product_category": "Wireless Earbuds",
+  "niche": "Audio",
+  "unique_selling_point": "Premium ANC at under $80",
+  "competitors": ["AirPods Pro 2", "Sony WF-1000XM5"],
+  "common_complaints": "Fit issues for small ears, case feels plasticky",
+  "common_praises": "Battery life, value for ANC, comfort for most users",
+  "who_not_for": "Audiophiles who need best-in-class sound",
+  "price_comparison": "AirPods Pro 2 costs $249 for similar ANC tier",
+  "affiliate_link": "https://example.com/soundcore-a40",
+  "discount_info": "Often 20% off on Amazon",
+  "coupon_code": "",
+  "series_name": "Budget ANC Earbuds"
+}

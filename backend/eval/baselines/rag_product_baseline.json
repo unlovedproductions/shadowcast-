@@ -1,0 +1,17 @@
+{
+  "total_questions": 3,
+  "avg_context_relevance": 0.868,
+  "avg_faithfulness": 1.0,
+  "avg_groundedness": 0.979,
+  "retrieval_metrics": {
+    "precision_at_k": 1.0,
+    "estimated_recall": 1.0,
+    "k": 5
+  },
+  "coverage": 1.0,
+  "issues": [],
+  "recommendations": [
+    "All metrics meet targets. Consider A/B testing new improvements."
+  ],
+  "question_details": []
+}
