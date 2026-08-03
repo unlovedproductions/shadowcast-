@@ -222,6 +222,92 @@ class TestOAuthRoutes:
             assert key in data
             assert isinstance(data[key], bool)
 
+    def test_oauth_authorize_youtube_without_client_id_400(self, client, monkeypatch):
+        monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+        monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+        res = client.get("/api/oauth/youtube/authorize")
+        assert res.status_code == 400
+        assert "GOOGLE_CLIENT_ID" in res.json()["detail"]
+
+    def test_oauth_authorize_unsupported_platform_400(self, client):
+        res = client.get("/api/oauth/myspace/authorize")
+        assert res.status_code == 400
+        assert "Unsupported" in res.json()["detail"]
+
+    def test_oauth_authorize_rumble_returns_login_url(self, client):
+        res = client.get("/api/oauth/rumble/authorize")
+        assert res.status_code == 200
+        data = res.json()
+        assert "authorize_url" in data
+        assert "rumble/login" in data["authorize_url"]
+        assert data.get("state")
+
+    def test_oauth_authorize_youtube_with_client_id(self, client, monkeypatch):
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-secret")
+        res = client.get("/api/oauth/youtube/authorize")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["authorize_url"].startswith("https://accounts.google.com/")
+        assert "client_id=test-client-id" in data["authorize_url"]
+        assert data.get("state")
+
+    def test_oauth_disconnect_shape(self, client):
+        res = client.delete("/api/oauth/youtube")
+        assert res.status_code == 200
+        assert res.json() == {"platform": "youtube", "status": "disconnected"}
+
+    def test_oauth_callback_missing_code_redirects(self, client):
+        res = client.get("/api/oauth/youtube/callback?state=abc", follow_redirects=False)
+        assert res.status_code == 302
+        assert "oauth_error" in res.headers["location"]
+        assert "code" in res.headers["location"].lower()
+
+    def test_oauth_rumble_login_failure_500(self, client, monkeypatch):
+        def _boom(_user, _password):
+            raise RuntimeError("login failed")
+
+        monkeypatch.setattr("app.rumble_publisher.login_and_capture_session", _boom)
+        res = client.post("/api/oauth/rumble/login", json={"username": "u", "password": "p"})
+        assert res.status_code == 500
+        assert "login failed" in res.json()["detail"]
+
+    def test_oauth_youtube_authorize_callback_happy_path(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-secret")
+        monkeypatch.setenv("SHADOWCAST_ALLOW_DEV_CREDENTIALS", "1")
+        monkeypatch.setenv("CREDENTIALS_STORE_DIR", str(tmp_path / "creds"))
+
+        import app as app_module
+        from credentials_store import CredentialsStore
+
+        app_module.oauth_manager.store = CredentialsStore(store_dir=tmp_path / "creds")
+
+        def _fake_exchange(code: str):
+            assert code == "auth-code-ok"
+            app_module.oauth_manager.store.save(
+                "youtube",
+                {"access_token": "tok", "refresh_token": "ref", "channel_id": "UC_test"},
+            )
+            return {"platform": "youtube", "status": "connected"}
+
+        monkeypatch.setattr(app_module.oauth_manager, "_exchange_google", _fake_exchange)
+
+        auth = client.get("/api/oauth/youtube/authorize")
+        assert auth.status_code == 200
+        state = auth.json()["state"]
+
+        cb = client.get(
+            f"/api/oauth/youtube/callback?code=auth-code-ok&state={state}",
+            follow_redirects=False,
+        )
+        assert cb.status_code == 302
+        assert "connected=youtube" in cb.headers["location"]
+
+        status = client.get("/api/oauth/status").json()
+        assert status["youtube"]["connected"] is True
+        assert "access_token" not in status["youtube"].get("details", {})
+
 
 class TestAuthAllowlist:
     def test_config_requires_service_key_when_secret_set(self, monkeypatch):
