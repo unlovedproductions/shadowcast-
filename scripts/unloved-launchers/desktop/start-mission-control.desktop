@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Start Mission Control
+Comment=Start Mission Control backend/frontend and open http://localhost:3100
+Exec=/home/unloved/.local/bin/unloved-launchers/launch-mission-control.sh
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Development;
+StartupNotify=false

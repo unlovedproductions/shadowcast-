@@ -8,6 +8,14 @@
 
 ---
 
+## Operational docs
+
+- `docs/RECOVERY.md` — disaster-recovery playbook
+- `docs/RUNBOOK.md` — startup/shutdown and operator checks
+- `docs/ARCHITECTURE.md` — system structure and integration points
+
+---
+
 ## Your Machine Specs (Razer Blade 15 Advanced)
 
 | Component | Spec | LLM Capability |
@@ -606,7 +614,7 @@ output/
 | `Permission denied` on Linux | Make sure you own the directory: `sudo chown -R $USER:$USER ~/shadowcast-` |
 | `externally-managed-environment` error | Use a venv (Step 6 above) or add `--break-system-packages` flag to pip |
 | Fonts look wrong | Run `sudo apt install -y fonts-noto` and restart the app |
-| Can't access from another device on LAN | Edit `backend/app.py`: change `host="127.0.0.1"` to `host="0.0.0.0"`, then access via your machine's IP |
+| Can't access from another device on LAN | Set `HOST=0.0.0.0` in `backend/.env` (default is `127.0.0.1` for localhost-only trust), restart, then use your machine's IP |
 | Firewall blocking port 8000 | `sudo ufw allow 8000/tcp` |
 
 ---
