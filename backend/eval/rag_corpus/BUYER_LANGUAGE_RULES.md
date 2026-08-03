@@ -25,9 +25,9 @@ Never mention in scripts or YouTube assets:
 
 | Use case | Recommended style |
 |----------|-------------------|
-| Competitor comparison videos | `vs_battle` — includes vs_split opener and scorecard segments |
-| Head-to-head elimination | `elimination` — winner_reveal layout segment |
-| Budget-focused picks | `budget_challenge` — price_compare layout |
+| Competitor comparison videos | `vs_battle` — requires vs_split AND scorecard AND winner_reveal |
+| Head-to-head elimination | `elimination` — requires winner_reveal layout segment |
+| Budget-focused picks | `budget_challenge` — requires price_compare layout |
 | Honest pros/cons reviews | `honest_review` — pros and cons text_style segments |
 | Worth-it verdict | `worth_it_or_waste` — verdict chapter styling |
 

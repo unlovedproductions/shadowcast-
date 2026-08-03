@@ -16,10 +16,12 @@ _DEFAULT_CORPUS_DIR = Path(__file__).resolve().parent / "eval" / "rag_corpus"
 _style_corpus_store: Optional[StyleCorpusStore] = None
 
 _STYLE_QUERY_TERMS: dict[str, str] = {
-    "vs_battle": "vs_split spec_compare scorecard comparison layout",
-    "elimination": "elimination winner_reveal layout segments",
-    "budget_challenge": "price_compare budget layout segments",
-    "honest_review": "pros cons limitations who not for buyer language",
+    "vs_battle": "vs_split scorecard winner_reveal spec_compare comparison layout renderer contract duration",
+    "elimination": "elimination winner_reveal layout segments renderer contract duration",
+    "budget_challenge": "price_compare budget layout segments renderer contract duration",
+    "honest_review": "pros cons limitations who not for buyer language renderer contract TTS",
+    "worth_it_or_waste": "verdict worth it waste renderer contract duration TTS",
+    "standard": "hook features CTA renderer contract duration animation",
 }
 
 
@@ -47,9 +49,9 @@ def build_style_rules_query(content_style: str, fmt: str, hook_type: str) -> str
     parts = [
         style_key,
         fmt_label,
-        "buyer language banned layout segments hook",
+        "buyer language banned layout segments hook renderer contract duration TTS animation",
         hook_type,
-        _STYLE_QUERY_TERMS.get(style_key, ""),
+        _STYLE_QUERY_TERMS.get(style_key, "renderer contract duration"),
     ]
     return " ".join(part for part in parts if part)
 
