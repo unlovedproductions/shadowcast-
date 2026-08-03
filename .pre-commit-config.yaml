@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: openapi-fresh
+        name: OpenAPI freshness
+        entry: python3 scripts/quality/check_openapi_fresh.py
+        language: system
+        pass_filenames: false
+      - id: api-lint
+        name: API linter
+        entry: python3 scripts/quality/api_linter.py docs/openapi.json
+        language: system
+        pass_filenames: false
+        files: ^docs/openapi\.json$
