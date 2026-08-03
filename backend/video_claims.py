@@ -155,28 +155,99 @@ def expected_transition_overhead(script: dict, fmt: str) -> float:
 
 
 def expected_timeline_duration(script: dict, fmt: str) -> float:
-    segment_seconds = sum_segment_durations(script, fmt)
-    transition_seconds = expected_transition_overhead(script, fmt)
-    if fmt == SHORT_FORM:
-        subscribe = (
-            SHORT_SUBSCRIBE_SECONDS
-            if len(script.get("segments", [])) > SHORT_SUBSCRIBE_THRESHOLD_SEGMENTS
-            else 0.0
-        )
-        return SHORT_INTRO_SECONDS + segment_seconds + transition_seconds + subscribe + SHORT_OUTRO_SECONDS
+    return float(build_render_timeline(script, fmt)["total_duration"])
 
-    chapters = script.get("chapters", [])
-    chapter_cards = float(len(chapters)) * LONG_CHAPTER_CARD_SECONDS
-    comment_prompt = LONG_COMMENT_PROMPT_SECONDS if chapters else 0.0
-    return (
-        LONG_INTRO_SECONDS
-        + chapter_cards
-        + segment_seconds
-        + transition_seconds
-        + comment_prompt
-        + LONG_SUBSCRIBE_SECONDS
-        + LONG_OUTRO_SECONDS
-    )
+
+def intro_seconds_for(fmt: str) -> float:
+    return SHORT_INTRO_SECONDS if fmt == SHORT_FORM else LONG_INTRO_SECONDS
+
+
+def build_render_timeline(script: dict, fmt: str) -> dict:
+    """
+    Single source of truth for visual/audio timing.
+
+    Returns:
+      intro_seconds, total_duration,
+      segment_events: [{segment, start, duration, transition, transition_duration, transition_at}],
+      chrome_events: [{kind, start, duration}]
+    """
+    segment_events: list[dict] = []
+    chrome_events: list[dict] = []
+
+    if fmt == SHORT_FORM:
+        t = SHORT_INTRO_SECONDS
+        chrome_events.append({"kind": "intro", "start": 0.0, "duration": SHORT_INTRO_SECONDS})
+        segments = list(script.get("segments", []))
+        for idx, seg in enumerate(segments):
+            seg_dur = _segment_duration(seg, 2.5)
+            trans_dur = _transition_duration(seg) if idx < len(segments) - 1 else 0.0
+            transition = str(seg.get("transition_to_next", "")).strip().lower()
+            segment_events.append(
+                {
+                    "segment": seg,
+                    "start": t,
+                    "duration": seg_dur,
+                    "transition": transition,
+                    "transition_duration": trans_dur,
+                    "transition_at": t + seg_dur,
+                }
+            )
+            t += seg_dur + trans_dur
+        if len(segments) > SHORT_SUBSCRIBE_THRESHOLD_SEGMENTS:
+            chrome_events.append({"kind": "subscribe", "start": t, "duration": SHORT_SUBSCRIBE_SECONDS})
+            t += SHORT_SUBSCRIBE_SECONDS
+        chrome_events.append({"kind": "outro", "start": t, "duration": SHORT_OUTRO_SECONDS})
+        t += SHORT_OUTRO_SECONDS
+        return {
+            "format": SHORT_FORM,
+            "intro_seconds": SHORT_INTRO_SECONDS,
+            "total_duration": t,
+            "segment_events": segment_events,
+            "chrome_events": chrome_events,
+        }
+
+    t = LONG_INTRO_SECONDS
+    chrome_events.append({"kind": "intro", "start": 0.0, "duration": LONG_INTRO_SECONDS})
+    chapters = list(script.get("chapters", []))
+    engagement_inserted = False
+    for ch_idx, chapter in enumerate(chapters):
+        chrome_events.append(
+            {"kind": "chapter_card", "start": t, "duration": LONG_CHAPTER_CARD_SECONDS, "chapter_index": ch_idx}
+        )
+        t += LONG_CHAPTER_CARD_SECONDS
+        segments = list(chapter.get("segments", []))
+        for idx, seg in enumerate(segments):
+            seg_dur = _segment_duration(seg, 4.0)
+            trans_dur = _transition_duration(seg) if idx < len(segments) - 1 else 0.0
+            transition = str(seg.get("transition_to_next", "")).strip().lower()
+            segment_events.append(
+                {
+                    "segment": seg,
+                    "start": t,
+                    "duration": seg_dur,
+                    "transition": transition,
+                    "transition_duration": trans_dur,
+                    "transition_at": t + seg_dur,
+                    "chapter_index": ch_idx,
+                }
+            )
+            t += seg_dur + trans_dur
+        if not engagement_inserted and ch_idx >= len(chapters) // 2:
+            chrome_events.append({"kind": "comment_prompt", "start": t, "duration": LONG_COMMENT_PROMPT_SECONDS})
+            t += LONG_COMMENT_PROMPT_SECONDS
+            engagement_inserted = True
+    if chapters:
+        chrome_events.append({"kind": "subscribe", "start": t, "duration": LONG_SUBSCRIBE_SECONDS})
+        t += LONG_SUBSCRIBE_SECONDS
+        chrome_events.append({"kind": "outro", "start": t, "duration": LONG_OUTRO_SECONDS})
+        t += LONG_OUTRO_SECONDS
+    return {
+        "format": LONG_FORM,
+        "intro_seconds": LONG_INTRO_SECONDS,
+        "total_duration": t,
+        "segment_events": segment_events,
+        "chrome_events": chrome_events,
+    }
 
 
 def collect_layouts(script: dict, fmt: str) -> set[str]:

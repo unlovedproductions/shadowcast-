@@ -1,6 +1,8 @@
+import os
+import subprocess
+
 import numpy as np
 from scipy.io.wavfile import write as write_wav, read as read_wav
-import subprocess
 from scipy.signal import chirp
 
 # Basic musical notes frequencies (Hz) for a C major scale, extended for multiple octaves
@@ -244,11 +246,22 @@ def generate_sfx(effect_type, duration=0.5, amplitude=0.5):
         sfx = sfx / np.max(np.abs(sfx)) * amplitude
     return sfx
 
-def mix_audio(bg_music_array, sfx_list_with_timestamps, voiceover_array=None, output_path="output.wav", ducking_volume_factor=0.3):
+def mix_audio(
+    bg_music_array,
+    sfx_list_with_timestamps,
+    voiceover_array=None,
+    output_path="output.wav",
+    ducking_volume_factor=0.3,
+    voiceover_start_seconds=0.0,
+):
     # Determine the total duration of the mixed track
+    voiceover_offset = max(0, int(float(voiceover_start_seconds or 0.0) * SAMPLE_RATE))
     total_duration_samples = len(bg_music_array)
     if voiceover_array is not None:
-        total_duration_samples = max(total_duration_samples, len(voiceover_array))
+        total_duration_samples = max(
+            total_duration_samples,
+            voiceover_offset + len(voiceover_array),
+        )
 
     mixed_audio = np.zeros(total_duration_samples)
 
@@ -257,9 +270,14 @@ def mix_audio(bg_music_array, sfx_list_with_timestamps, voiceover_array=None, ou
 
     # Apply ducking if voiceover is present
     if voiceover_array is not None:
+        vo_end = min(voiceover_offset + len(voiceover_array), total_duration_samples)
+        vo_len = max(0, vo_end - voiceover_offset)
         # Create a ducking envelope. When voiceover is playing, reduce background music volume.
         voiceover_presence = np.zeros(total_duration_samples)
-        voiceover_presence[:len(voiceover_array)] = np.where(np.abs(voiceover_array) > 0.01, 1, 0) # Simple threshold for voice presence
+        if vo_len > 0:
+            voiceover_presence[voiceover_offset:vo_end] = np.where(
+                np.abs(voiceover_array[:vo_len]) > 0.01, 1, 0
+            )
 
         # Smooth the voiceover presence to avoid abrupt ducking
         window_size = SAMPLE_RATE // 10 # 100 ms window
@@ -271,8 +289,9 @@ def mix_audio(bg_music_array, sfx_list_with_timestamps, voiceover_array=None, ou
         # Apply ducking to background music
         mixed_audio[:len(bg_music_array)] = mixed_audio[:len(bg_music_array)] * ducking_envelope[:len(bg_music_array)]
 
-        # Add voiceover
-        mixed_audio[:len(voiceover_array)] += voiceover_array
+        # Add voiceover after intro offset so narration aligns with on-screen content
+        if vo_len > 0:
+            mixed_audio[voiceover_offset:vo_end] += voiceover_array[:vo_len]
 
     # Add sound effects
     for sfx_data, start_time in sfx_list_with_timestamps:
@@ -298,6 +317,7 @@ def mix_audio(bg_music_array, sfx_list_with_timestamps, voiceover_array=None, ou
 def add_audio_to_video(video_path, audio_path, output_path):
     command = [
         "ffmpeg",
+        "-y",
         "-i", video_path,
         "-i", audio_path,
         "-c:v", "copy",
@@ -309,13 +329,19 @@ def add_audio_to_video(video_path, audio_path, output_path):
     ]
     try:
         subprocess.run(command, check=True, capture_output=True)
-        print(f"Successfully added audio to video: {output_path}")
     except subprocess.CalledProcessError as e:
-        print(f"Error adding audio to video: {e}")
-        print(f"FFmpeg stdout: {e.stdout.decode()}")
-        print(f"FFmpeg stderr: {e.stderr.decode()}")
-    except FileNotFoundError:
-        print("Error: ffmpeg not found. Please ensure ffmpeg is installed and in your PATH.")
+        stdout = (e.stdout or b"").decode(errors="replace")
+        stderr = (e.stderr or b"").decode(errors="replace")
+        raise RuntimeError(
+            f"ffmpeg mux failed for {output_path}: {stderr or stdout or e}"
+        ) from e
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            "ffmpeg not found. Please ensure ffmpeg is installed and in your PATH."
+        ) from e
+    if not os.path.exists(output_path) or os.path.getsize(output_path) <= 0:
+        raise RuntimeError(f"ffmpeg mux produced missing/empty output: {output_path}")
+    print(f"Successfully added audio to video: {output_path}")
 
 if __name__ == "__main__":
     print("Generating 30-second chill background music...")

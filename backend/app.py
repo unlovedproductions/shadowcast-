@@ -86,7 +86,12 @@ from apf_import import (
     extract_apf_product_payloads,
     normalize_apf_payload,
 )
-from video_renderer import render_short_form_video, render_long_form_video, resolve_video_preset
+from video_renderer import (
+    render_short_form_video,
+    render_long_form_video,
+    resolve_video_preset,
+    compute_render_fingerprint,
+)
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
@@ -386,6 +391,33 @@ def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[L
         ok, _ = _probe_mp4_ok(path)
         return ok
     return True
+
+
+def _video_render_meta_path(video_path: Path) -> Path:
+    return video_path.with_suffix(video_path.suffix + ".render.json")
+
+
+def _write_video_render_meta(video_path: Path, fingerprint: str, options: dict) -> None:
+    meta = {
+        "fingerprint": fingerprint,
+        "options": options,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _video_render_meta_path(video_path).write_text(json.dumps(meta, indent=2))
+
+
+def _video_cache_ok(video_path: Path, fingerprint: str) -> bool:
+    """Reuse MP4 only when structural probe passes and fingerprint matches."""
+    if not _artifact_ok(video_path):
+        return False
+    meta_path = _video_render_meta_path(video_path)
+    if not meta_path.is_file():
+        return False
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(meta, dict) and meta.get("fingerprint") == fingerprint
 
 
 def _apply_llm_warnings(job: dict) -> None:
@@ -1038,7 +1070,25 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             _save_job(job_id)
 
             try:
-                if _artifact_ok(video_path):
+                render_options = {
+                    "product_name": product.get("product_name", ""),
+                    "price": product.get("price", ""),
+                    "series_name": product.get("series_name", ""),
+                    "content_style": effective_style,
+                    "competitors": product.get("competitors", []),
+                    "audio_enabled": audio_enabled,
+                    "audio_mood": mood_arg,
+                    "use_tts": use_tts,
+                    "tts_provider": tts_provider,
+                    "tts_voice": tts_voice,
+                    "video_preset": render_preset,
+                }
+                fingerprint = compute_render_fingerprint(
+                    scripts_data[fmt],
+                    fmt=fmt,
+                    render_options=render_options,
+                )
+                if _video_cache_ok(video_path, fingerprint):
                     job["current_step"] = f"[{product['product_name']}] Using cached {hook_name} {fl} video..."
                 else:
                     render_kwargs = dict(
@@ -1059,6 +1109,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
                     else:
                         render_long_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
+                    _write_video_render_meta(video_path, fingerprint, render_options)
 
                 if hook_type not in product_results["hooks"]:
                     product_results["hooks"][hook_type] = {}

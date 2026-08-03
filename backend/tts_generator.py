@@ -13,14 +13,21 @@ import json
 import os
 import tempfile
 import subprocess
+import threading
 
 from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
+
+
+_PROVIDERS_CACHE = None
+_PROVIDERS_LOCK = threading.Lock()
+_KOKORO_INSTANCE = None
+_KOKORO_LOCK = threading.Lock()
 
 
 # ── Provider Detection ───────────────────────────────────────────────
 def _check_kokoro():
     try:
-        import kokoro_onnx
+        import kokoro_onnx  # noqa: F401
         return True
     except ImportError:
         return False
@@ -34,7 +41,7 @@ def _check_piper():
 
 def _check_openai_tts():
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: F401
         key = os.environ.get("OPENAI_API_KEY", "")
         return bool(key)
     except ImportError:
@@ -42,66 +49,80 @@ def _check_openai_tts():
 
 def _check_gtts():
     try:
-        from gtts import gTTS
+        from gtts import gTTS  # noqa: F401
         return True
     except ImportError:
         return False
 
 
-def get_available_providers():
-    """Return list of available TTS providers with status."""
-    providers = {
-        "kokoro": {
-            "name": "Kokoro TTS",
-            "available": _check_kokoro(),
-            "type": "local",
-            "quality": "high",
-            "cost": "free",
-            "install": "pip install kokoro-onnx",
-            "description": "High-quality local TTS. Runs on your GPU. Best free option.",
-            "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
-        },
-        "piper": {
-            "name": "Piper TTS",
-            "available": _check_piper(),
-            "type": "local",
-            "quality": "medium",
-            "cost": "free",
-            "install": "pip install piper-tts",
-            "description": "Fast local TTS. Lower quality but very fast inference.",
-            "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
-        },
-        "openai": {
-            "name": "OpenAI TTS",
-            "available": _check_openai_tts(),
-            "type": "cloud",
-            "quality": "highest",
-            "cost": "paid (~$0.015/1K chars)",
-            "install": "pip install openai (+ API key)",
-            "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
-            "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-        },
-        "gtts": {
-            "name": "Google TTS",
-            "available": _check_gtts(),
-            "type": "cloud",
-            "quality": "basic",
-            "cost": "free",
-            "install": "pip install gtts",
-            "description": "Free online TTS. Basic quality but always works.",
-            "voices": ["en"],
-        },
-    }
-    return providers
+def get_available_providers(force_refresh: bool = False):
+    """Return list of available TTS providers with status (cached per process)."""
+    global _PROVIDERS_CACHE
+    with _PROVIDERS_LOCK:
+        if _PROVIDERS_CACHE is not None and not force_refresh:
+            return _PROVIDERS_CACHE
+        providers = {
+            "kokoro": {
+                "name": "Kokoro TTS",
+                "available": _check_kokoro(),
+                "type": "local",
+                "quality": "high",
+                "cost": "free",
+                "install": "pip install kokoro-onnx",
+                "description": "High-quality local TTS. Runs on your GPU. Best free option.",
+                "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
+            },
+            "piper": {
+                "name": "Piper TTS",
+                "available": _check_piper(),
+                "type": "local",
+                "quality": "medium",
+                "cost": "free",
+                "install": "pip install piper-tts",
+                "description": "Fast local TTS. Lower quality but very fast inference.",
+                "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
+            },
+            "openai": {
+                "name": "OpenAI TTS",
+                "available": _check_openai_tts(),
+                "type": "cloud",
+                "quality": "highest",
+                "cost": "paid (~$0.015/1K chars)",
+                "install": "pip install openai (+ API key)",
+                "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
+                "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            },
+            "gtts": {
+                "name": "Google TTS",
+                "available": _check_gtts(),
+                "type": "cloud",
+                "quality": "basic",
+                "cost": "free",
+                "install": "pip install gtts",
+                "description": "Free online TTS. Basic quality but always works.",
+                "voices": ["en"],
+            },
+        }
+        _PROVIDERS_CACHE = providers
+        return providers
 
 
 def get_best_provider():
     """Return the best available provider in quality order."""
+    providers = get_available_providers()
     for provider in ["kokoro", "openai", "piper", "gtts"]:
-        providers = get_available_providers()
         if providers[provider]["available"]:
             return provider
     return "gtts"  # fallback
+
+
+def _get_kokoro():
+    """Lazily load and reuse a single Kokoro model instance. Caller must hold _KOKORO_LOCK."""
+    global _KOKORO_INSTANCE
+    if _KOKORO_INSTANCE is None:
+        import kokoro_onnx
+        _KOKORO_INSTANCE = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
+    return _KOKORO_INSTANCE
 
 
 # ── TTS Generation by Provider ──────────────────────────────────────
@@ -115,11 +136,11 @@ def _generate_gtts(text: str, output_path: str, voice: str = "en"):
 
 def _generate_kokoro(text: str, output_path: str, voice: str = "af_bella"):
     """Generate audio using Kokoro TTS (local, GPU-accelerated)."""
-    import kokoro_onnx
     import soundfile as sf
 
-    kokoro = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
-    samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
+    with _KOKORO_LOCK:
+        kokoro = _get_kokoro()
+        samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
     sf.write(output_path, samples, sample_rate)
 
 
