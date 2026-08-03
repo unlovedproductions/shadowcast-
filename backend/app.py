@@ -917,6 +917,8 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     research_dir = OUTPUT_BASE / job_id / "research" / slug
     try:
         product = enrich_product_research(product, research_dir=research_dir)
+        for warning in product.get("_research_warnings") or []:
+            job.setdefault("warnings", []).append(f"Research: {warning}")
     except Exception as exc:
         job.setdefault("warnings", []).append(f"Research enrichment skipped: {exc}")
 

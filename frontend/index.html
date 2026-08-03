@@ -3158,6 +3158,21 @@
     };
   }
   function hydrate(mapped){
+    // Deprecated client-only path: prefer backend normalize + draft hydrate.
+    const payload = mapped && mapped.reviewBrief
+      ? { product: mapped.apfProduct || { name: mapped.productName }, review_brief: mapped.reviewBrief }
+      : mapped;
+    if (typeof window.importAPFViaBackend === "function" && payload && typeof payload === "object") {
+      window.importAPFViaBackend(payload).catch((err) => {
+        console.warn("[APF review brief] backend import failed, falling back:", err);
+        hydrateLegacy(mapped);
+      });
+      return;
+    }
+    hydrateLegacy(mapped);
+  }
+
+  function hydrateLegacy(mapped){
     try {
       if (typeof state !== "undefined" && state) {
         Object.entries(mapped).forEach(([k,v]) => {
