@@ -40,15 +40,12 @@ def generate_background(width, height, style="gradient", accent_color=DARK_PINK,
         raise ValueError(f"Unknown style: {style}")
 
 def _generate_gradient(width, height, accent_color):
-    image = Image.new("RGB", (width, height), NEAR_BLACK)
-    draw = ImageDraw.Draw(image)
-
-    for y in range(height):
-        r = int(NEAR_BLACK[0] + (accent_color[0] - NEAR_BLACK[0]) * (y / height))
-        g = int(NEAR_BLACK[1] + (accent_color[1] - NEAR_BLACK[1]) * (y / height))
-        b = int(NEAR_BLACK[2] + (accent_color[2] - NEAR_BLACK[2]) * (y / height))
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
-    return image
+    ys = np.linspace(0.0, 1.0, height, endpoint=False, dtype=np.float32)[:, None]
+    near = np.array(NEAR_BLACK, dtype=np.float32)
+    accent = np.array(accent_color, dtype=np.float32)
+    column = near + (accent - near) * ys
+    pixels = np.broadcast_to(column.astype(np.uint8), (height, width, 3)).copy()
+    return Image.fromarray(pixels)
 
 def _generate_mesh_gradient(width, height, accent_color):
     image = Image.new("RGB", (width, height), NEAR_BLACK)

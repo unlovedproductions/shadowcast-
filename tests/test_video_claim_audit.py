@@ -77,6 +77,28 @@ def test_expected_timeline_duration_long_form():
     assert expected_timeline_duration(script, LONG_FORM) == pytest.approx(33.45, abs=0.01)
 
 
+def test_build_render_timeline_audio_offsets_match_expected_duration():
+    from video_claims import build_render_timeline
+
+    short = {
+        "format": SHORT_FORM,
+        "segments": [
+            {"duration": 2.0, "transition_to_next": "glitch"},
+            {"duration": 2.0, "transition_to_next": "fade"},
+            {"duration": 2.0, "transition_to_next": "swipe"},
+            {"duration": 2.0, "transition_to_next": "zoom"},
+            {"duration": 2.0, "transition_to_next": "cut"},
+            {"duration": 2.0},
+        ],
+    }
+    timeline = build_render_timeline(short, SHORT_FORM)
+    assert timeline["intro_seconds"] == 2.0
+    assert timeline["total_duration"] == pytest.approx(expected_timeline_duration(short, SHORT_FORM))
+    # SFX for first segment must start after intro, not at t=0
+    assert timeline["segment_events"][0]["start"] == pytest.approx(2.0)
+
+
+
 def test_style_required_layouts_align_with_enrichment():
     product = {
         "product_name": "SoundCore Space A40",
