@@ -257,21 +257,26 @@ export async function installMockedApiRoutes(page: Page) {
 
   await page.route('**/api/oauth/status', (route) =>
     fulfillJson(route, {
-      youtube: { connected: false },
-      instagram: { connected: false },
-      facebook: { connected: false },
-      tiktok: { connected: false },
-      rumble: { connected: false },
+      youtube: { connected: true, details: { channel_id: 'UC_e2e' } },
+      instagram: { connected: false, details: {} },
+      facebook: { connected: false, details: {} },
+      tiktok: { connected: false, details: {} },
+      rumble: { connected: false, details: {} },
     }),
   );
 
   await page.route('**/api/oauth/config', (route) =>
     fulfillJson(route, {
-      youtube: { configured: false },
-      instagram: { configured: false },
-      facebook: { configured: false },
-      tiktok: { configured: false },
-      rumble: { configured: false },
+      youtube: true,
+      meta: false,
+      tiktok: false,
+    }),
+  );
+
+  await page.route('**/api/oauth/youtube/authorize', (route) =>
+    fulfillJson(route, {
+      authorize_url: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=e2e-mock&state=e2e',
+      state: 'e2e',
     }),
   );
 

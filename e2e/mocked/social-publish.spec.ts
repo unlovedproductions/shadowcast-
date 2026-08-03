@@ -36,4 +36,27 @@ test.describe('social publish', () => {
       timeout: 10_000,
     });
   });
+
+  test('oauth status shows youtube connected and connect navigates to authorize url', async ({
+    page,
+    mockApi,
+  }) => {
+    void mockApi;
+    await page.route('https://accounts.google.com/**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>mock oauth</html>' });
+    });
+
+    await page.goto('/');
+    await page.locator('.nav-btn', { hasText: nav.social }).click();
+    await expect(page.getByRole('heading', { name: 'Connect Accounts' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText('Connected').first()).toBeVisible();
+
+    await Promise.all([
+      page.waitForURL(/accounts\.google\.com/, { timeout: 10_000 }),
+      page.getByRole('button', { name: 'Connect YouTube' }).click(),
+    ]);
+    expect(page.url()).toContain('accounts.google.com');
+  });
 });
