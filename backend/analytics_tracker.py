@@ -44,7 +44,7 @@ class AnalyticsTracker:
         with open(self.db_path, 'w') as f:
             json.dump(self.data, f, indent=4)
 
-    def track_video(self, product_name, hook_type, format_type, video_path, youtube_url=None):
+    def track_video(self, product_name, hook_type, format_type, video_path, youtube_url=None, youtube_video_id=None):
         """
         Registers a video for tracking.
 
@@ -54,17 +54,22 @@ class AnalyticsTracker:
             format_type (str): The video format (e.g., "short_form", "long_form").
             video_path (str): Local path to the video file.
             youtube_url (str, optional): The YouTube URL of the video, if uploaded.
+            youtube_video_id (str, optional): YouTube video ID, if known.
 
         Returns:
             str: The unique video ID generated for this video.
         """
+        from youtube_analytics import extract_youtube_video_id
+
         video_id = str(uuid.uuid4())
+        yt_id = youtube_video_id or extract_youtube_video_id(youtube_url)
         self.data["videos"][video_id] = {
             "product_name": product_name,
             "hook_type": hook_type,
             "format_type": format_type,
             "video_path": video_path,
             "youtube_url": youtube_url,
+            "youtube_video_id": yt_id,
             "created_at": datetime.now().isoformat()
         }
         self._save_data()
@@ -117,7 +122,8 @@ class AnalyticsTracker:
             "comments": 0,
             "ctr": 0.0,
             "affiliate_clicks": 0,
-            "revenue": 0.0
+            "revenue": 0.0,
+            "subscribers_gained": 0,
         }
 
         for metric in metrics:
@@ -130,6 +136,14 @@ class AnalyticsTracker:
                 else:
                     aggregated_metrics[m_type] += m_value
 
+        yt_stats = video_info.get("youtube_stats") or {}
+        if yt_stats:
+            aggregated_metrics["views"] = yt_stats.get("views", aggregated_metrics["views"])
+            aggregated_metrics["likes"] = yt_stats.get("likes", aggregated_metrics["likes"])
+            aggregated_metrics["comments"] = yt_stats.get("comments", aggregated_metrics["comments"])
+            if yt_stats.get("subscribers_gained") is not None:
+                aggregated_metrics["subscribers_gained"] = yt_stats.get("subscribers_gained", 0)
+
         # Calculate derived metrics
         total_views = aggregated_metrics["views"]
         total_affiliate_clicks = aggregated_metrics["affiliate_clicks"]
@@ -141,6 +155,12 @@ class AnalyticsTracker:
         video_info["latest_ctr"] = aggregated_metrics["ctr"]
         video_info["total_affiliate_clicks"] = total_affiliate_clicks
         video_info["total_revenue"] = total_revenue
+        video_info["total_subscribers_gained"] = aggregated_metrics["subscribers_gained"]
+
+        if yt_stats:
+            video_info["youtube_watch_minutes"] = yt_stats.get("estimated_minutes_watched", 0)
+            video_info["youtube_avg_view_duration"] = yt_stats.get("average_view_duration", 0)
+            video_info["youtube_synced_at"] = yt_stats.get("synced_at")
 
         video_info["conversion_rate"] = (total_affiliate_clicks / total_views) if total_views > 0 else 0.0
         video_info["revenue_per_view"] = (total_revenue / total_views) if total_views > 0 else 0.0
@@ -354,6 +374,7 @@ class AnalyticsTracker:
         total_views_all = 0
         total_affiliate_clicks_all = 0
         total_revenue_all = 0.0
+        ctr_values = []
 
         for video_id in self.data["videos"]:
             stats = self.get_video_stats(video_id)
@@ -361,13 +382,46 @@ class AnalyticsTracker:
                 total_views_all += stats.get("total_views", 0)
                 total_affiliate_clicks_all += stats.get("total_affiliate_clicks", 0)
                 total_revenue_all += stats.get("total_revenue", 0.0)
+                if stats.get("latest_ctr"):
+                    ctr_values.append(float(stats["latest_ctr"]))
 
         conversion_rate_all = (total_affiliate_clicks_all / total_views_all) if total_views_all > 0 else 0.0
         revenue_per_view_all = (total_revenue_all / total_views_all) if total_views_all > 0 else 0.0
+        avg_ctr = (sum(ctr_values) / len(ctr_values)) if ctr_values else 0.0
 
         # Get top performers for dashboard display
         top_revenue_videos = self.get_top_performers(metric="total_revenue", limit=5)
         top_conversion_videos = self.get_top_performers(metric="conversion_rate", limit=5)
+
+        hook_rows = []
+        for hook_type, data in self.get_hook_performance().items():
+            count = int(data.get("video_count") or 0)
+            hook_rows.append({
+                "hook": hook_type,
+                "hook_type": hook_type,
+                "count": count,
+                "video_count": count,
+                "avg_views": data.get("avg_views_per_video", 0),
+                "avg_ctr": 0.0,
+                "avg_revenue": (data.get("total_revenue", 0.0) / count) if count else 0.0,
+                "avg_conversion": float(data.get("conversion_rate") or 0.0) * 100.0,
+                "avg_conversion_rate": float(data.get("conversion_rate") or 0.0) * 100.0,
+            })
+        hook_rows.sort(key=lambda row: row["avg_revenue"], reverse=True)
+
+        format_rows = []
+        for format_type, data in self.get_format_performance().items():
+            count = int(data.get("video_count") or 0)
+            format_rows.append({
+                "format": format_type,
+                "count": count,
+                "video_count": count,
+                "avg_views": data.get("avg_views_per_video", 0),
+                "avg_ctr": 0.0,
+                "avg_revenue": (data.get("total_revenue", 0.0) / count) if count else 0.0,
+            })
+
+        revenue_report = self.get_revenue_report()
 
         return {
             "summary": {
@@ -376,21 +430,53 @@ class AnalyticsTracker:
                 "total_affiliate_clicks": total_affiliate_clicks_all,
                 "total_revenue": total_revenue_all,
                 "overall_conversion_rate": conversion_rate_all,
-                "overall_revenue_per_view": revenue_per_view_all
+                "overall_revenue_per_view": revenue_per_view_all,
+                "avg_ctr": avg_ctr,
+                "avg_conversion_rate": conversion_rate_all * 100.0,
             },
-            "hook_performance": self.get_hook_performance(),
-            "format_performance": self.get_format_performance(),
+            "hook_performance": hook_rows,
+            "format_performance": format_rows,
             "top_revenue_videos": [{
                 "video_id": v["video_id"],
-                "product_name": v["product_name"],
-                "revenue": v["total_revenue"]
+                "product": v.get("product_name", ""),
+                "product_name": v.get("product_name", ""),
+                "hook": v.get("hook_type", ""),
+                "revenue": v.get("total_revenue", 0),
+                "total_revenue": v.get("total_revenue", 0),
+                "views": v.get("total_views", 0),
+                "total_views": v.get("total_views", 0),
             } for v in top_revenue_videos],
             "top_conversion_videos": [{
                 "video_id": v["video_id"],
-                "product_name": v["product_name"],
-                "conversion_rate": v["conversion_rate"]
-            } for v in top_conversion_videos]
+                "product": v.get("product_name", ""),
+                "product_name": v.get("product_name", ""),
+                "hook": v.get("hook_type", ""),
+                "conversion_rate": float(v.get("conversion_rate") or 0.0) * 100.0,
+                "clicks": v.get("total_affiliate_clicks", 0),
+                "total_affiliate_clicks": v.get("total_affiliate_clicks", 0),
+            } for v in top_conversion_videos],
+            "revenue_report": revenue_report,
         }
+
+    def sync_youtube_stats(self, yt_stats_by_id: dict) -> dict:
+        from youtube_analytics import extract_youtube_video_id
+
+        synced = 0
+        missing = 0
+        for video_id, video_info in self.data["videos"].items():
+            yt_id = video_info.get("youtube_video_id") or extract_youtube_video_id(video_info.get("youtube_url"))
+            if not yt_id:
+                missing += 1
+                continue
+            stats = yt_stats_by_id.get(yt_id)
+            if not stats:
+                missing += 1
+                continue
+            video_info["youtube_video_id"] = yt_id
+            video_info["youtube_stats"] = {**stats, "synced_at": datetime.now().isoformat()}
+            synced += 1
+        self._save_data()
+        return {"synced": synced, "missing": missing, "tracked_videos": len(self.data["videos"])}
 
 def create_tracking_link(affiliate_url, video_id, platform="youtube"):
     """
@@ -425,54 +511,69 @@ def create_tracking_link(affiliate_url, video_id, platform="youtube"):
     return tracking_url
 
 def parse_youtube_analytics(api_key, video_ids):
-    """
-    Fetches basic public stats from YouTube Data API v3 (views, likes, comments).
-    Includes graceful fallback if no API key is provided.
+    """Fetch YouTube video statistics via Data API v3 when a key is provided."""
+    if not video_ids:
+        return {}
 
-    Args:
-        api_key (str): Your YouTube Data API v3 key. Can be None for fallback.
-        video_ids (list): A list of YouTube video IDs.
-
-    Returns:
-        dict: A dictionary where keys are video IDs and values are their stats (views, likes, comments).
-              Returns empty dict if API key is missing or API call fails.
-    """
     if not api_key:
-        print("YouTube API key not provided. Skipping YouTube analytics fetching.")
-        return {video_id: {"views": 0, "likes": 0, "comments": 0} for video_id in video_ids}
-
-    # This part would typically involve making actual API calls.
-    # For this exercise, we'll simulate a response or return zeros.
-    # In a real scenario, you'd use a library like `google-api-python-client`.
-    # Example (conceptual, not executable without actual API setup):
-    # from googleapiclient.discovery import build
-    # youtube = build('youtube', 'v3', developerKey=api_key)
-    # request = youtube.videos().list(
-    #     part='statistics',
-    #     id=','.join(video_ids)
-    # )
-    # response = request.execute()
-    # stats = {}
-    # for item in response.get('items', []):
-    #     video_id = item['id']
-    #     statistics = item['statistics']
-    #     stats[video_id] = {
-    #         'views': int(statistics.get('viewCount', 0)),
-    #         'likes': int(statistics.get('likeCount', 0)),
-    #         'comments': int(statistics.get('commentCount', 0))
-    #     }
-    # return stats
-
-    print("Simulating YouTube API response (API key provided but no actual API call).")
-    # Simulate some data for demonstration purposes if an API key is provided
-    simulated_stats = {}
-    for video_id in video_ids:
-        simulated_stats[video_id] = {
-            "views": 1000 + video_ids.index(video_id) * 500,
-            "likes": 50 + video_ids.index(video_id) * 10,
-            "comments": 5 + video_ids.index(video_id) * 2
+        return {
+            video_id: {"views": 0, "likes": 0, "comments": 0, "_simulated": True}
+            for video_id in video_ids
         }
-    return simulated_stats
+
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        return {
+            video_id: {
+                "views": 0,
+                "likes": 0,
+                "comments": 0,
+                "_simulated": True,
+                "_error": "google-api-python-client not installed",
+            }
+            for video_id in video_ids
+        }
+
+    stats: dict = {}
+    try:
+        youtube = build("youtube", "v3", developerKey=api_key)
+        for offset in range(0, len(video_ids), 50):
+            chunk = video_ids[offset: offset + 50]
+            response = youtube.videos().list(
+                part="statistics",
+                id=",".join(chunk),
+            ).execute()
+            for item in response.get("items", []):
+                vid = item["id"]
+                statistics = item.get("statistics", {})
+                stats[vid] = {
+                    "views": int(statistics.get("viewCount", 0) or 0),
+                    "likes": int(statistics.get("likeCount", 0) or 0),
+                    "comments": int(statistics.get("commentCount", 0) or 0),
+                    "_simulated": False,
+                }
+        for video_id in video_ids:
+            if video_id not in stats:
+                stats[video_id] = {
+                    "views": 0,
+                    "likes": 0,
+                    "comments": 0,
+                    "_simulated": False,
+                    "_missing": True,
+                }
+        return stats
+    except Exception as exc:
+        return {
+            video_id: {
+                "views": 0,
+                "likes": 0,
+                "comments": 0,
+                "_simulated": True,
+                "_error": str(exc),
+            }
+            for video_id in video_ids
+        }
 
 
 if __name__ == "__main__":
