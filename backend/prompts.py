@@ -3,13 +3,24 @@
 from content_styles import CONTENT_STYLES, normalize_content_style
 
 LAYOUT_SCHEMA = """
-LAYOUT SEGMENTS (required for comparison styles — use "layout" field on segment objects):
+LAYOUT SEGMENTS (required for comparison styles — set "layout" on segment objects):
 - vs_split: {"layout":"vs_split","product_a":"<main>","product_b":"<competitor>","text":"..."}
 - spec_compare: {"layout":"spec_compare","spec_name":"Price","value_a":"$79","value_b":"$249","winner":"a","text":"..."}
 - scorecard: {"layout":"scorecard","product_a":"<main>","product_b":"<competitor>","scores":[{"category":"Value","winner":"a"}],"text":"..."}
 - price_compare: {"layout":"price_compare","price_products":[{"name":"<product>","price":"$79","highlight":true}],"text":"..."}
 - winner_reveal: {"layout":"winner_reveal","winner_name":"<product>","text":"..."}
-Use text_style aliases: pro_point/pros, con_point/cons, elimination, verdict, scorecard, comparison.
+Required by style: elimination→winner_reveal; vs_battle→vs_split AND scorecard AND winner_reveal; budget_challenge→price_compare.
+Canonical text_style values: headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pros|cons|verdict|elimination|comparison|scorecard.
+"""
+
+RENDERER_CONTRACT = """RENDERER CONTRACT:
+- Timeline uses segment "duration" only. start_time / chapter_start_time are advisory (ignored for sequencing).
+- Set total_duration_seconds = sum of all segment durations. Intro/outro/transitions are renderer chrome.
+- Short-form segment duration: 1.0–1.5s. Long-form: 3.0–5.0s.
+- text must be TTS-safe: no emoji, pronounceable, fit duration at ~2.5–3 words/sec. On-screen punch is fine; keep speakable.
+- Layout segments: use animation "fade_in" and transition "fade" or "cut" (kinetic animations are ignored on layouts).
+- Omit visual_note (unused by renderer).
+ANIMATION MAP: hook/headline→impact_scale|pop_in; stat_number→impact_scale; cons/elimination→shake; layout→fade_in. Avoid highlight_sweep on short-form.
 """
 
 RESEARCH_FRAMING = """RESEARCH-BASED APPROACH:
@@ -266,10 +277,10 @@ def get_short_form_structure(content_style: str) -> str:
 4. CTA"""
     if content_style == "vs_battle":
         return """STRUCTURE (compressed):
-1. vs_split layout opener
-2. 2-3 spec_compare layout segments
-3. scorecard layout segment
-4. winner_reveal layout segment
+1. vs_split layout opener (required)
+2. 2-3 spec_compare layout segments (optional but preferred)
+3. scorecard layout segment (required)
+4. winner_reveal layout segment (required)
 5. CTA"""
     if content_style == "budget_challenge":
         return """STRUCTURE (compressed):
@@ -290,41 +301,41 @@ def get_short_form_structure(content_style: str) -> str:
 
 def get_long_form_structure(content_style: str) -> str:
     if content_style == "elimination":
-        return """STRUCTURE:
-1. Hook (0-5s): "I tested X products. Most were garbage."
-2. The Lineup (5-30s): Show all contenders
-3. Elimination Rounds (30s-5min): Eliminate products one by one with specific reasons
-4. The Winner (5-6min): Reveal and detail the surviving product (with honest pros AND cons)
-5. Verdict + CTA (6-7min): Clear recommendation with link to check price/details"""
+        return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
+1. Hook chapter: reject bad options fast
+2. Lineup chapter: name contenders
+3. Elimination chapters: eliminate products one by one (text_style: elimination)
+4. Winner chapter: winner_reveal layout + honest pros AND cons
+5. Verdict + CTA chapter: clear recommendation"""
     if content_style == "worth_it_or_waste":
-        return """STRUCTURE:
-1. Hook (0-5s): "Is [Product] actually worth the hype?"
-2. The Claims (5-30s): What the marketing promises
-3. Claim vs Reality (30s-5min): Test each claim against review data
-4. The Verdict (5-6min): Worth It or Waste? With specific reasoning
-5. Who Should Buy + CTA (6-7min): Specific use cases + link to check details"""
+        return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
+1. Hook chapter: hype vs reality
+2. Claims chapter: what marketing promises
+3. Claim-check chapters: test each claim against review data
+4. Verdict chapter (text_style: verdict): Worth It or Waste?
+5. Who Should Buy + CTA chapter"""
     if content_style == "vs_battle":
-        return """STRUCTURE:
-1. Hook (0-5s): "[Product A] vs [Product B] — only one survives"
-2. Meet the Contenders (5-30s): Brief intro of both
-3. Round-by-Round (30s-5min): Compare spec by spec (price, features, reviews, build, value)
-4. Scorecard (5-6min): Tally the wins
-5. The Winner + CTA (6-7min): Clear recommendation + link to check details"""
+        return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
+1. Hook chapter with vs_split layout opener
+2. Contenders chapter: brief intro of both
+3. Round-by-round chapters: 2–3 spec_compare layout segments
+4. Scorecard chapter: scorecard layout (required)
+5. Winner + CTA chapter: winner_reveal layout (required)"""
     if content_style == "budget_challenge":
-        return """STRUCTURE:
-1. Hook (0-5s): "Best [category] under $[price]?"
-2. The Contenders (5-30s): Show all budget options
-3. Breakdown (30s-5min): Review each option's value proposition
-4. The Winner (5-6min): Crown the budget champion
-5. CTA (6-7min): Where to check the best option + link in description"""
-    return """STRUCTURE:
-1. Hook (0-5s): Compelling opening
-2. Intro (5-15s): What this video covers
-3. The Good (15s-2.5min): Key features and genuine strengths (with review evidence)
-4. The Bad (2.5-4min): Honest limitations and cons (with review evidence)
-5. Who It's For / Not For (4-5.5min): Specific use case matching
-6. Verdict (5.5-6.5min): Clear, honest recommendation
-7. CTA (6.5-7min): Help viewers check price/details if the product fits their needs"""
+        return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
+1. Hook chapter: budget constraint
+2. Contenders chapter
+3. Breakdown chapters: value tradeoffs
+4. Winner chapter with price_compare layout (required)
+5. CTA chapter"""
+    return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
+1. Hook chapter
+2. Intro chapter: what this video covers
+3. The Good chapter: strengths with review evidence (text_style: pros)
+4. The Bad chapter: limitations with review evidence (text_style: cons)
+5. Who It's For / Not For chapter
+6. Verdict chapter
+7. CTA chapter"""
 
 
 def short_form_json_schema(hook_type: str, content_style: str) -> str:
@@ -341,18 +352,27 @@ def short_form_json_schema(hook_type: str, content_style: str) -> str:
       "start_time": number,
       "duration": number,
       "text": string,
-      "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pro_point|con_point|verdict|elimination",
+      "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pros|cons|verdict|elimination|comparison|scorecard",
       "text_color": string,
       "bg_color": string,
-      "animation": "pop_in|slide_up|fade_in|zoom_in|shake|typewriter|word_by_word|impact_scale|highlight_sweep",
+      "animation": "pop_in|slide_up|slide_left|fade_in|zoom_in|shake|typewriter|word_by_word|impact_scale|highlight_sweep",
       "transition_to_next": "cut|fade|glitch|flash|swipe|zoom",
-      "visual_note": string
+      "layout": "vs_split|spec_compare|scorecard|price_compare|winner_reveal|null",
+      "product_a": string,
+      "product_b": string,
+      "spec_name": string,
+      "value_a": string,
+      "value_b": string,
+      "winner": "a|b|none",
+      "scores": [{{"category": string, "winner": "a|b|none"}}],
+      "price_products": [{{"name": string, "price": string, "highlight": boolean}}],
+      "winner_name": string
     }}
   ],
   "cta_text": string,
   "cta_placement": "end_screen|pinned_comment|link_in_bio"
 }}
-Generate 12-20 segments. Each text field: 3-8 words max."""
+Generate 12-20 segments. Each text: 3-8 words max, TTS-safe (no emoji). duration 1.0–1.5. total_duration_seconds MUST equal sum(duration). start_time is advisory. Omit unused layout fields when layout is null."""
 
 
 def long_form_json_schema(hook_type: str, content_style: str) -> str:
@@ -373,13 +393,22 @@ def long_form_json_schema(hook_type: str, content_style: str) -> str:
           "start_time": number,
           "duration": number,
           "text": string,
-          "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pro_point|con_point|verdict|elimination|comparison|scorecard",
+          "text_style": "headline_bold|subtitle|accent_pop|cta_button|stat_number|question|pros|cons|verdict|elimination|comparison|scorecard",
           "text_color": string,
           "bg_color": string,
           "animation": "pop_in|slide_up|slide_left|fade_in|zoom_in|shake|typewriter|word_by_word|impact_scale|highlight_sweep",
           "transition_to_next": "cut|fade|glitch|flash|swipe|zoom",
           "is_pattern_interrupt": boolean,
-          "visual_note": string
+          "layout": "vs_split|spec_compare|scorecard|price_compare|winner_reveal|null",
+          "product_a": string,
+          "product_b": string,
+          "spec_name": string,
+          "value_a": string,
+          "value_b": string,
+          "winner": "a|b|none",
+          "scores": [{{"category": string, "winner": "a|b|none"}}],
+          "price_products": [{{"name": string, "price": string, "highlight": boolean}}],
+          "winner_name": string
         }}
       ]
     }}
@@ -388,7 +417,7 @@ def long_form_json_schema(hook_type: str, content_style: str) -> str:
   "cta_text": string,
   "cta_placement": "end_screen_and_description"
 }}
-Generate 60-100+ segments across 5-7 chapters. Each text field: 5-15 words."""
+Generate 60-100+ segments across 5-7 chapters. Each text: 5-15 words, TTS-safe (no emoji). duration 3.0–5.0. total_duration_seconds MUST equal sum(duration). start_time/chapter_start_time are advisory. Omit unused layout fields when layout is null."""
 
 
 def youtube_assets_json_schema(affiliate_link: str) -> str:
@@ -451,16 +480,18 @@ HOOK TYPE: {hook_type}
 
 {LAYOUT_SCHEMA}
 
+{RENDERER_CONTRACT}
+
 SHORT-FORM RULES:
-- First 2 seconds: extremely compelling hook text
-- Visual changes every 1-1.5 seconds
-- Each text segment: 3-8 words MAX
+- First segment: extremely compelling hook text
+- Segment duration 1.0–1.5 seconds; visual change every segment
+- Each text segment: 3-8 words MAX, TTS-safe (no emoji)
+- total_duration_seconds must equal the sum of segment durations
 - End with a helpful CTA to check price/details if the product fits their needs
-- Include emoji strategically
 
 {short_form_json_schema(hook_type, content_style)}"""
 
-    return f"""Create a LONG-FORM YouTube script (5-8 minutes, 16:9 landscape).
+    return f"""Create a LONG-FORM YouTube script (5-8 minutes content, 16:9 landscape).
 FACELESS TEXT-ONLY video with animated text overlays.
 
 {build_product_research_block(product_info)}
@@ -476,16 +507,18 @@ HOOK TYPE: {hook_type}
 
 {LAYOUT_SCHEMA}
 
+{RENDERER_CONTRACT}
+
 LONG-FORM RULES:
-- Each text segment: 5-15 words
-- Visual changes every 3-5 seconds
-- Pattern interrupts every 15-20 seconds (visual change, question, stat)
+- Each text segment: 5-15 words, TTS-safe (no emoji)
+- Segment duration 3.0–5.0 seconds
+- total_duration_seconds must equal the sum of all segment durations across chapters
+- Pattern interrupts every few segments (question, stat, style change)
 - Mix styles: headlines, bullets, stats, questions, pros, cons
 - Include engagement trigger questions that encourage comments
-- For trust-based styles: dedicate real screen time to cons/limitations
+- For trust-based styles: dedicate real chapters to cons/limitations
 
 {long_form_json_schema(hook_type, content_style)}"""
-
 
 def build_youtube_assets_user_prompt(
     product_info: dict,

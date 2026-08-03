@@ -21,10 +21,10 @@ Reference script structures from eval fixtures (`backend/eval/fixtures/mock_scri
 | content_style | Required layout segments |
 |---------------|-------------------------|
 | elimination | winner_reveal before final CTA |
-| vs_battle | vs_split opener + scorecard |
+| vs_battle | vs_split AND scorecard AND winner_reveal (spec_compare optional) |
 | budget_challenge | price_compare |
 | worth_it_or_waste | verdict styling |
 | honest_review | pros/cons text_style only |
 | standard | hook → features → CTA |
 
-These exemplars guide script_generator layout segment accuracy during eval dry-runs and live validation.
+See also `RENDERER_CONTRACT.md` for duration sum, TTS-safe text, and animation map.

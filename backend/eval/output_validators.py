@@ -3,6 +3,13 @@
 import re
 from typing import Any
 
+from video_claims import (
+    REQUIRED_LAYOUTS_BY_STYLE,
+    SUPPORTED_ANIMATION_TOKENS,
+    SUPPORTED_TRANSITION_TOKENS,
+    sum_segment_durations,
+)
+
 AFFILIATE_BANNED = re.compile(
     r"\b(commission\s+rate|epc|hop\s+conversion|affiliate\s+marketer|"
     r"promoting\s+as\s+an\s+affiliate|earn\s+as\s+an\s+affiliate)\b",
@@ -13,6 +20,8 @@ CON_SIGNAL = re.compile(
     r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for|avoid)\b",
     re.I,
 )
+
+_DURATION_TOLERANCE_SECONDS = 1.5
 
 
 def _iter_segments(script: dict):
@@ -42,6 +51,38 @@ def check_buyer_language(text: str) -> list[str]:
     if AFFILIATE_BANNED.search(text):
         errors.append("contains banned affiliate-marketer language")
     return errors
+
+
+def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
+    declared = script.get("total_duration_seconds")
+    if declared is None:
+        return
+    try:
+        declared_f = float(declared)
+    except (TypeError, ValueError):
+        errors.append("total_duration_seconds must be a number")
+        return
+    segments = list(_iter_segments(script))
+    if not segments:
+        return
+    if any(seg.get("duration") is None for seg in segments):
+        return
+    summed = sum_segment_durations(script, fmt)
+    if abs(summed - declared_f) > _DURATION_TOLERANCE_SECONDS:
+        errors.append(
+            f"total_duration_seconds {declared_f} diverges from sum(duration) {summed:.2f} "
+            f"(tolerance {_DURATION_TOLERANCE_SECONDS}s)"
+        )
+
+
+def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:
+    for seg in _iter_segments(script):
+        anim = str(seg.get("animation", "")).strip().lower()
+        if anim and anim not in SUPPORTED_ANIMATION_TOKENS:
+            errors.append(f"unsupported animation token: {anim}")
+        trans = str(seg.get("transition_to_next", "")).strip().lower()
+        if trans and trans not in SUPPORTED_TRANSITION_TOKENS:
+            errors.append(f"unsupported transition token: {trans}")
 
 
 def validate_script_output(script: dict, content_style: str, fmt: str) -> tuple[bool, list[str]]:
@@ -74,7 +115,7 @@ def validate_script_output(script: dict, content_style: str, fmt: str) -> tuple[
 
     segments = list(_iter_segments(script))
     styles = {str(s.get("text_style", "")).lower() for s in segments}
-    layouts = {s.get("layout") for s in segments if s.get("layout")}
+    layouts = {str(s.get("layout")) for s in segments if s.get("layout")}
 
     if content_style == "honest_review":
         has_cons = "cons" in styles or "con_point" in styles or any(
@@ -87,19 +128,28 @@ def validate_script_output(script: dict, content_style: str, fmt: str) -> tuple[
         if "elimination" not in styles and "winner_reveal" not in layouts:
             errors.append("elimination style requires elimination text_style or winner_reveal layout")
 
-    if content_style == "vs_battle":
-        if "vs_split" not in layouts and "scorecard" not in layouts:
-            errors.append("vs_battle requires vs_split or scorecard layout segment")
-
-    if content_style == "budget_challenge":
-        if "price_compare" not in layouts:
-            errors.append("budget_challenge requires price_compare layout segment")
+    required_layouts = REQUIRED_LAYOUTS_BY_STYLE.get(content_style, set())
+    missing_layouts = required_layouts - layouts
+    if missing_layouts:
+        errors.append(
+            f"{content_style} requires layouts {sorted(required_layouts)}; missing {sorted(missing_layouts)}"
+        )
 
     if content_style == "worth_it_or_waste":
         if "verdict" not in styles:
             errors.append("worth_it_or_waste requires verdict text_style")
 
-    return len(errors) == 0, errors
+    _check_duration_contract(script, fmt, errors)
+    _check_animation_transition_tokens(script, errors)
+
+    # Deduplicate while preserving order
+    deduped: list[str] = []
+    seen = set()
+    for err in errors:
+        if err not in seen:
+            deduped.append(err)
+            seen.add(err)
+    return len(deduped) == 0, deduped
 
 
 def validate_youtube_assets(

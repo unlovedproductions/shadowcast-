@@ -101,7 +101,11 @@ def _layout_segment(segment_id: int, duration: float, layout: str, **extra) -> d
 
 
 def _inject_vs_battle(script: dict, product_info: dict) -> None:
-    if _has_layout(script):
+    """Inject any missing required vs_battle layouts (partial LLM layouts still get filled)."""
+    has_vs = _has_layout(script, "vs_split")
+    has_scorecard = _has_layout(script, "scorecard")
+    has_winner = _has_layout(script, "winner_reveal")
+    if has_vs and has_scorecard and has_winner:
         return
 
     product_name = product_info.get("product_name", "Our Pick")
@@ -117,18 +121,21 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
         return
 
     sid = _next_segment_id(script)
-    injected = [
-        _layout_segment(
-            sid,
-            2.5,
-            "vs_split",
-            product_a=product_name,
-            product_b=competitor,
-            text=f"{product_name} vs {competitor}",
-            text_style="comparison",
-        ),
-    ]
-    sid += 1
+    injected = []
+
+    if not has_vs:
+        injected.append(
+            _layout_segment(
+                sid,
+                2.5,
+                "vs_split",
+                product_a=product_name,
+                product_b=competitor,
+                text=f"{product_name} vs {competitor}",
+                text_style="comparison",
+            )
+        )
+        sid += 1
 
     spec_pairs = []
     if price and price_notes:
@@ -146,24 +153,28 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
         if spec_name and value_a and value_b:
             spec_pairs.append((spec_name, value_a, value_b, winner))
 
-    for spec_name, value_a, value_b, winner in spec_pairs[:3]:
-        injected.append(
-            _layout_segment(
-                sid,
-                2.0,
-                "spec_compare",
-                spec_name=spec_name,
-                value_a=value_a,
-                value_b=value_b,
-                winner=winner,
-                text=spec_name,
-                text_style="comparison",
+    if not _has_layout(script, "spec_compare"):
+        for spec_name, value_a, value_b, winner in spec_pairs[:3]:
+            injected.append(
+                _layout_segment(
+                    sid,
+                    2.0,
+                    "spec_compare",
+                    spec_name=spec_name,
+                    value_a=value_a,
+                    value_b=value_b,
+                    winner=winner,
+                    text=spec_name,
+                    text_style="comparison",
+                )
             )
-        )
-        sid += 1
+            sid += 1
 
     winners = [winner for _, _, _, winner in spec_pairs if winner in {"a", "b"}]
-    if winners:
+    if not winners:
+        winners = ["a"]
+
+    if not has_scorecard:
         score_rows = [
             {"category": f"Round {idx + 1}", "winner": winner}
             for idx, winner in enumerate(winners[:3])
@@ -182,23 +193,24 @@ def _inject_vs_battle(script: dict, product_info: dict) -> None:
         )
         sid += 1
 
+    if not has_winner:
         a_wins = winners.count("a")
         b_wins = winners.count("b")
-        if a_wins != b_wins:
-            winner_name = product_name if a_wins > b_wins else competitor
-            injected.append(
-                _layout_segment(
-                    sid,
-                    2.5,
-                    "winner_reveal",
-                    winner_name=winner_name,
-                    text=f"Winner: {winner_name}",
-                    text_style="verdict",
-                )
+        winner_name = product_name if a_wins >= b_wins else competitor
+        injected.append(
+            _layout_segment(
+                sid,
+                2.5,
+                "winner_reveal",
+                winner_name=winner_name,
+                text=f"Winner: {winner_name}",
+                text_style="verdict",
             )
+        )
 
-    insert_at = min(1, len(segments))
-    segments[insert_at:insert_at] = injected
+    if injected:
+        insert_at = min(1, len(segments))
+        segments[insert_at:insert_at] = injected
 
     if len(segments) < 3:
         sid = _next_segment_id(script)
