@@ -59,6 +59,28 @@ def test_vs_battle_injects_layout_segments():
     assert "winner_reveal" in layouts
 
 
+def test_vs_battle_fills_missing_layouts_when_partial():
+    partial = {
+        "format": "short_form",
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "duration": 2},
+            {
+                "segment_id": 2,
+                "text": "A vs B",
+                "text_style": "comparison",
+                "duration": 2,
+                "layout": "vs_split",
+                "product_a": "SoundCore Space A40",
+                "product_b": "AirPods Pro 2",
+            },
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button", "duration": 2},
+        ],
+    }
+    enriched = enrich_script(partial, PRODUCT, "vs_battle")
+    layouts = {seg.get("layout") for seg in enriched["segments"] if seg.get("layout")}
+    assert layouts >= {"vs_split", "scorecard", "winner_reveal"}
+
+
 def test_elimination_injects_winner_reveal_and_elimination_style():
     enriched = enrich_script(_short_script(), PRODUCT, "elimination")
     styles = [seg.get("text_style") for seg in enriched["segments"]]
