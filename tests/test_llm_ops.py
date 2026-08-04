@@ -8,7 +8,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from eval.output_validators import validate_youtube_assets
-from llm_client import _normalize_validate_result, _provider_attempt_order
+from llm_client import (
+    _chat_via_ollama_native,
+    _normalize_validate_result,
+    _ollama_native_root,
+    _provider_attempt_order,
+)
+from llm_config import get_ollama_keep_alive
 from llm_context import append_llm_call, clear_job_context, drain_pending_calls, set_job_context
 from llm_telemetry import build_call_record, get_job_token_budget
 from rag_store import ResearchStore, StyleCorpusStore, chunk_text, chunk_text_sentences
@@ -108,3 +114,63 @@ def test_build_call_record_shape():
     )
     assert record["provider"] == "ollama"
     assert record["validator_pass"] is True
+
+
+def test_ollama_keep_alive_default_and_overrides(monkeypatch):
+    monkeypatch.delenv("SHADOWCAST_OLLAMA_KEEP_ALIVE", raising=False)
+    monkeypatch.delenv("OLLAMA_KEEP_ALIVE", raising=False)
+    assert get_ollama_keep_alive() == -1
+
+    monkeypatch.setenv("SHADOWCAST_OLLAMA_KEEP_ALIVE", "30m")
+    assert get_ollama_keep_alive() == "30m"
+
+    monkeypatch.setenv("SHADOWCAST_OLLAMA_KEEP_ALIVE", "off")
+    assert get_ollama_keep_alive() is None
+
+    monkeypatch.delenv("SHADOWCAST_OLLAMA_KEEP_ALIVE", raising=False)
+    monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "600")
+    assert get_ollama_keep_alive() == 600
+
+
+def test_ollama_native_root_strips_v1():
+    assert _ollama_native_root("http://localhost:11434/v1") == "http://localhost:11434"
+    assert _ollama_native_root("http://localhost:11434") == "http://localhost:11434"
+
+
+def test_chat_via_ollama_native_sends_keep_alive(monkeypatch):
+    import json
+
+    captured: dict = {}
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({"message": {"role": "assistant", "content": '{"ok":true}'}}).encode()
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(req.data.decode())
+        return _FakeResp()
+
+    monkeypatch.setattr("llm_client.urllib.request.urlopen", fake_urlopen)
+    content = _chat_via_ollama_native(
+        base_url="http://localhost:11434/v1",
+        model="qwen2.5:14b",
+        messages=[{"role": "user", "content": "hi"}],
+        temperature=0.3,
+        max_tokens=64,
+        timeout=12.0,
+        keep_alive=-1,
+    )
+    assert content == '{"ok":true}'
+    assert captured["url"] == "http://localhost:11434/api/chat"
+    assert captured["body"]["keep_alive"] == -1
+    assert captured["body"]["stream"] is False
+    assert captured["body"]["options"]["num_predict"] == 64
+    assert captured["timeout"] == 12.0
