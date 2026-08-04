@@ -11,9 +11,12 @@ from brand_overlays import (
     SHORTS_CAPTION_MAX_WORDS,
     SHORTS_CAPTION_MIN_WORDS,
     SHORTS_CAPTION_Y_FRAC,
+    SHORTS_WORD_HIGHLIGHT_MIN_SEC,
     caption_events_from_timing,
     chunk_caption_text,
+    expand_caption_word_highlights,
     render_shorts_caption,
+    shorts_word_highlight_enabled,
 )
 from tts_generator import resolve_tts_timing
 
@@ -78,6 +81,52 @@ def test_caption_events_follow_tts_timing_and_intro_offset():
     assert second[0]["start"] == pytest.approx(3.35)
 
 
+def test_expand_caption_word_highlights_proportional_timing():
+    chunk = {
+        "text": "one two three four five",
+        "start": 1.0,
+        "duration": 1.0,
+        "segment_index": 0,
+    }
+    words = expand_caption_word_highlights([chunk], enabled=True)
+    assert len(words) == 5
+    assert [w["highlight_index"] for w in words] == list(range(5))
+    assert all(w["text"] == chunk["text"] for w in words)
+    assert words[0]["start"] == pytest.approx(1.0)
+    assert words[-1]["start"] + words[-1]["duration"] == pytest.approx(2.0)
+    assert sum(w["duration"] for w in words) == pytest.approx(1.0)
+    assert all(w["duration"] == pytest.approx(0.2) for w in words)
+
+
+def test_expand_caption_word_highlights_skips_when_too_brief_or_disabled():
+    brief = {
+        "text": "one two three four",
+        "start": 0.0,
+        "duration": SHORTS_WORD_HIGHLIGHT_MIN_SEC * 3,  # 4 words → under min
+        "segment_index": 1,
+    }
+    skipped = expand_caption_word_highlights([brief], enabled=True)
+    assert len(skipped) == 1
+    assert skipped[0]["highlight_index"] is None
+    assert skipped[0]["duration"] == pytest.approx(brief["duration"])
+
+    disabled = expand_caption_word_highlights(
+        [{"text": "one two three four", "start": 0.0, "duration": 2.0}],
+        enabled=False,
+    )
+    assert len(disabled) == 1
+    assert disabled[0]["highlight_index"] is None
+
+
+def test_shorts_word_highlight_env_gate(monkeypatch):
+    monkeypatch.delenv("SHADOWCAST_SHORTS_WORD_HIGHLIGHT", raising=False)
+    assert shorts_word_highlight_enabled() is True
+    monkeypatch.setenv("SHADOWCAST_SHORTS_WORD_HIGHLIGHT", "0")
+    assert shorts_word_highlight_enabled() is False
+    monkeypatch.setenv("SHADOWCAST_SHORTS_WORD_HIGHLIGHT", "true")
+    assert shorts_word_highlight_enabled() is True
+
+
 def test_render_shorts_caption_ui_safe_zone():
     img = render_shorts_caption(1080, 1920, "muted viewers still read this")
     assert img.size == (1080, 1920)
@@ -94,6 +143,13 @@ def test_render_shorts_caption_ui_safe_zone():
     assert int(1920 * 0.30) <= mid <= int(1920 * 0.55)
     # Band center target
     assert abs(mid / 1920 - SHORTS_CAPTION_Y_FRAC) < 0.12
+
+
+def test_render_shorts_caption_with_highlight_index():
+    plain = render_shorts_caption(1080, 1920, "one two three four")
+    hi = render_shorts_caption(1080, 1920, "one two three four", highlight_index=1)
+    assert hi.size == plain.size
+    assert list(hi.getdata()) != list(plain.getdata())
 
 
 def test_resolve_tts_timing_prefers_script_then_sidecar(tmp_path):

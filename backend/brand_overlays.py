@@ -503,6 +503,22 @@ SHORTS_CAPTION_MAX_WORDS = 7
 # Upper-middle safe zone: avoid bottom YouTube UI + right action rail.
 SHORTS_CAPTION_Y_FRAC = 0.40
 SHORTS_CAPTION_MAX_WIDTH_FRAC = 0.72
+# Approx karaoke: skip per-word frames when a word would be too brief.
+SHORTS_WORD_HIGHLIGHT_MIN_SEC = 0.10
+SHORTS_CAPTION_HIGHLIGHT_FILL = (*ACCENT_COLOR, 255)
+SHORTS_CAPTION_BASE_FILL = (255, 255, 255, 255)
+SHORTS_CAPTION_STROKE = (0, 0, 0, 230)
+_CAPTION_STROKE_OFFSETS = (
+    (-3, 0), (3, 0), (0, -3), (0, 3),
+    (-2, -2), (2, 2), (-2, 2), (2, -2),
+    (-3, -1), (3, 1), (-1, -3), (1, 3),
+)
+
+
+def shorts_word_highlight_enabled() -> bool:
+    """Env gate for karaoke-style word highlight (default ON for Shorts)."""
+    raw = (os.getenv("SHADOWCAST_SHORTS_WORD_HIGHLIGHT") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 
 def chunk_caption_text(
@@ -583,12 +599,60 @@ def caption_events_from_timing(
     return events
 
 
-def render_shorts_caption(width: int, height: int, text: str) -> Image.Image:
+def expand_caption_word_highlights(
+    events: list,
+    enabled: bool = True,
+    min_word_dur: float = SHORTS_WORD_HIGHLIGHT_MIN_SEC,
+) -> list[dict]:
+    """
+    Subdivide chunk caption events into per-word highlight frames.
+
+    Timing is approximate: each chunk's duration is split evenly across its
+    words (no WhisperX). Full chunk text stays visible; only highlight_index
+    advances. Skips expansion when per-word duration would be < min_word_dur.
+    """
+    out: list[dict] = []
+    for ev in events or []:
+        text = " ".join(str(ev.get("text") or "").split())
+        words = text.split()
+        start = float(ev.get("start", 0.0) or 0.0)
+        duration = float(ev.get("duration", 0.0) or 0.0)
+        base = {
+            "text": text,
+            "segment_index": ev.get("segment_index"),
+        }
+        if (not enabled) or len(words) <= 1 or duration <= 0:
+            hi = 0 if (enabled and len(words) == 1) else None
+            out.append({**base, "start": round(start, 3), "duration": round(max(duration, 0.0), 3), "highlight_index": hi})
+            continue
+        per = duration / len(words)
+        if per < float(min_word_dur):
+            out.append({**base, "start": round(start, 3), "duration": round(duration, 3), "highlight_index": None})
+            continue
+        for i in range(len(words)):
+            out.append(
+                {
+                    **base,
+                    "start": round(start + i * per, 3),
+                    "duration": round(per, 3),
+                    "highlight_index": i,
+                }
+            )
+    return out
+
+
+def render_shorts_caption(
+    width: int,
+    height: int,
+    text: str,
+    highlight_index: int | None = None,
+) -> Image.Image:
     """
     High-contrast Shorts caption frame (RGBA).
 
     Placed in the upper-middle safe zone (~35–45% from top), width-capped to
-    stay clear of the right action rail.
+    stay clear of the right action rail. When highlight_index is set, that word
+    uses brand accent fill (approx karaoke); others stay white.
     """
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -621,16 +685,57 @@ def render_shorts_caption(width: int, height: int, text: str) -> Image.Image:
     y = int(height * SHORTS_CAPTION_Y_FRAC) - text_h // 2
     y = max(int(height * 0.32), min(y, int(height * 0.48) - text_h))
 
-    stroke = (0, 0, 0, 230)
-    fill = (255, 255, 255, 255)
-    for dx, dy in (
-        (-3, 0), (3, 0), (0, -3), (0, 3),
-        (-2, -2), (2, 2), (-2, 2), (2, -2),
-        (-3, -1), (3, 1), (-1, -3), (1, 3),
-    ):
-        draw.multiline_text((x + dx, y + dy), display, font=font, fill=stroke, align="center", spacing=6)
-    draw.multiline_text((x, y), display, font=font, fill=fill, align="center", spacing=6)
+    if highlight_index is None:
+        for dx, dy in _CAPTION_STROKE_OFFSETS:
+            draw.multiline_text(
+                (x + dx, y + dy), display, font=font, fill=SHORTS_CAPTION_STROKE, align="center", spacing=6
+            )
+        draw.multiline_text((x, y), display, font=font, fill=SHORTS_CAPTION_BASE_FILL, align="center", spacing=6)
+        return img
+
+    _draw_caption_words_highlighted(
+        draw, lines, band_left, max_text_width, y, font, int(highlight_index)
+    )
     return img
+
+
+def _draw_caption_words_highlighted(
+    draw,
+    lines: list[str],
+    band_left: int,
+    max_text_width: int,
+    y: int,
+    font,
+    highlight_index: int,
+) -> None:
+    """Draw wrapped caption lines word-by-word; accent-fill the active word."""
+    space_w = float(draw.textlength(" ", font=font))
+    line_gap = 6
+    word_i = 0
+    # Approximate line height from a sample glyph bbox.
+    sample = draw.textbbox((0, 0), "Ag", font=font)
+    line_h = max(1, (sample[3] - sample[1]) + line_gap)
+    cy = y
+    for line in lines:
+        words = line.split()
+        if not words:
+            cy += line_h
+            continue
+        widths = [float(draw.textlength(w, font=font)) for w in words]
+        line_w = int(sum(widths) + space_w * max(0, len(words) - 1))
+        cx = band_left + max(0, (max_text_width - line_w) // 2)
+        for wi, word in enumerate(words):
+            fill = (
+                SHORTS_CAPTION_HIGHLIGHT_FILL
+                if word_i == highlight_index
+                else SHORTS_CAPTION_BASE_FILL
+            )
+            for dx, dy in _CAPTION_STROKE_OFFSETS:
+                draw.text((cx + dx, cy + dy), word, font=font, fill=SHORTS_CAPTION_STROKE)
+            draw.text((cx, cy), word, font=font, fill=fill)
+            cx += widths[wi] + (space_w if wi < len(words) - 1 else 0.0)
+            word_i += 1
+        cy += line_h
 
 
 def _wrap_caption_lines(draw, text: str, font, max_width: int, max_lines: int = 2) -> list[str]:
