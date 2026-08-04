@@ -38,7 +38,9 @@ from brand_overlays import (
     render_comment_prompt,
     render_subscribe_card,
     caption_events_from_timing,
+    expand_caption_word_highlights,
     render_shorts_caption,
+    shorts_word_highlight_enabled,
 )
 from sound_design import (
     generate_background_music,
@@ -943,18 +945,25 @@ def _render_short_form_video_impl(
         overlay_layers.append(lt_clip)
 
     # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
+    # Optional approx karaoke: proportional word highlight within each 4–7 word chunk.
     if use_tts:
         vo_hint = os.path.join(
             os.path.dirname(output_path) or ".",
             f"{script.get('hook_type', 'unknown')}_short_form_voiceover.mp3",
         )
         timing_rows = resolve_tts_timing(script, vo_hint)
-        for ev in caption_events_from_timing(timing_rows, intro_offset=intro_seconds):
+        chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
+        caption_events = expand_caption_word_highlights(
+            chunk_events, enabled=shorts_word_highlight_enabled()
+        )
+        for ev in caption_events:
             start = float(ev["start"])
             if start >= float(final.duration):
                 continue
             dur = min(float(ev["duration"]), max(0.1, float(final.duration) - start))
-            cap_img = render_shorts_caption(WIDTH, HEIGHT, ev["text"])
+            cap_img = render_shorts_caption(
+                WIDTH, HEIGHT, ev["text"], highlight_index=ev.get("highlight_index")
+            )
             cap_clip = ImageClip(np.array(cap_img.convert("RGBA")), duration=dur).with_start(start)
             if dur >= 0.25:
                 fade = min(0.08, dur / 3.0)
