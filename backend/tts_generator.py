@@ -18,8 +18,11 @@ import tempfile
 import subprocess
 import threading
 
+import numpy as np
 from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
 from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
+
+from video_claims import _transition_duration
 
 
 _PROVIDERS_CACHE = None
@@ -31,6 +34,40 @@ _KOKORO_LOCK = threading.Lock()
 _DEFAULT_INTER_SEGMENT_PAUSE = 0.35
 _CROSSFADE_SECONDS = 0.04
 _MIN_SEGMENT_DURATION = 0.12
+
+
+def transition_gaps_for_segments(segments: list) -> list[float]:
+    """Real transition durations inserted after each segment (0 after last)."""
+    gaps: list[float] = []
+    for idx, seg in enumerate(segments):
+        if idx < len(segments) - 1:
+            gaps.append(float(_transition_duration(seg)))
+        else:
+            gaps.append(0.0)
+    return gaps
+
+
+def transition_gaps_for_script(script: dict) -> list[float]:
+    """
+    Per-segment transition gaps matching build_render_timeline.
+
+    Chapter-local: no transition pad between chapters (visual uses chapter cards).
+    """
+    if "chapters" in script:
+        gaps: list[float] = []
+        for chapter in script.get("chapters", []):
+            gaps.extend(transition_gaps_for_segments(chapter.get("segments", [])))
+        return gaps
+    return transition_gaps_for_segments(script.get("segments", []))
+
+
+def _timing_clock_total(timing_rows: list) -> float:
+    """Speech slots + transition pads — length of the shared VO/caption clock."""
+    total = 0.0
+    for row in timing_rows:
+        total += float(row.get("duration", 0.0) or 0.0)
+        total += float(row.get("transition_duration", 0.0) or 0.0)
+    return total
 
 
 # ── Provider Detection ───────────────────────────────────────────────
@@ -194,11 +231,19 @@ DEFAULT_VOICES = {
 }
 
 
-def _silence_clip(duration: float, fps: int = 44100):
+def _silence_clip(duration: float, fps: int = 44100, nchannels: int = 2):
+    """Stereo-safe silence for concatenate_audioclips (MoviePy expects (n, channels))."""
     duration = max(float(duration or 0.0), 0.0)
     if duration <= 0:
         return None
-    return AudioClip(lambda t: 0 * t, duration=duration, fps=fps)
+    channels = max(1, int(nchannels or 2))
+
+    def make_frame(t):
+        if np.isscalar(t):
+            return np.zeros(channels, dtype=np.float64)
+        return np.zeros((len(t), channels), dtype=np.float64)
+
+    return AudioClip(make_frame, duration=duration, fps=fps)
 
 
 def _inter_segment_pause() -> float:
@@ -271,6 +316,7 @@ def apply_timing_to_script(script: dict, timing_rows: list) -> dict:
     else:
         apply_timing_to_segments(script.get("segments", []), timing_rows)
 
+    # Segment visual slots only (transitions are separate overhead on the shared clock).
     total = sum(float(r["duration"]) for r in timing_rows)
     script["total_duration_seconds"] = round(total, 3)
     script["tts_timing"] = timing_rows
@@ -309,7 +355,7 @@ def _write_timing_sidecar(output_path: str, timing_rows: list) -> str:
     sidecar = os.path.splitext(output_path)[0] + "_timing.json"
     payload = {
         "segments": timing_rows,
-        "total_duration_seconds": round(sum(float(r["duration"]) for r in timing_rows), 3),
+        "total_duration_seconds": round(_timing_clock_total(timing_rows), 3),
     }
     with open(sidecar, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
@@ -324,12 +370,15 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                                      lang: str = "en",
                                      audio_driven: bool = True,
                                      apply_durations: bool = True,
-                                     write_timing: bool = True) -> tuple[str, list]:
+                                     write_timing: bool = True,
+                                     transition_gaps: list | None = None) -> tuple[str, list]:
     """
     Generate a single voiceover from script segments.
 
     audio_driven=True (default): never trim speech to LLM duration guesses.
     Scene length becomes measured TTS duration + inter-segment pause.
+    Real transition durations (glitch/flash/swipe/zoom) are padded as silence
+    after each segment slot so VO/caption starts match build_render_timeline.
     Returns (output_path, timing_rows) where timing_rows form the shared clock
     for captions / overlays.
     """
@@ -345,6 +394,7 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
     timing_rows = []
     target_pause = _inter_segment_pause()
     cumulative = 0.0
+    gaps = transition_gaps if transition_gaps is not None else transition_gaps_for_segments(segments)
 
     try:
         for i, seg in enumerate(segments):
@@ -384,6 +434,8 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             except (TypeError, ValueError):
                 llm_duration = 0.0
 
+            fps = int(getattr(clip, "fps", 44100) or 44100)
+            nchannels = int(getattr(clip, "nchannels", 2) or 2)
             if audio_driven:
                 pause = target_pause
                 segment_duration = max(tts_duration + pause, _MIN_SEGMENT_DURATION)
@@ -391,7 +443,7 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 clip = _with_edge_fades(clip)
                 audio_clips.append(clip)
                 remaining = max(segment_duration - tts_duration, 0.0)
-                silence = _silence_clip(remaining, int(getattr(clip, "fps", 44100) or 44100))
+                silence = _silence_clip(remaining, fps, nchannels=nchannels)
                 if silence:
                     audio_clips.append(silence)
             else:
@@ -406,9 +458,22 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 clip = _with_edge_fades(clip)
                 audio_clips.append(clip)
                 remaining = max(segment_duration - clip.duration, target_pause)
-                silence = _silence_clip(remaining, int(getattr(clip, "fps", 44100) or 44100))
+                silence = _silence_clip(remaining, fps, nchannels=nchannels)
                 if silence:
                     audio_clips.append(silence)
+
+            # Visual timeline inserts real transition clips AFTER the segment slot.
+            # Pad VO and advance the shared clock; do not fold into segment duration
+            # (that would double-count once the renderer also appends the transition).
+            try:
+                trans_dur = float(gaps[i]) if i < len(gaps) else 0.0
+            except (TypeError, ValueError, IndexError):
+                trans_dur = 0.0
+            trans_dur = max(0.0, trans_dur)
+            if trans_dur > 0:
+                trans_silence = _silence_clip(trans_dur, fps, nchannels=nchannels)
+                if trans_silence:
+                    audio_clips.append(trans_silence)
 
             row = {
                 "index": i,
@@ -417,10 +482,11 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 "tts_duration": round(tts_duration, 3),
                 "pause": round(max(segment_duration - tts_duration, 0.0), 3),
                 "duration": round(segment_duration, 3),
+                "transition_duration": round(trans_dur, 3),
                 "llm_duration": round(llm_duration, 3) if llm_duration else None,
             }
             timing_rows.append(row)
-            cumulative += segment_duration
+            cumulative += segment_duration + trans_dur
 
         if apply_durations and timing_rows:
             apply_timing_to_segments(segments, timing_rows)
@@ -520,6 +586,7 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
         audio_driven=audio_driven,
         apply_durations=audio_driven,
         write_timing=True,
+        transition_gaps=transition_gaps_for_script(script),
     )
     if audio_driven and timing_rows:
         apply_timing_to_script(script, timing_rows)
