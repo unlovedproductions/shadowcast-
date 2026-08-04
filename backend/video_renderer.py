@@ -39,6 +39,7 @@ from brand_overlays import (
     render_subscribe_card,
     caption_events_from_timing,
     expand_caption_word_highlights,
+    lower_third_event_from_timing,
     render_shorts_caption,
     shorts_word_highlight_enabled,
 )
@@ -930,7 +931,7 @@ def _render_short_form_video_impl(
     # Concatenate all clips
     final = concatenate_videoclips(clips, method="compose")
 
-    # ── Persistent overlays: watermark + lower third ──
+    # ── Overlays: watermark + entity-timed lower third + Shorts captions ──
     overlay_layers = [final]
 
     watermark = render_watermark_overlay(WIDTH, HEIGHT)
@@ -938,20 +939,37 @@ def _render_short_form_video_impl(
     watermark_clip = ImageClip(watermark_arr, duration=final.duration)
     overlay_layers.append(watermark_clip)
 
-    if product_name:
-        lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=True)
-        lt_arr = np.array(lower_third.convert("RGBA"))
-        lt_clip = ImageClip(lt_arr, duration=final.duration)
-        overlay_layers.append(lt_clip)
-
-    # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
-    # Optional approx karaoke: proportional word highlight within each 4–7 word chunk.
+    timing_rows: list = []
     if use_tts:
         vo_hint = os.path.join(
             os.path.dirname(output_path) or ".",
             f"{script.get('hook_type', 'unknown')}_short_form_voiceover.mp3",
         )
         timing_rows = resolve_tts_timing(script, vo_hint)
+
+    # Entity lower-third: first product mention on shared TTS clock (4–7s hold).
+    # Shorts bar sits above bottom UI; captions stay mid-upper — no Y overlap.
+    if product_name:
+        lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=True)
+        lt_arr = np.array(lower_third.convert("RGBA"))
+        lt_ev = lower_third_event_from_timing(
+            timing_rows,
+            product_name,
+            intro_offset=intro_seconds,
+            video_duration=float(final.duration),
+        )
+        if lt_ev:
+            lt_start = float(lt_ev["start"])
+            lt_dur = float(lt_ev["duration"])
+            lt_clip = ImageClip(lt_arr, duration=lt_dur).with_start(lt_start)
+            if lt_dur >= 0.4:
+                fade = min(0.25, lt_dur / 4.0)
+                lt_clip = lt_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(lt_clip)
+
+    # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
+    # Optional approx karaoke: proportional word highlight within each 4–7 word chunk.
+    if use_tts and timing_rows:
         chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
         caption_events = expand_caption_word_highlights(
             chunk_events, enabled=shorts_word_highlight_enabled()
@@ -1236,11 +1254,32 @@ def _render_long_form_video_impl(
     watermark_clip = ImageClip(watermark_arr, duration=final.duration)
     overlay_layers.append(watermark_clip)
 
+    timing_rows: list = []
+    if use_tts:
+        vo_hint = os.path.join(
+            os.path.dirname(output_path) or ".",
+            f"{script.get('hook_type', 'unknown')}_long_form_voiceover.mp3",
+        )
+        timing_rows = resolve_tts_timing(script, vo_hint)
+
+    # Entity lower-third: first product mention on shared TTS clock (4–7s hold).
     if product_name:
         lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=False)
         lt_arr = np.array(lower_third.convert("RGBA"))
-        lt_clip = ImageClip(lt_arr, duration=final.duration)
-        overlay_layers.append(lt_clip)
+        lt_ev = lower_third_event_from_timing(
+            timing_rows,
+            product_name,
+            intro_offset=intro_seconds,
+            video_duration=float(final.duration),
+        )
+        if lt_ev:
+            lt_start = float(lt_ev["start"])
+            lt_dur = float(lt_ev["duration"])
+            lt_clip = ImageClip(lt_arr, duration=lt_dur).with_start(lt_start)
+            if lt_dur >= 0.4:
+                fade = min(0.25, lt_dur / 4.0)
+                lt_clip = lt_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(lt_clip)
 
     # Progress bar overlay (numpy slice animator — no PIL per frame)
     overlay_layers.append(
