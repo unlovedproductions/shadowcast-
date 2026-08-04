@@ -246,13 +246,111 @@ def generate_sfx(effect_type, duration=0.5, amplitude=0.5):
         sfx = sfx / np.max(np.abs(sfx)) * amplitude
     return sfx
 
+def _cosine_duck_envelope(presence: np.ndarray, duck_factor: float, ramp_samples: int) -> np.ndarray:
+    """Build a cosine-eased ducking envelope from a 0/1 presence mask."""
+    duck_factor = float(np.clip(duck_factor, 0.05, 1.0))
+    if ramp_samples <= 1:
+        return np.where(presence > 0.1, duck_factor, 1.0)
+
+    # Smooth binary presence, then map through a cosine ease between 1.0 and duck_factor.
+    kernel = np.hanning(ramp_samples * 2 + 1)
+    kernel = kernel / max(kernel.sum(), 1e-9)
+    smoothed = np.convolve(presence.astype(np.float64), kernel, mode="same")
+    smoothed = np.clip(smoothed, 0.0, 1.0)
+    # Cosine ease: 1 at silence → duck_factor at full speech presence.
+    ease = 0.5 - 0.5 * np.cos(np.pi * smoothed)
+    return 1.0 - ease * (1.0 - duck_factor)
+
+
+def apply_two_pass_loudnorm(
+    wav_path: str,
+    target_i: float = -14.0,
+    target_tp: float = -1.0,
+    target_lra: float = 11.0,
+) -> str:
+    """
+    Two-pass ffmpeg loudnorm to YouTube-ish targets (−14 LUFS / −1 dBTP).
+
+    Single-pass loudnorm can pump on speech; measure then apply linear=true.
+    Falls back to the input file if ffmpeg/loudnorm is unavailable.
+    """
+    import json
+    import re
+    import tempfile
+
+    measure_cmd = [
+        "ffmpeg", "-y", "-i", wav_path,
+        "-af", f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json",
+        "-f", "null", "-",
+    ]
+    try:
+        proc = subprocess.run(measure_cmd, capture_output=True, check=False)
+    except FileNotFoundError:
+        print("Warning: ffmpeg not found; skipping loudnorm")
+        return wav_path
+
+    stderr = (proc.stderr or b"").decode(errors="replace")
+    match = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", stderr, re.DOTALL)
+    if not match:
+        print("Warning: loudnorm measure parse failed; skipping loudnorm")
+        return wav_path
+
+    try:
+        measured = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        print("Warning: loudnorm JSON invalid; skipping loudnorm")
+        return wav_path
+
+    measured_i = measured.get("input_i")
+    measured_lra = measured.get("input_lra")
+    measured_tp = measured.get("input_tp")
+    measured_thresh = measured.get("input_thresh")
+    offset = measured.get("target_offset", 0)
+    if None in (measured_i, measured_lra, measured_tp, measured_thresh):
+        print("Warning: loudnorm missing measured fields; skipping")
+        return wav_path
+
+    fd, tmp_out = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    filter_str = (
+        f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
+        f":measured_I={measured_i}:measured_LRA={measured_lra}"
+        f":measured_TP={measured_tp}:measured_thresh={measured_thresh}"
+        f":offset={offset}:linear=true:print_format=summary"
+    )
+    apply_cmd = [
+        "ffmpeg", "-y", "-i", wav_path,
+        "-af", filter_str,
+        "-ar", str(SAMPLE_RATE),
+        tmp_out,
+    ]
+    try:
+        apply_proc = subprocess.run(apply_cmd, capture_output=True, check=False)
+        if apply_proc.returncode != 0 or not os.path.exists(tmp_out) or os.path.getsize(tmp_out) <= 0:
+            print("Warning: loudnorm apply failed; keeping pre-norm mix")
+            try:
+                os.unlink(tmp_out)
+            except OSError:
+                pass
+            return wav_path
+        os.replace(tmp_out, wav_path)
+    except Exception as exc:
+        print(f"Warning: loudnorm apply error ({exc}); keeping pre-norm mix")
+        try:
+            os.unlink(tmp_out)
+        except OSError:
+            pass
+    return wav_path
+
+
 def mix_audio(
     bg_music_array,
     sfx_list_with_timestamps,
     voiceover_array=None,
     output_path="output.wav",
-    ducking_volume_factor=0.3,
+    ducking_volume_factor=0.55,
     voiceover_start_seconds=0.0,
+    apply_loudnorm: bool = True,
 ):
     # Determine the total duration of the mixed track
     voiceover_offset = max(0, int(float(voiceover_start_seconds or 0.0) * SAMPLE_RATE))
@@ -279,13 +377,12 @@ def mix_audio(
                 np.abs(voiceover_array[:vo_len]) > 0.01, 1, 0
             )
 
-        # Smooth the voiceover presence to avoid abrupt ducking
-        window_size = SAMPLE_RATE // 10 # 100 ms window
-        voiceover_presence = np.convolve(voiceover_presence, np.ones(window_size)/window_size, mode='same')
+        # ~400ms cosine-ease ramps avoid clicky hard ducks (research default ~0.55 depth).
+        ramp_samples = max(1, SAMPLE_RATE * 2 // 5)
+        ducking_envelope = _cosine_duck_envelope(
+            voiceover_presence, float(ducking_volume_factor), ramp_samples
+        )
 
-        ducking_envelope = np.ones(total_duration_samples)
-        ducking_envelope = np.where(voiceover_presence > 0.1, ducking_volume_factor, 1)
-        
         # Apply ducking to background music
         mixed_audio[:len(bg_music_array)] = mixed_audio[:len(bg_music_array)] * ducking_envelope[:len(bg_music_array)]
 
@@ -306,13 +403,14 @@ def mix_audio(
         if start_sample < total_duration_samples: # Ensure SFX starts within bounds
             mixed_audio[start_sample:end_sample] += sfx_data
 
-    # Normalize to -1 to 1 range and convert to 16-bit PCM
-    # Bug 4 fix: guard against division-by-zero when mixed_audio is silent
+    # Peak guard before loudnorm (loudnorm handles integrated LUFS).
     max_val = np.max(np.abs(mixed_audio))
     if max_val > 1e-6:
         mixed_audio = mixed_audio / max_val * 0.9  # Scale to avoid clipping
     audio_int = (mixed_audio * 32767).astype(np.int16)
     write_wav(output_path, SAMPLE_RATE, audio_int)
+    if apply_loudnorm:
+        apply_two_pass_loudnorm(output_path)
 
 def add_audio_to_video(video_path, audio_path, output_path):
     command = [
