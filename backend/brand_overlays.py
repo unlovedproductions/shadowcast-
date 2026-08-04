@@ -496,6 +496,167 @@ def render_subscribe_card(width, height, accent_color=ACCENT_COLOR):
     return pil_to_numpy(img)
 
 
+# --- Shorts burn-in captions (TTS clock) ---
+
+SHORTS_CAPTION_MIN_WORDS = 4
+SHORTS_CAPTION_MAX_WORDS = 7
+# Upper-middle safe zone: avoid bottom YouTube UI + right action rail.
+SHORTS_CAPTION_Y_FRAC = 0.40
+SHORTS_CAPTION_MAX_WIDTH_FRAC = 0.72
+
+
+def chunk_caption_text(
+    text: str,
+    min_words: int = SHORTS_CAPTION_MIN_WORDS,
+    max_words: int = SHORTS_CAPTION_MAX_WORDS,
+) -> list[str]:
+    """Split spoken text into 4–7 word caption chunks (Shorts burn-in)."""
+    words = [w for w in str(text or "").split() if w]
+    if not words:
+        return []
+    if len(words) <= max_words:
+        return [" ".join(words)]
+
+    target = max(min_words, min(5, max_words))
+    chunks: list[str] = []
+    i = 0
+    n = len(words)
+    while i < n:
+        remaining = n - i
+        if remaining <= max_words:
+            chunk = words[i:]
+            if len(chunk) < min_words and chunks:
+                prev = chunks[-1].split()
+                need = min_words - len(chunk)
+                if len(prev) - need >= min_words:
+                    chunks[-1] = " ".join(prev[:-need])
+                    chunk = prev[-need:] + chunk
+                elif len(prev) + len(chunk) <= max_words:
+                    chunks[-1] = " ".join(prev + chunk)
+                    break
+            chunks.append(" ".join(chunk))
+            break
+
+        take = min(target, remaining)
+        after = remaining - take
+        if 0 < after < min_words:
+            take = remaining - min_words
+            take = max(min_words, min(take, max_words))
+        chunks.append(" ".join(words[i : i + take]))
+        i += take
+    return chunks
+
+
+def caption_events_from_timing(
+    timing_rows: list,
+    intro_offset: float = 0.0,
+    min_words: int = SHORTS_CAPTION_MIN_WORDS,
+    max_words: int = SHORTS_CAPTION_MAX_WORDS,
+) -> list[dict]:
+    """
+    Build burn-in caption events from shared TTS timing rows.
+
+    Segment-level clock: each row's speech window is subdivided evenly across
+    4–7 word chunks. Starts are offset by intro chrome so they align with VO.
+    """
+    events: list[dict] = []
+    for row in timing_rows or []:
+        text = row.get("text") or ""
+        chunks = chunk_caption_text(text, min_words=min_words, max_words=max_words)
+        if not chunks:
+            continue
+        start = float(intro_offset) + float(row.get("start", 0.0) or 0.0)
+        speech = float(row.get("tts_duration") or 0.0)
+        if speech <= 0:
+            speech = float(row.get("duration") or 0.0)
+        speech = max(speech, 0.35)
+        per = speech / len(chunks)
+        for j, chunk in enumerate(chunks):
+            events.append(
+                {
+                    "text": chunk,
+                    "start": round(start + j * per, 3),
+                    "duration": round(per, 3),
+                    "segment_index": row.get("index"),
+                }
+            )
+    return events
+
+
+def render_shorts_caption(width: int, height: int, text: str) -> Image.Image:
+    """
+    High-contrast Shorts caption frame (RGBA).
+
+    Placed in the upper-middle safe zone (~35–45% from top), width-capped to
+    stay clear of the right action rail.
+    """
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    clean = " ".join(str(text or "").split())
+    if not clean:
+        return img
+
+    font_size = max(28, int(width * 0.055))
+    font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
+    max_text_width = int(width * SHORTS_CAPTION_MAX_WIDTH_FRAC)
+
+    # Shrink font until the line fits the safe width (wrap to 2 lines max).
+    for _ in range(8):
+        lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
+        bbox = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, align="center", spacing=6)
+        text_w = bbox[2] - bbox[0]
+        if text_w <= max_text_width or font_size <= 24:
+            break
+        font_size = max(24, int(font_size * 0.9))
+        font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
+        lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
+
+    display = "\n".join(lines)
+    bbox = draw.multiline_textbbox((0, 0), display, font=font, align="center", spacing=6)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    # Center horizontally within the left-safe band (not full frame).
+    band_left = int((width - max_text_width) / 2)
+    x = band_left + max(0, (max_text_width - text_w) // 2)
+    y = int(height * SHORTS_CAPTION_Y_FRAC) - text_h // 2
+    y = max(int(height * 0.32), min(y, int(height * 0.48) - text_h))
+
+    stroke = (0, 0, 0, 230)
+    fill = (255, 255, 255, 255)
+    for dx, dy in (
+        (-3, 0), (3, 0), (0, -3), (0, 3),
+        (-2, -2), (2, 2), (-2, 2), (2, -2),
+        (-3, -1), (3, 1), (-1, -3), (1, 3),
+    ):
+        draw.multiline_text((x + dx, y + dy), display, font=font, fill=stroke, align="center", spacing=6)
+    draw.multiline_text((x, y), display, font=font, fill=fill, align="center", spacing=6)
+    return img
+
+
+def _wrap_caption_lines(draw, text: str, font, max_width: int, max_lines: int = 2) -> list[str]:
+    words = text.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        trial = (" ".join(current + [word])).strip()
+        bbox = draw.textbbox((0, 0), trial, font=font)
+        if current and (bbox[2] - bbox[0]) > max_width:
+            lines.append(" ".join(current))
+            current = [word]
+            if len(lines) >= max_lines:
+                break
+        else:
+            current.append(word)
+    if current and len(lines) < max_lines:
+        lines.append(" ".join(current))
+    elif current and lines:
+        # Overflow: append remainder to last line (font shrink handles fit).
+        lines[-1] = (lines[-1] + " " + " ".join(current)).strip()
+    return lines or [text]
+
+
 if __name__ == "__main__":
     # Create assets directory if it doesn't exist
     os.makedirs(FONT_DIR, exist_ok=True)
