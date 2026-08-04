@@ -277,6 +277,34 @@ def apply_timing_to_script(script: dict, timing_rows: list) -> dict:
     return script
 
 
+def resolve_tts_timing(script: dict, voiceover_path: str | None = None) -> list:
+    """Return timing rows from script.tts_timing or voiceover_timing sidecar."""
+    rows = script.get("tts_timing")
+    if isinstance(rows, list) and rows:
+        return rows
+    candidates = []
+    if voiceover_path:
+        candidates.append(os.path.splitext(voiceover_path)[0] + "_timing.json")
+    hook = script.get("hook_type", "unknown")
+    fmt = script.get("format", "short_form")
+    if voiceover_path:
+        base_dir = os.path.dirname(voiceover_path) or "."
+        candidates.append(os.path.join(base_dir, f"{hook}_{fmt}_voiceover_timing.json"))
+    for path in candidates:
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            loaded = data.get("segments") if isinstance(data, dict) else None
+            if isinstance(loaded, list) and loaded:
+                script["tts_timing"] = loaded
+                return loaded
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+    return []
+
+
 def _write_timing_sidecar(output_path: str, timing_rows: list) -> str:
     sidecar = os.path.splitext(output_path)[0] + "_timing.json"
     payload = {

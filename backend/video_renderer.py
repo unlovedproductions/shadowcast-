@@ -37,6 +37,8 @@ from brand_overlays import (
     render_poll_card,
     render_comment_prompt,
     render_subscribe_card,
+    caption_events_from_timing,
+    render_shorts_caption,
 )
 from sound_design import (
     generate_background_music,
@@ -47,7 +49,7 @@ from sound_design import (
 )
 from audio_options import MOOD_TEMPO, resolve_audio_mood
 from scipy.io.wavfile import read as read_wav
-from tts_generator import generate_voiceover_for_script
+from tts_generator import generate_voiceover_for_script, resolve_tts_timing
 
 from comparison_layouts import (
     render_vs_split_screen,
@@ -939,6 +941,25 @@ def _render_short_form_video_impl(
         lt_arr = np.array(lower_third.convert("RGBA"))
         lt_clip = ImageClip(lt_arr, duration=final.duration)
         overlay_layers.append(lt_clip)
+
+    # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
+    if use_tts:
+        vo_hint = os.path.join(
+            os.path.dirname(output_path) or ".",
+            f"{script.get('hook_type', 'unknown')}_short_form_voiceover.mp3",
+        )
+        timing_rows = resolve_tts_timing(script, vo_hint)
+        for ev in caption_events_from_timing(timing_rows, intro_offset=intro_seconds):
+            start = float(ev["start"])
+            if start >= float(final.duration):
+                continue
+            dur = min(float(ev["duration"]), max(0.1, float(final.duration) - start))
+            cap_img = render_shorts_caption(WIDTH, HEIGHT, ev["text"])
+            cap_clip = ImageClip(np.array(cap_img.convert("RGBA")), duration=dur).with_start(start)
+            if dur >= 0.25:
+                fade = min(0.08, dur / 3.0)
+                cap_clip = cap_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(cap_clip)
 
     final_with_overlays = CompositeVideoClip(overlay_layers)
 
