@@ -44,6 +44,15 @@ def test_build_script_user_prompt_non_empty():
     assert "SoundCore Space A40" in user
     assert "OUTPUT JSON SCHEMA" in user
     assert "NOT affiliate marketers" not in user
+    assert "RENDERER CONTRACT" in user
+    assert "total_duration_seconds must equal the sum of segment durations" in user
+    assert "TTS-safe" in user
+    assert '"layout"' in user
+    assert "slide_left" in user
+    assert "Include emoji strategically" not in user
+    schema = user.split("OUTPUT JSON SCHEMA")[1]
+    assert "visual_note" not in schema
+    assert "pros|cons" in schema
 
 
 def test_buyer_rules_in_system_prompt():
@@ -95,6 +104,58 @@ def test_validate_script_honest_review_short():
     }
     ok, errors = validate_script_output(script, "honest_review", "short_form")
     assert ok, errors
+
+
+def test_validate_script_rejects_duration_mismatch():
+    script = {
+        "hook_type": "curiosity",
+        "content_style": "honest_review",
+        "format": "short_form",
+        "title_suggestion": "Review",
+        "total_duration_seconds": 40,
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "duration": 1.2},
+            {"segment_id": 2, "text": "Bad fit", "text_style": "cons", "duration": 1.2},
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button", "duration": 1.2},
+        ],
+    }
+    ok, errors = validate_script_output(script, "honest_review", "short_form")
+    assert not ok
+    assert any("total_duration_seconds" in e for e in errors)
+
+
+def test_validate_script_rejects_unsupported_animation():
+    script = {
+        "hook_type": "curiosity",
+        "content_style": "honest_review",
+        "format": "short_form",
+        "title_suggestion": "Review",
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "animation": "bounce"},
+            {"segment_id": 2, "text": "Bad fit", "text_style": "cons"},
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button"},
+        ],
+    }
+    ok, errors = validate_script_output(script, "honest_review", "short_form")
+    assert not ok
+    assert any("unsupported animation" in e for e in errors)
+
+
+def test_validate_vs_battle_requires_full_layout_set():
+    script = {
+        "hook_type": "comparison_trap",
+        "content_style": "vs_battle",
+        "format": "short_form",
+        "title_suggestion": "Vs",
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "layout": "vs_split"},
+            {"segment_id": 2, "text": "Mid", "text_style": "subtitle"},
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button"},
+        ],
+    }
+    ok, errors = validate_script_output(script, "vs_battle", "short_form")
+    assert not ok
+    assert any("scorecard" in e and "winner_reveal" in e for e in errors)
 
 
 def test_validate_script_rejects_commission_language():
