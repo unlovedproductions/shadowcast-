@@ -1,0 +1,368 @@
+{
+  "generated_at": "2026-08-04T15:52:34.627135+00:00",
+  "experiment": "tts_timing_ab",
+  "description": "A=LLM-slot trim (audio_driven=False) vs B=TTS-first (audio_driven=True)",
+  "mode": "mock",
+  "provider": "mock_wav",
+  "pause_seconds": 0.35,
+  "clip_count": 5,
+  "summary": {
+    "clips_with_trim_under_a": 5,
+    "segments_trimmed_under_a": 20,
+    "total_length_delta_b_minus_a": 48.76,
+    "note": "speech_trimmed_a is a cut-off proxy (A tts_duration < B). Naturalness: prefer B when trim_rate_a > 0; length_delta is expected pad."
+  },
+  "clips": [
+    {
+      "clip_id": "hr_budget_anc",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "mode": "mock",
+      "provider": "mock_wav",
+      "pause_seconds": 0.35,
+      "segments": [
+        {
+          "index": 0,
+          "text": "These forty dollar buds claim studio ANC.",
+          "llm_duration": 1.1,
+          "tts_duration_a": 0.75,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.1,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.17,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.17
+        },
+        {
+          "index": 1,
+          "text": "Commute noise drops hard on the train.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.27,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.27
+        },
+        {
+          "index": 2,
+          "text": "Bass is muddy above seventy percent volume.",
+          "llm_duration": 1.1,
+          "tts_duration_a": 0.75,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.1,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.17,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.17
+        },
+        {
+          "index": 3,
+          "text": "Worth it if you hate subway roar.",
+          "llm_duration": 0.9,
+          "tts_duration_a": 0.55,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 0.9,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.37,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.37
+        }
+      ],
+      "totals": {
+        "duration_a": 4.1,
+        "duration_b": 13.08,
+        "length_delta_b_minus_a": 8.98,
+        "segments_trimmed_a": 4,
+        "segments_total": 4,
+        "trim_rate_a": 1.0
+      }
+    },
+    {
+      "clip_id": "hr_battery_claim",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "mode": "mock",
+      "provider": "mock_wav",
+      "pause_seconds": 0.35,
+      "segments": [
+        {
+          "index": 0,
+          "text": "Fifty hours sounds impossible for this price.",
+          "llm_duration": 1.15,
+          "tts_duration_a": 0.8,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.15,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.12,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.12
+        },
+        {
+          "index": 1,
+          "text": "I got forty two with ANC on all day.",
+          "llm_duration": 1.05,
+          "tts_duration_a": 0.7,
+          "tts_duration_b": 3.75,
+          "final_duration_a": 1.05,
+          "final_duration_b": 4.1,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 3.05,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 3.05
+        },
+        {
+          "index": 2,
+          "text": "Case charge is slow but it still beats AirPods.",
+          "llm_duration": 1.2,
+          "tts_duration_a": 0.85,
+          "tts_duration_b": 3.75,
+          "final_duration_a": 1.2,
+          "final_duration_b": 4.1,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.9,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.9
+        },
+        {
+          "index": 3,
+          "text": "Buy for stamina, not for premium fit.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.27,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.27
+        }
+      ],
+      "totals": {
+        "duration_a": 4.4,
+        "duration_b": 14.74,
+        "length_delta_b_minus_a": 10.34,
+        "segments_trimmed_a": 4,
+        "segments_total": 4,
+        "trim_rate_a": 1.0
+      }
+    },
+    {
+      "clip_id": "hr_fit_issues",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "mode": "mock",
+      "provider": "mock_wav",
+      "pause_seconds": 0.35,
+      "segments": [
+        {
+          "index": 0,
+          "text": "Small ears will fight these tips all morning.",
+          "llm_duration": 1.1,
+          "tts_duration_a": 0.75,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.1,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.58,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.58
+        },
+        {
+          "index": 1,
+          "text": "Foam tips fixed the seal for my runs.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.68,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.68
+        },
+        {
+          "index": 2,
+          "text": "Without that seal the ANC falls apart.",
+          "llm_duration": 0.95,
+          "tts_duration_a": 0.6,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 0.95,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.32,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.32
+        },
+        {
+          "index": 3,
+          "text": "Check tip sizes before you return them.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 2.92,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.27,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.27,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.27
+        }
+      ],
+      "totals": {
+        "duration_a": 4.05,
+        "duration_b": 13.9,
+        "length_delta_b_minus_a": 9.85,
+        "segments_trimmed_a": 4,
+        "segments_total": 4,
+        "trim_rate_a": 1.0
+      }
+    },
+    {
+      "clip_id": "hr_call_quality",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "mode": "mock",
+      "provider": "mock_wav",
+      "pause_seconds": 0.35,
+      "segments": [
+        {
+          "index": 0,
+          "text": "Reviews say calls are crystal \u2014 outdoors they are not.",
+          "llm_duration": 1.25,
+          "tts_duration_a": 0.9,
+          "tts_duration_b": 4.17,
+          "final_duration_a": 1.25,
+          "final_duration_b": 4.52,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 3.27,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 3.27
+        },
+        {
+          "index": 1,
+          "text": "Wind shreds the mics on a windy block.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.68,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.68
+        },
+        {
+          "index": 2,
+          "text": "Quiet rooms sound fine for standups.",
+          "llm_duration": 0.95,
+          "tts_duration_a": 0.6,
+          "tts_duration_b": 2.5,
+          "final_duration_a": 0.95,
+          "final_duration_b": 2.85,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 1.9,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 1.9
+        },
+        {
+          "index": 3,
+          "text": "Desk warrior yes, street calls no.",
+          "llm_duration": 0.9,
+          "tts_duration_a": 0.55,
+          "tts_duration_b": 2.5,
+          "final_duration_a": 0.9,
+          "final_duration_b": 2.85,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 1.95,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 1.95
+        }
+      ],
+      "totals": {
+        "duration_a": 4.1,
+        "duration_b": 13.9,
+        "length_delta_b_minus_a": 9.8,
+        "segments_trimmed_a": 4,
+        "segments_total": 4,
+        "trim_rate_a": 1.0
+      }
+    },
+    {
+      "clip_id": "hr_verdict_cta",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "mode": "mock",
+      "provider": "mock_wav",
+      "pause_seconds": 0.35,
+      "segments": [
+        {
+          "index": 0,
+          "text": "Who this is for: commuters on a budget.",
+          "llm_duration": 1.05,
+          "tts_duration_a": 0.7,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.05,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.63,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.63
+        },
+        {
+          "index": 1,
+          "text": "Who should skip: anyone needing pro calls outdoors.",
+          "llm_duration": 1.2,
+          "tts_duration_a": 0.85,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.2,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.48,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.48
+        },
+        {
+          "index": 2,
+          "text": "Score: eight out of ten for the price.",
+          "llm_duration": 1.0,
+          "tts_duration_a": 0.65,
+          "tts_duration_b": 3.33,
+          "final_duration_a": 1.0,
+          "final_duration_b": 3.68,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.68,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.68
+        },
+        {
+          "index": 3,
+          "text": "Link below for the current deal.",
+          "llm_duration": 0.85,
+          "tts_duration_a": 0.5,
+          "tts_duration_b": 2.5,
+          "final_duration_a": 0.85,
+          "final_duration_b": 2.85,
+          "speech_trimmed_a": true,
+          "length_delta_b_minus_a": 2.0,
+          "pad_seconds_b": 0.35,
+          "trim_seconds_a": 2.0
+        }
+      ],
+      "totals": {
+        "duration_a": 4.1,
+        "duration_b": 13.89,
+        "length_delta_b_minus_a": 9.79,
+        "segments_trimmed_a": 4,
+        "segments_total": 4,
+        "trim_rate_a": 1.0
+      }
+    }
+  ],
+  "work_dir_ephemeral": "/tmp/tts_ab_mghu5pzl"
+}
