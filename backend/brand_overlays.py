@@ -233,23 +233,37 @@ def render_watermark_overlay(width, height):
 
     return watermark_img
 
+# Entity lower-third: 4–7s hold on first product mention (F9).
+LOWER_THIRD_HOLD_SEC = 5.5
+LOWER_THIRD_MENTION_LEAD_SEC = 0.3
+# Shorts: lift bar above YouTube bottom UI (~12% chrome); captions stay mid-upper.
+SHORTS_LOWER_THIRD_BOTTOM_FRAC = 0.88
+
+
 def render_lower_third(width, height, product_name, price="", is_short_form=False):
-    """Returns RGBA PIL Image with persistent lower-third bar showing product name and price with dark pink accent line."""
+    """Returns RGBA PIL Image with lower-third bar (name + price). Placement only — timing is caller-owned."""
     lt_height = int(height * 0.12) if is_short_form else int(height * 0.08)
     lt_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(lt_img)
 
+    # Shorts: sit above bottom UI; long-form: flush bottom (progress bar is thinner).
+    if is_short_form:
+        bar_bottom = int(height * SHORTS_LOWER_THIRD_BOTTOM_FRAC)
+        bar_top = bar_bottom - lt_height
+    else:
+        bar_bottom = height
+        bar_top = height - lt_height
+
     # Background bar
     bar_color = BG_COLOR + (200,) # Semi-transparent background
-    draw.rectangle([(0, height - lt_height), (width, height)], fill=bar_color)
+    draw.rectangle([(0, bar_top), (width, bar_bottom)], fill=bar_color)
 
     # Accent line
     accent_line_height = int(lt_height * 0.1)
-    draw.rectangle([(0, height - lt_height), (width, height - lt_height + accent_line_height)], fill=ACCENT_COLOR)
+    draw.rectangle([(0, bar_top), (width, bar_top + accent_line_height)], fill=ACCENT_COLOR)
 
     # Text content
     text_padding_x = int(width * 0.02)
-    text_padding_y = int(lt_height * 0.2)
 
     # Product Name
     prod_name_font_size = int(lt_height * 0.4)
@@ -284,16 +298,94 @@ def render_lower_third(width, height, product_name, price="", is_short_form=Fals
         prod_name_text_bbox = draw.textbbox((0, 0), display_name, font=prod_name_font)
 
     prod_name_text_height = prod_name_text_bbox[3] - prod_name_text_bbox[1]
-    prod_name_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
+    prod_name_y = bar_top + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
     draw.text((text_padding_x, prod_name_y), display_name, font=prod_name_font, fill=TEXT_COLOR)
 
     # Draw price on the right side
     if price and price_font is not None:
         price_x = width - price_text_width - text_padding_x
-        price_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - price_text_height) / 2
+        price_y = bar_top + accent_line_height + (lt_height - accent_line_height - price_text_height) / 2
         draw.text((price_x, price_y), price, font=price_font, fill=TEXT_COLOR)
 
     return lt_img
+
+
+def _mention_word_index(text: str, product_name: str) -> int | None:
+    """Return word index of first product mention in spoken text, or None."""
+    words = [w for w in str(text or "").split() if w]
+    name = str(product_name or "").strip()
+    if not words or not name:
+        return None
+    hay = " ".join(words).lower()
+    needle = name.lower()
+    pos = hay.find(needle)
+    if pos >= 0:
+        return len(hay[:pos].split()) if pos > 0 else 0
+    tokens = [t for t in needle.split() if len(t) > 2] or needle.split()
+    stripped = [w.lower().strip(".,!?;:\"'()[]") for w in words]
+    for i, w in enumerate(stripped):
+        for tok in tokens:
+            if tok == w or (len(tok) > 2 and (tok in w or w in tok)):
+                return i
+    return None
+
+
+def lower_third_event_from_timing(
+    timing_rows: list,
+    product_name: str,
+    intro_offset: float = 0.0,
+    *,
+    hold_sec: float = LOWER_THIRD_HOLD_SEC,
+    mention_lead: float = LOWER_THIRD_MENTION_LEAD_SEC,
+    video_duration: float | None = None,
+) -> dict | None:
+    """
+    Timed lower-third window from shared TTS clock (F9).
+
+    Triggers near first product mention (±mention_lead), holds ~4–7s.
+    Falls back to first speech start when the name never appears in VO text.
+    """
+    name = str(product_name or "").strip()
+    if not name:
+        return None
+    hold = max(4.0, min(float(hold_sec), 7.0))
+    lead = max(0.0, min(float(mention_lead), 0.5))
+    rows = list(timing_rows or [])
+
+    mention_abs: float | None = None
+    for row in rows:
+        text = row.get("text") or ""
+        word_i = _mention_word_index(text, name)
+        if word_i is None:
+            continue
+        seg_start = float(intro_offset) + float(row.get("start", 0.0) or 0.0)
+        speech = float(row.get("tts_duration") or 0.0)
+        if speech <= 0:
+            speech = float(row.get("duration") or 0.0)
+        speech = max(speech, 0.35)
+        n_words = max(len(str(text).split()), 1)
+        frac = min(max(word_i / n_words, 0.0), 1.0)
+        mention_abs = seg_start + frac * speech
+        break
+
+    if mention_abs is None:
+        if rows:
+            mention_abs = float(intro_offset) + float(rows[0].get("start", 0.0) or 0.0)
+        else:
+            mention_abs = float(intro_offset)
+
+    start = max(0.0, mention_abs - lead)
+    duration = hold
+    if video_duration is not None:
+        vd = float(video_duration)
+        if start >= vd:
+            return None
+        duration = min(duration, max(0.1, vd - start))
+    return {
+        "start": round(start, 3),
+        "duration": round(duration, 3),
+        "product_name": name,
+    }
 
 # --- Progress/Context Overlays Functions ---
 

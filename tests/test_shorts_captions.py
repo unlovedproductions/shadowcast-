@@ -11,10 +11,13 @@ from brand_overlays import (
     SHORTS_CAPTION_MAX_WORDS,
     SHORTS_CAPTION_MIN_WORDS,
     SHORTS_CAPTION_Y_FRAC,
+    SHORTS_LOWER_THIRD_BOTTOM_FRAC,
     SHORTS_WORD_HIGHLIGHT_MIN_SEC,
     caption_events_from_timing,
     chunk_caption_text,
     expand_caption_word_highlights,
+    lower_third_event_from_timing,
+    render_lower_third,
     render_shorts_caption,
     shorts_word_highlight_enabled,
 )
@@ -164,3 +167,74 @@ def test_resolve_tts_timing_prefers_script_then_sidecar(tmp_path):
     rows = resolve_tts_timing(script2, str(vo))
     assert rows[0]["index"] == 1
     assert script2["tts_timing"][0]["index"] == 1
+
+
+def test_lower_third_event_triggers_on_first_product_mention():
+    timing = [
+        {
+            "index": 0,
+            "text": "stop wasting money on junk",
+            "start": 0.0,
+            "tts_duration": 1.0,
+            "duration": 1.35,
+        },
+        {
+            "index": 1,
+            "text": "the Super Product X actually lasts",
+            "start": 1.35,
+            "tts_duration": 2.0,
+            "duration": 2.35,
+        },
+    ]
+    # "Super Product X" starts at word index 1 of 6 → (1/6)*speech into seg1
+    # intro 2.0 + 1.35 + (1/6)*2.0 - lead 0.3
+    ev = lower_third_event_from_timing(
+        timing, "Super Product X", intro_offset=2.0, hold_sec=5.5, mention_lead=0.3
+    )
+    assert ev is not None
+    assert ev["duration"] == pytest.approx(5.5)
+    expected_start = 2.0 + 1.35 + (1 / 6) * 2.0 - 0.3
+    assert ev["start"] == pytest.approx(round(expected_start, 3))
+
+
+def test_lower_third_event_fallback_and_clamp():
+    timing = [
+        {
+            "index": 0,
+            "text": "no brand here at all",
+            "start": 0.5,
+            "tts_duration": 1.0,
+            "duration": 1.35,
+        }
+    ]
+    ev = lower_third_event_from_timing(
+        timing, "Acme Widget", intro_offset=2.0, hold_sec=5.5, mention_lead=0.3
+    )
+    assert ev is not None
+    # No mention → first speech start − lead
+    assert ev["start"] == pytest.approx(2.2)  # 2.0 + 0.5 - 0.3
+    clamped = lower_third_event_from_timing(
+        timing,
+        "Acme Widget",
+        intro_offset=2.0,
+        hold_sec=5.5,
+        mention_lead=0.0,
+        video_duration=3.0,
+    )
+    assert clamped is not None
+    assert clamped["start"] == pytest.approx(2.5)
+    assert clamped["duration"] == pytest.approx(0.5)
+
+
+def test_shorts_lower_third_above_caption_band():
+    """Shorts LT sits near bottom UI; captions remain mid-upper (no Y competition)."""
+    assert SHORTS_LOWER_THIRD_BOTTOM_FRAC > 0.8
+    assert SHORTS_CAPTION_Y_FRAC < 0.5
+    img = render_lower_third(1080, 1920, "Mini Product Y", "Free", is_short_form=True)
+    assert img.size == (1080, 1920)
+    # Opaque pixels should exist in the raised bar band, not flush at y=height-1.
+    bar_bottom = int(1920 * SHORTS_LOWER_THIRD_BOTTOM_FRAC)
+    px_bottom_edge = img.getpixel((540, 1919))
+    px_bar = img.getpixel((540, bar_bottom - 10))
+    assert px_bottom_edge[3] == 0
+    assert px_bar[3] > 0
