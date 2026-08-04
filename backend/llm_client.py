@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional, Union
 from llm_config import (
     LLMConfig,
     get_config,
+    get_ollama_keep_alive,
     get_provider_defaults,
     parse_llm_json,
     supports_json_response_format,
@@ -63,6 +64,51 @@ def _config_for_provider(provider: str, base: LLMConfig) -> LLMConfig:
         base_url=base.base_url if provider == base.provider else "",
         model=base.model if provider == base.provider else "",
     )
+
+
+def _ollama_native_root(base_url: str) -> str:
+    root = (base_url or "").rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3]
+    return root.rstrip("/") or "http://localhost:11434"
+
+
+def _chat_via_ollama_native(
+    *,
+    base_url: str,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+    timeout: float,
+    keep_alive: Any,
+) -> str:
+    """POST /api/chat so keep_alive is honored (OpenAI-compat drops it)."""
+    import json
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+        },
+    }
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_ollama_native_root(base_url)}/api/chat",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    message = body.get("message") or {}
+    return message.get("content") or ""
 
 
 def chat_completion(
@@ -118,8 +164,19 @@ def chat_completion(
 
         started = time.perf_counter()
         try:
-            response = client.chat.completions.create(**kwargs)
-            content = getattr(response.choices[0].message, "content", "") or ""
+            if active.provider == "ollama":
+                content = _chat_via_ollama_native(
+                    base_url=active.base_url,
+                    model=active.model,
+                    messages=messages,
+                    temperature=temp,
+                    max_tokens=tokens,
+                    timeout=req_timeout,
+                    keep_alive=get_ollama_keep_alive(),
+                )
+            else:
+                response = client.chat.completions.create(**kwargs)
+                content = getattr(response.choices[0].message, "content", "") or ""
             latency_ms = (time.perf_counter() - started) * 1000
             sizes = {"prompt_chars": len(system or "") + len(user or ""), "response_chars": len(content)}
             if job_id:
