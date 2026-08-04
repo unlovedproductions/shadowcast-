@@ -22,7 +22,11 @@ import numpy as np
 from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
 from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
 
-from video_claims import _transition_duration
+from video_claims import (
+    LONG_CHAPTER_CARD_SECONDS,
+    LONG_COMMENT_PROMPT_SECONDS,
+    _transition_duration,
+)
 
 
 _PROVIDERS_CACHE = None
@@ -61,12 +65,48 @@ def transition_gaps_for_script(script: dict) -> list[float]:
     return transition_gaps_for_segments(script.get("segments", []))
 
 
+def leading_chrome_for_script(script: dict) -> float:
+    """Chapter-card silence before first long-form speech (intro is separate)."""
+    if script.get("chapters"):
+        return float(LONG_CHAPTER_CARD_SECONDS)
+    return 0.0
+
+
+def chrome_gaps_for_script(script: dict) -> list[float]:
+    """
+    Per-segment chrome silence after each flat segment matching build_render_timeline.
+
+    Mid-video comment prompt and the next chapter card land after a chapter's
+    last segment — same insertion points as build_render_timeline for LONG_FORM.
+    """
+    chapters = script.get("chapters")
+    if not chapters:
+        return [0.0] * len(script.get("segments", []))
+
+    gaps: list[float] = []
+    engagement_inserted = False
+    n_chapters = len(chapters)
+    for ch_idx, chapter in enumerate(chapters):
+        segs = list(chapter.get("segments", []))
+        for idx in range(len(segs)):
+            after = 0.0
+            if idx == len(segs) - 1:
+                if not engagement_inserted and ch_idx >= n_chapters // 2:
+                    after += float(LONG_COMMENT_PROMPT_SECONDS)
+                    engagement_inserted = True
+                if ch_idx < n_chapters - 1:
+                    after += float(LONG_CHAPTER_CARD_SECONDS)
+            gaps.append(after)
+    return gaps
+
+
 def _timing_clock_total(timing_rows: list) -> float:
-    """Speech slots + transition pads — length of the shared VO/caption clock."""
+    """Speech slots + transition/chrome pads — length of the shared VO/caption clock."""
     total = 0.0
     for row in timing_rows:
         total += float(row.get("duration", 0.0) or 0.0)
         total += float(row.get("transition_duration", 0.0) or 0.0)
+        total += float(row.get("chrome_duration", 0.0) or 0.0)
     return total
 
 
@@ -371,14 +411,17 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                                      audio_driven: bool = True,
                                      apply_durations: bool = True,
                                      write_timing: bool = True,
-                                     transition_gaps: list | None = None) -> tuple[str, list]:
+                                     transition_gaps: list | None = None,
+                                     chrome_gaps: list | None = None,
+                                     leading_chrome: float = 0.0) -> tuple[str, list]:
     """
     Generate a single voiceover from script segments.
 
     audio_driven=True (default): never trim speech to LLM duration guesses.
     Scene length becomes measured TTS duration + inter-segment pause.
-    Real transition durations (glitch/flash/swipe/zoom) are padded as silence
-    after each segment slot so VO/caption starts match build_render_timeline.
+    Real transition durations (glitch/flash/swipe/zoom) and long-form chrome
+    (chapter cards / comment prompt) are padded as silence so VO/caption starts
+    match build_render_timeline. Intro remains voiceover_start_seconds.
     Returns (output_path, timing_rows) where timing_rows form the shared clock
     for captions / overlays.
     """
@@ -392,9 +435,14 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
     temp_files = []
     audio_clips = []
     timing_rows = []
+    # MoviePy: closing a source clip invalidates subclipped copies that share its reader.
+    source_clips_to_close = []
     target_pause = _inter_segment_pause()
-    cumulative = 0.0
+    leading = max(0.0, float(leading_chrome or 0.0))
+    cumulative = leading
+    leading_pending = leading
     gaps = transition_gaps if transition_gaps is not None else transition_gaps_for_segments(segments)
+    chrome = chrome_gaps if chrome_gaps is not None else [0.0] * len(segments)
 
     try:
         for i, seg in enumerate(segments):
@@ -436,6 +484,11 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
 
             fps = int(getattr(clip, "fps", 44100) or 44100)
             nchannels = int(getattr(clip, "nchannels", 2) or 2)
+            if leading_pending > 0:
+                lead_silence = _silence_clip(leading_pending, fps, nchannels=nchannels)
+                if lead_silence:
+                    audio_clips.append(lead_silence)
+                leading_pending = 0.0
             if audio_driven:
                 pause = target_pause
                 segment_duration = max(tts_duration + pause, _MIN_SEGMENT_DURATION)
@@ -451,9 +504,9 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 segment_duration = llm_duration if llm_duration > 0 else max(tts_duration + target_pause, _MIN_SEGMENT_DURATION)
                 max_voice_duration = max(segment_duration - target_pause, _MIN_SEGMENT_DURATION)
                 if clip.duration > max_voice_duration:
-                    trimmed = clip.subclipped(0, max_voice_duration)
-                    clip.close()
-                    clip = trimmed
+                    # Keep source open until after write — subclipped shares the reader.
+                    source_clips_to_close.append(clip)
+                    clip = clip.subclipped(0, max_voice_duration)
                     tts_duration = float(clip.duration or 0.0)
                 clip = _with_edge_fades(clip)
                 audio_clips.append(clip)
@@ -475,6 +528,16 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 if trans_silence:
                     audio_clips.append(trans_silence)
 
+            try:
+                chrome_dur = float(chrome[i]) if i < len(chrome) else 0.0
+            except (TypeError, ValueError, IndexError):
+                chrome_dur = 0.0
+            chrome_dur = max(0.0, chrome_dur)
+            if chrome_dur > 0:
+                chrome_silence = _silence_clip(chrome_dur, fps, nchannels=nchannels)
+                if chrome_silence:
+                    audio_clips.append(chrome_silence)
+
             row = {
                 "index": i,
                 "text": text,
@@ -483,10 +546,11 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 "pause": round(max(segment_duration - tts_duration, 0.0), 3),
                 "duration": round(segment_duration, 3),
                 "transition_duration": round(trans_dur, 3),
+                "chrome_duration": round(chrome_dur, 3),
                 "llm_duration": round(llm_duration, 3) if llm_duration else None,
             }
             timing_rows.append(row)
-            cumulative += segment_duration + trans_dur
+            cumulative += segment_duration + trans_dur + chrome_dur
 
         if apply_durations and timing_rows:
             apply_timing_to_segments(segments, timing_rows)
@@ -497,6 +561,11 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             final_audio.close()
 
         for clip in audio_clips:
+            try:
+                clip.close()
+            except Exception:
+                pass
+        for clip in source_clips_to_close:
             try:
                 clip.close()
             except Exception:
@@ -587,6 +656,8 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
         apply_durations=audio_driven,
         write_timing=True,
         transition_gaps=transition_gaps_for_script(script),
+        chrome_gaps=chrome_gaps_for_script(script),
+        leading_chrome=leading_chrome_for_script(script),
     )
     if audio_driven and timing_rows:
         apply_timing_to_script(script, timing_rows)
