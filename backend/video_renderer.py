@@ -11,7 +11,6 @@ import math
 import os
 import random
 import textwrap
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from io import BytesIO
 
@@ -250,11 +249,24 @@ def _finalize_muxed_output(video_only_path: str, audio_path: str, output_path: s
         os.remove(audio_path)
 
 
-def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: str | None, render_warnings=None):
-    """Generate TTS for script segments and return a float32 numpy array, or None."""
+def _load_voiceover_array(
+    script: dict,
+    output_path: str,
+    provider: str,
+    voice: str | None,
+    render_warnings=None,
+    audio_driven: bool = True,
+):
+    """Generate TTS for script segments and return a float32 numpy array, or None.
+
+    When audio_driven=True, mutates script segment durations to measured TTS + pause
+    so the visual timeline can share the same clock.
+    """
     try:
         vo_dir = os.path.dirname(output_path) or "."
-        vo_path = generate_voiceover_for_script(script, vo_dir, provider=provider, voice=voice)
+        vo_path, _timing = generate_voiceover_for_script(
+            script, vo_dir, provider=provider, voice=voice, audio_driven=audio_driven
+        )
         if not vo_path or not os.path.exists(vo_path):
             if render_warnings is not None:
                 render_warnings.append("TTS voiceover file was not produced")
@@ -286,6 +298,30 @@ def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: 
         if render_warnings is not None:
             render_warnings.append(f"TTS voiceover failed: {e}")
         return None
+
+
+def _prepare_tts_before_render(
+    script: dict,
+    output_path: str,
+    use_tts: bool,
+    tts_provider: str,
+    tts_voice: str | None,
+    render_warnings: list | None,
+):
+    """Run TTS first so segment durations drive the visual timeline."""
+    if not use_tts:
+        return None
+    voiceover_array = _load_voiceover_array(
+        script,
+        output_path,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        audio_driven=True,
+    )
+    if voiceover_array is None and render_warnings is not None:
+        render_warnings.append("Video rendered without TTS voiceover")
+    return voiceover_array
 
 
 # Animation types that use kinetic effects instead of simple fades
@@ -829,6 +865,11 @@ def _render_short_form_video_impl(
     if not segments:
         raise ValueError("No segments found in script")
 
+    # TTS-first: measure speech and rewrite segment durations before timeline/clips.
+    voiceover_array = _prepare_tts_before_render(
+        script, output_path, use_tts, tts_provider, tts_voice, render_warnings
+    )
+
     accent_color = BRAND_ACCENT
     base_bg = BRAND_BG
     timeline = build_render_timeline(script, SHORT_FORM)
@@ -904,14 +945,6 @@ def _render_short_form_video_impl(
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     video_only_path = output_path.replace(".mp4", "_video_only.mp4")
 
-    tts_future = None
-    executor = None
-    if use_tts:
-        executor = ThreadPoolExecutor(max_workers=1)
-        tts_future = executor.submit(
-            _load_voiceover_array, script, output_path, tts_provider, tts_voice, render_warnings
-        )
-
     try:
         final_with_overlays.write_videofile(
             video_only_path,
@@ -943,12 +976,6 @@ def _render_short_form_video_impl(
                     bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
                     sfx_list = []
 
-                voiceover_array = None
-                if tts_future is not None:
-                    voiceover_array = tts_future.result()
-                    if voiceover_array is None and render_warnings is not None:
-                        render_warnings.append("Video rendered without TTS voiceover")
-
                 audio_path = output_path.replace(".mp4", "_audio.wav")
                 mix_audio(
                     bg_music,
@@ -965,11 +992,7 @@ def _render_short_form_video_impl(
                 if os.path.exists(video_only_path) and not os.path.exists(output_path):
                     os.rename(video_only_path, output_path)
     finally:
-        if executor is not None:
-            try:
-                executor.shutdown(wait=True, cancel_futures=False)
-            except TypeError:
-                executor.shutdown(wait=True)
+        pass
 
     # Cleanup
     final_with_overlays.close()
@@ -1066,6 +1089,11 @@ def _render_long_form_video_impl(
     chapters = script.get("chapters", [])
     if not chapters:
         raise ValueError("No chapters found in script")
+
+    # TTS-first: measure speech and rewrite segment durations before timeline/clips.
+    voiceover_array = _prepare_tts_before_render(
+        script, output_path, use_tts, tts_provider, tts_voice, render_warnings
+    )
 
     accent_color = BRAND_ACCENT
     base_bg = BRAND_BG
@@ -1194,14 +1222,6 @@ def _render_long_form_video_impl(
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     video_only_path = output_path.replace(".mp4", "_video_only.mp4")
 
-    tts_future = None
-    executor = None
-    if use_tts:
-        executor = ThreadPoolExecutor(max_workers=1)
-        tts_future = executor.submit(
-            _load_voiceover_array, script, output_path, tts_provider, tts_voice, render_warnings
-        )
-
     try:
         final_with_overlays.write_videofile(
             video_only_path,
@@ -1233,12 +1253,6 @@ def _render_long_form_video_impl(
                     bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
                     sfx_list = []
 
-                voiceover_array = None
-                if tts_future is not None:
-                    voiceover_array = tts_future.result()
-                    if voiceover_array is None and render_warnings is not None:
-                        render_warnings.append("Video rendered without TTS voiceover")
-
                 audio_path = output_path.replace(".mp4", "_audio.wav")
                 mix_audio(
                     bg_music,
@@ -1255,11 +1269,7 @@ def _render_long_form_video_impl(
                 if os.path.exists(video_only_path) and not os.path.exists(output_path):
                     os.rename(video_only_path, output_path)
     finally:
-        if executor is not None:
-            try:
-                executor.shutdown(wait=True, cancel_futures=False)
-            except TypeError:
-                executor.shutdown(wait=True)
+        pass
 
     final_with_overlays.close()
     final.close()

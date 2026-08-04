@@ -7,6 +7,9 @@ Supports multiple TTS providers:
   4. OpenAI TTS — paid, highest quality (requires API key)
 
 Provider selection is automatic based on what's installed, or can be forced.
+
+When audio_driven=True (default), segment visuals follow measured speech length
+plus an intentional pause — speech is never trimmed to fit LLM duration guesses.
 """
 
 import json
@@ -16,12 +19,18 @@ import subprocess
 import threading
 
 from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
+from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
 
 
 _PROVIDERS_CACHE = None
 _PROVIDERS_LOCK = threading.Lock()
 _KOKORO_INSTANCE = None
 _KOKORO_LOCK = threading.Lock()
+
+# Research default: 200–500ms breath/cut padding between segments.
+_DEFAULT_INTER_SEGMENT_PAUSE = 0.35
+_CROSSFADE_SECONDS = 0.04
+_MIN_SEGMENT_DURATION = 0.12
 
 
 # ── Provider Detection ───────────────────────────────────────────────
@@ -192,6 +201,23 @@ def _silence_clip(duration: float, fps: int = 44100):
     return AudioClip(lambda t: 0 * t, duration=duration, fps=fps)
 
 
+def _inter_segment_pause() -> float:
+    raw = os.getenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", str(_DEFAULT_INTER_SEGMENT_PAUSE))
+    try:
+        pause = float(raw or _DEFAULT_INTER_SEGMENT_PAUSE)
+    except (TypeError, ValueError):
+        pause = _DEFAULT_INTER_SEGMENT_PAUSE
+    return max(0.0, min(pause, 1.0))
+
+
+def _with_edge_fades(clip, fade_seconds: float = _CROSSFADE_SECONDS):
+    """Micro fades reduce click/seam artifacts when concatenating TTS segments."""
+    fade = max(0.0, float(fade_seconds or 0.0))
+    if fade <= 0 or clip.duration <= fade * 2:
+        return clip
+    return clip.with_effects([AudioFadeIn(fade), AudioFadeOut(fade)])
+
+
 def generate_segment_audio(text: str, output_path: str,
                            provider: str = "auto", voice: str = None) -> str:
     """Generate audio for a single text segment."""
@@ -215,13 +241,70 @@ def generate_segment_audio(text: str, output_path: str,
     return output_path
 
 
+def apply_timing_to_segments(segments: list, timing_rows: list) -> float:
+    """Write measured TTS durations onto segment dicts. Returns total duration."""
+    total = 0.0
+    for row in timing_rows:
+        idx = int(row["index"])
+        if idx < 0 or idx >= len(segments):
+            continue
+        seg = segments[idx]
+        dur = float(row["duration"])
+        seg["duration"] = round(dur, 3)
+        seg["tts_duration"] = round(float(row["tts_duration"]), 3)
+        seg["tts_pause"] = round(float(row.get("pause", 0.0)), 3)
+        total += dur
+    return total
+
+
+def apply_timing_to_script(script: dict, timing_rows: list) -> dict:
+    """
+    Apply a shared TTS timing clock to the script in place.
+
+    timing_rows are ordered across short-form segments or flattened chapter segments.
+    """
+    if "chapters" in script:
+        flat = []
+        for chapter in script.get("chapters", []):
+            flat.extend(chapter.get("segments", []))
+        apply_timing_to_segments(flat, timing_rows)
+    else:
+        apply_timing_to_segments(script.get("segments", []), timing_rows)
+
+    total = sum(float(r["duration"]) for r in timing_rows)
+    script["total_duration_seconds"] = round(total, 3)
+    script["tts_timing"] = timing_rows
+    return script
+
+
+def _write_timing_sidecar(output_path: str, timing_rows: list) -> str:
+    sidecar = os.path.splitext(output_path)[0] + "_timing.json"
+    payload = {
+        "segments": timing_rows,
+        "total_duration_seconds": round(sum(float(r["duration"]) for r in timing_rows), 3),
+    }
+    with open(sidecar, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
+    return sidecar
+
+
 # ── Main Functions ───────────────────────────────────────────────────
 
 def generate_voiceover_for_segments(segments: list, output_path: str,
                                      provider: str = "auto",
                                      voice: str = None,
-                                     lang: str = "en") -> str:
-    """Generate a single voiceover audio file from script segments."""
+                                     lang: str = "en",
+                                     audio_driven: bool = True,
+                                     apply_durations: bool = True,
+                                     write_timing: bool = True) -> tuple[str, list]:
+    """
+    Generate a single voiceover from script segments.
+
+    audio_driven=True (default): never trim speech to LLM duration guesses.
+    Scene length becomes measured TTS duration + inter-segment pause.
+    Returns (output_path, timing_rows) where timing_rows form the shared clock
+    for captions / overlays.
+    """
     if provider == "auto":
         provider = get_best_provider()
 
@@ -231,8 +314,9 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
 
     temp_files = []
     audio_clips = []
-    target_pause = float(os.getenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.08") or 0.08)
-    target_pause = max(0.0, min(target_pause, 0.4))
+    timing_rows = []
+    target_pause = _inter_segment_pause()
+    cumulative = 0.0
 
     try:
         for i, seg in enumerate(segments):
@@ -265,29 +349,53 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                 else:
                     continue
 
-            expected_duration = 0.0
+            tts_duration = float(clip.duration or 0.0)
+            llm_duration = 0.0
             try:
-                expected_duration = float(seg.get("duration", 0) or 0)
+                llm_duration = float(seg.get("duration", 0) or 0)
             except (TypeError, ValueError):
-                expected_duration = 0.0
+                llm_duration = 0.0
 
-            if expected_duration > 0:
-                # Keep a small pause budget between segments while honoring target timing.
-                max_voice_duration = max(expected_duration - target_pause, 0.12)
-                if clip.duration > max_voice_duration:
-                    trimmed = clip.subclipped(0, max_voice_duration)
-                    clip.close()
-                    clip = trimmed
+            if audio_driven:
+                pause = target_pause
+                segment_duration = max(tts_duration + pause, _MIN_SEGMENT_DURATION)
+                # Never trim speech — only pad trailing silence to the segment slot.
+                clip = _with_edge_fades(clip)
                 audio_clips.append(clip)
-                remaining = max(expected_duration - clip.duration, target_pause)
+                remaining = max(segment_duration - tts_duration, 0.0)
                 silence = _silence_clip(remaining, int(getattr(clip, "fps", 44100) or 44100))
                 if silence:
                     audio_clips.append(silence)
             else:
+                # Legacy: force speech into LLM slot (can cut words).
+                segment_duration = llm_duration if llm_duration > 0 else max(tts_duration + target_pause, _MIN_SEGMENT_DURATION)
+                max_voice_duration = max(segment_duration - target_pause, _MIN_SEGMENT_DURATION)
+                if clip.duration > max_voice_duration:
+                    trimmed = clip.subclipped(0, max_voice_duration)
+                    clip.close()
+                    clip = trimmed
+                    tts_duration = float(clip.duration or 0.0)
+                clip = _with_edge_fades(clip)
                 audio_clips.append(clip)
-                silence = _silence_clip(target_pause, int(getattr(clip, "fps", 44100) or 44100))
+                remaining = max(segment_duration - clip.duration, target_pause)
+                silence = _silence_clip(remaining, int(getattr(clip, "fps", 44100) or 44100))
                 if silence:
                     audio_clips.append(silence)
+
+            row = {
+                "index": i,
+                "text": text,
+                "start": round(cumulative, 3),
+                "tts_duration": round(tts_duration, 3),
+                "pause": round(max(segment_duration - tts_duration, 0.0), 3),
+                "duration": round(segment_duration, 3),
+                "llm_duration": round(llm_duration, 3) if llm_duration else None,
+            }
+            timing_rows.append(row)
+            cumulative += segment_duration
+
+        if apply_durations and timing_rows:
+            apply_timing_to_segments(segments, timing_rows)
 
         if audio_clips:
             final_audio = concatenate_audioclips(audio_clips)
@@ -295,7 +403,13 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             final_audio.close()
 
         for clip in audio_clips:
-            clip.close()
+            try:
+                clip.close()
+            except Exception:
+                pass
+
+        if write_timing and timing_rows:
+            _write_timing_sidecar(output_path, timing_rows)
 
     finally:
         for f in temp_files:
@@ -304,7 +418,7 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             except Exception:
                 pass
 
-    return output_path
+    return output_path, timing_rows
 
 
 def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -> str:
@@ -349,14 +463,19 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
 
 def generate_voiceover_for_script(script: dict, output_dir: str,
                                    provider: str = "auto",
-                                   voice: str = None) -> str:
-    """Generate voiceover for a complete script (short or long form)."""
+                                   voice: str = None,
+                                   audio_driven: bool = True) -> tuple[str, list]:
+    """Generate voiceover for a complete script (short or long form).
+
+    Returns (audio_path, timing_rows). Mutates script segment durations when
+    audio_driven is True so the renderer can build visuals to the same clock.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     hook_type = script.get("hook_type", "unknown")
     fmt = script.get("format", "short_form")
 
-    # Collect all segments
+    # Collect all segments (flat list shares objects with script for in-place updates)
     if "chapters" in script:
         segments = []
         for chapter in script["chapters"]:
@@ -365,9 +484,19 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
         segments = script.get("segments", [])
 
     audio_path = os.path.join(output_dir, f"{hook_type}_{fmt}_voiceover.mp3")
-    generate_voiceover_for_segments(segments, audio_path, provider=provider, voice=voice)
+    audio_path, timing_rows = generate_voiceover_for_segments(
+        segments,
+        audio_path,
+        provider=provider,
+        voice=voice,
+        audio_driven=audio_driven,
+        apply_durations=audio_driven,
+        write_timing=True,
+    )
+    if audio_driven and timing_rows:
+        apply_timing_to_script(script, timing_rows)
 
-    return audio_path
+    return audio_path, timing_rows
 
 
 if __name__ == "__main__":
@@ -383,14 +512,16 @@ if __name__ == "__main__":
 
     # Quick test with best provider
     test_segments = [
-        {"text": "This changes everything"},
-        {"text": "The number one gadget of 2025"},
-        {"text": "Check the link in description"},
+        {"text": "This changes everything", "duration": 1.0},
+        {"text": "The number one gadget of 2025", "duration": 1.0},
+        {"text": "Check the link in description", "duration": 1.0},
     ]
 
     out = os.path.join(os.path.dirname(__file__), "output", "test_voiceover.mp3")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     provider = get_best_provider()
     print(f"\nGenerating test voiceover with {provider}...")
-    generate_voiceover_for_segments(test_segments, out, provider=provider)
-    print(f"✓ Test voiceover saved to {out}")
+    path, timing = generate_voiceover_for_segments(test_segments, out, provider=provider)
+    print(f"✓ Test voiceover saved to {path}")
+    print(f"  Timing: {timing}")
+    print(f"  Updated durations: {[s.get('duration') for s in test_segments]}")
