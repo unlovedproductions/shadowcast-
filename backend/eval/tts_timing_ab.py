@@ -143,6 +143,26 @@ def make_mock_generate(
     return fake_generate
 
 
+def _validate_clip_segments(clip_id: str, segments: Any) -> list[dict[str, Any]]:
+    if not isinstance(segments, list) or not segments:
+        raise ValueError(f"clip {clip_id} segments must be a non-empty list")
+    for seg_i, seg in enumerate(segments):
+        if not isinstance(seg, dict):
+            raise ValueError(f"clip {clip_id} segment {seg_i} must be an object")
+        text = str(seg.get("text") or "").strip()
+        if not text:
+            raise ValueError(f"clip {clip_id} segment {seg_i} missing text")
+        if "duration" not in seg:
+            raise ValueError(f"clip {clip_id} segment {seg_i} missing duration")
+        try:
+            duration = float(seg.get("duration"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"clip {clip_id} segment {seg_i} duration must be numeric") from exc
+        if duration <= 0:
+            raise ValueError(f"clip {clip_id} segment {seg_i} duration must be > 0")
+    return segments
+
+
 def load_clips(path: str | Path | None) -> list[dict[str, Any]]:
     if path is None:
         return copy.deepcopy(DEFAULT_CLIPS)
@@ -163,6 +183,7 @@ def load_clips(path: str | Path | None) -> list[dict[str, Any]]:
         c.setdefault("content_style", "honest_review")
         if "segments" not in c:
             raise ValueError(f"clip {c['clip_id']} missing segments")
+        c["segments"] = _validate_clip_segments(str(c["clip_id"]), c.get("segments"))
         out.append(c)
     return out
 
