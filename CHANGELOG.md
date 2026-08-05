@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Product still support via `image_url` (`product_media.py`) for hero segments and thumbnails.
 - Drop-in music beds under `backend/assets/music/` with synth fallback.
 - Publish soft-gate against gTTS-only live uploads (`ALLOW_GTTS_PUBLISH` escape hatch).
+- Long-form/short-form `.srt` sidecars from TTS timing (`caption_srt.py`).
+- Native Instagram Reels / TikTok `post_info` fields in `posting_package_adapter.py`.
+- Pre-publish QA: `POST /api/publish/quality` + frontend **Pre-Publish QA** button.
 - Playwright E2E tiers (mocked + live) and quality-gate scripts under `scripts/quality/`.
 - Style-rules RAG runtime + corpus under `backend/eval/rag_corpus/`.
 - TTS-first audio-driven timing, Shorts burn-in captions, entity lower-thirds, two-pass loudnorm.

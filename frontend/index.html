@@ -346,6 +346,7 @@
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
+        publishQuality: null, publishQualityLoading: false,
         bgRecommend: '',
         trackAffiliateUrl: '', trackingLinkResult: '',
         rumbleUsername: '', rumblePassword: '',
@@ -1103,9 +1104,11 @@
                 </label>`).join('')}
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-sm" onclick="runPublishQuality('${escJs(productSlug)}')" style="background:var(--bg3);color:var(--cyan);" ${state.publishQualityLoading?'disabled':''}>${state.publishQualityLoading?'Checking...':'Pre-Publish QA'}</button>
                 <button class="btn-primary" style="width:auto;" onclick="publishFromResults(false, '${escJs(productSlug)}')" ${state.publishLoading?'disabled':''}>${state.publishLoading?'Publishing...':'Publish Now'}</button>
                 <button class="btn-sm" onclick="publishFromResults(true, '${escJs(productSlug)}')" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
             </div>
+            ${state.publishQuality?`<div style="margin-top:12px;font-size:12px;color:var(--text2);border:1px solid #2a2a2a;border-radius:8px;padding:10px;"><strong style="color:${state.publishQuality.overall==='FAIL'?'var(--pink)':state.publishQuality.overall==='WARN'?'var(--accent)':'var(--green)'};">QA ${esc(state.publishQuality.overall)}</strong><pre style="white-space:pre-wrap;margin-top:8px;">${esc(JSON.stringify(state.publishQuality.checks,null,2))}</pre></div>`:''}
             ${state.publishResults?`<div style="margin-top:12px;font-size:12px;color:var(--text2);"><pre style="white-space:pre-wrap;">${esc(JSON.stringify(state.publishResults,null,2))}</pre></div>`:''}
         </div>`;
     }
@@ -2019,6 +2022,34 @@
             showToast('Error: ' + e.message);
         }
         state.publishLoading = false; render();
+    }
+
+    async function runPublishQuality(productSlug) {
+        if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.activeTab) { showToast('Select a hook tab first'); return; }
+        state.publishQualityLoading = true; state.publishQuality = null; render();
+        try {
+            const res = await fetch(`${API}/publish/quality`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    job_id: state.jobId,
+                    hook_type: state.activeTab,
+                    video_format: state.activeFormat || 'short_form',
+                    product_slug: productSlug || null,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const detail = data.detail || data;
+                throw new Error(typeof detail === 'string' ? detail : 'QA failed');
+            }
+            state.publishQuality = data;
+            showToast(`QA: ${data.overall}`);
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
+        state.publishQualityLoading = false; render();
     }
 
     async function loadSocialStatus() {

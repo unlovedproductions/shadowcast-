@@ -58,6 +58,8 @@ def test_instagram_caption_truncation():
     assert payload["platform"] == "instagram"
     assert len(payload["caption"]) <= 2200
     assert "#widget" in payload["caption"]
+    assert payload["media_type"] == "REELS"
+    assert payload["share_to_feed"] is True
 
 
 def test_tiktok_title_limit():
@@ -65,6 +67,20 @@ def test_tiktok_title_limit():
     payload = build("tiktok", assets)
     assert len(payload["title"]) <= 150
     assert len(payload["hashtags"]) <= 5
+    assert payload["privacy_level"] == "PUBLIC_TO_EVERYONE"
+    assert payload["disable_duet"] is False
+    assert payload["video_cover_timestamp_ms"] == 1000
+
+
+def test_tiktok_privacy_override():
+    payload = build(
+        "tiktok",
+        SAMPLE_ASSETS,
+        {"privacy_level": "SELF_ONLY", "disable_comment": True, "video_cover_timestamp_ms": 2500},
+    )
+    assert payload["privacy_level"] == "SELF_ONLY"
+    assert payload["disable_comment"] is True
+    assert payload["video_cover_timestamp_ms"] == 2500
 
 
 def test_facebook_build():
