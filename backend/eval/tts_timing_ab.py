@@ -304,6 +304,7 @@ def run_ab(
     clipped = sum(1 for r in results if r["totals"]["segments_trimmed_a"] > 0)
     total_trim_segs = sum(r["totals"]["segments_trimmed_a"] for r in results)
     total_delta = sum(r["totals"]["length_delta_b_minus_a"] for r in results)
+    clips_without_trim = len(results) - clipped
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "experiment": "tts_timing_ab",
@@ -314,6 +315,7 @@ def run_ab(
         "clip_count": len(results),
         "summary": {
             "clips_with_trim_under_a": clipped,
+            "clips_without_trim_under_a": clips_without_trim,
             "segments_trimmed_under_a": total_trim_segs,
             "total_length_delta_b_minus_a": round(total_delta, 3),
             "note": (
@@ -367,7 +369,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Override SHADOWCAST_TTS_INTER_SEGMENT_PAUSE for this run",
     )
+    parser.add_argument(
+        "--require-trimmed-under-a",
+        type=int,
+        default=None,
+        help=(
+            "Optional CI guard: fail (exit 2) if summary.segments_trimmed_under_a "
+            "is below this value"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.require_trimmed_under_a is not None and args.require_trimmed_under_a < 0:
+        parser.error("--require-trimmed-under-a must be >= 0")
 
     if args.pause is not None:
         os.environ["SHADOWCAST_TTS_INTER_SEGMENT_PAUSE"] = str(args.pause)
@@ -389,6 +403,15 @@ def main(argv: list[str] | None = None) -> int:
         f"trimmed_segs_A={s['segments_trimmed_under_a']} · "
         f"ΔB−A={s['total_length_delta_b_minus_a']}s"
     )
+    if args.require_trimmed_under_a is not None:
+        observed = int(s["segments_trimmed_under_a"])
+        if observed < args.require_trimmed_under_a:
+            print(
+                "FAIL require-trimmed-under-a: "
+                f"required={args.require_trimmed_under_a} observed={observed}",
+                file=sys.stderr,
+            )
+            return 2
     return 0
 
 
