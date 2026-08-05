@@ -55,6 +55,11 @@ from product_media import frame_with_product_hero, segment_wants_product_hero
 from scipy.io.wavfile import read as read_wav
 from caption_srt import write_srt_sidecar
 from tts_generator import generate_voiceover_for_script, resolve_tts_timing
+from whisperx_align import (
+    align_words_to_audio,
+    refine_caption_events_with_word_align,
+    whisperx_align_enabled,
+)
 
 from comparison_layouts import (
     render_vs_split_screen,
@@ -964,6 +969,7 @@ def _render_short_form_video_impl(
     overlay_layers.append(watermark_clip)
 
     timing_rows: list = []
+    vo_hint = ""
     if use_tts:
         vo_hint = os.path.join(
             os.path.dirname(output_path) or ".",
@@ -992,12 +998,26 @@ def _render_short_form_video_impl(
             overlay_layers.append(lt_clip)
 
     # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
-    # Optional approx karaoke: proportional word highlight within each 4–7 word chunk.
+    # Karaoke: WhisperX forced-align when SHADOWCAST_WHISPERX_ALIGN=1, else proportional.
     if use_tts and timing_rows:
         chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
-        caption_events = expand_caption_word_highlights(
-            chunk_events, enabled=shorts_word_highlight_enabled()
-        )
+        caption_events = None
+        if whisperx_align_enabled() and vo_hint and os.path.isfile(vo_hint):
+            transcript = " ".join(
+                str(r.get("text") or "").strip() for r in timing_rows if r.get("text")
+            )
+            word_timings = align_words_to_audio(vo_hint, transcript)
+            if word_timings:
+                # VO file is speech-only; add intro chrome so highlights match muxed timeline.
+                caption_events = refine_caption_events_with_word_align(
+                    chunk_events,
+                    word_timings,
+                    intro_offset=intro_seconds,
+                )
+        if caption_events is None:
+            caption_events = expand_caption_word_highlights(
+                chunk_events, enabled=shorts_word_highlight_enabled()
+            )
         for ev in caption_events:
             start = float(ev["start"])
             if start >= float(final.duration):

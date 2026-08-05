@@ -1,23 +1,24 @@
 # Social posting readiness
 
-Assessment date: 2026-08-05 (P1 partial refresh). Target: videos good enough to start posting on YouTube and other social platforms.
+Assessment date: 2026-08-05 (plan complete + P1 WhisperX flag). Target: videos good enough to start posting on YouTube and other social platforms.
 
 ## Dual score
 
 | Bar | Score | Meaning |
 |-----|------:|---------|
-| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~80%** | P0 + P1 SRT sidecars, native IG/TikTok payload fields, pre-publish QA API/UI. Remaining: WhisperX word-align, visual variety without stills. |
-| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~60%** | Captions + platform packages + QA close more gaps; still need licensed music swaps, consistent product imagery, WhisperX, stock B-roll. |
+| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~82%** | Docs + P0 + full P1 (SRT, native packages, publish QA, WhisperX flag). Remaining: visual variety without stills / licensed beds. |
+| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~62%** | Captions + packages + QA + optional WhisperX; still need licensed music swaps, consistent product imagery, stock B-roll (P2). |
 
-**Blended “first public posts without cringe”:** ~70% with quality TTS + `image_url` + replaced music beds + SRT. True ~100% still needs remaining P1/P2 below.
+**Blended “first public posts without cringe”:** ~72% with quality TTS + `image_url` + music beds + SRT. True ~100% still needs P2 below.
 
-P0 shipped. P1 partially shipped (SRT, native packages, publish QA). WhisperX still open.
+Plan P0 shipped. Plan P1 shipped (WhisperX behind `SHADOWCAST_WHISPERX_ALIGN=1`; proportional fallback when package missing).
 
 ## What already counts
 
 - Audio-driven TTS + inter-segment pause (`tts_generator.py`, `video_renderer.py`)
 - Cosine ducking + two-pass loudnorm −14 LUFS (`sound_design.py`)
 - Shorts burn-in captions + entity lower-thirds (`brand_overlays.py`)
+- Optional WhisperX word-align for karaoke highlights (`whisperx_align.py`)
 - Long-form/short-form `.srt` sidecars from shared TTS timing (`caption_srt.py`)
 - Platform-native IG Reels / TikTok `post_info` fields (`posting_package_adapter.py`)
 - Pre-publish QA: `POST /api/publish/quality` + UI button
@@ -33,12 +34,12 @@ P0 shipped. P1 partially shipped (SRT, native packages, publish QA). WhisperX st
 3. Royalty-free / drop-in music beds under `backend/assets/music/` (synth fallback)
 4. Product-hero thumbnail variant + contrast WARN via `visual_quality.py`
 
-### P1 — Retention / platform polish
+### P1 — Retention / platform polish (shipped)
 
-5. Long-form SRT sidecar for YouTube captions — **shipped** (also short_form)
-6. Forced-align (WhisperX) behind flag for real word highlights — **open**
-7. Platform-native TikTok/IG posting fields — **shipped**
-8. Pre-publish quality checklist API/UI (TTS + duration + captions + contrast) — **shipped**
+5. Long-form SRT sidecar for YouTube captions (also short_form)
+6. Forced-align (WhisperX) behind `SHADOWCAST_WHISPERX_ALIGN=1` (optional dep; proportional fallback)
+7. Platform-native TikTok/IG posting fields
+8. Pre-publish quality checklist API/UI (TTS + duration + captions + contrast)
 
 ### P2 — Differentiation
 
@@ -57,6 +58,7 @@ P0 shipped. P1 partially shipped (SRT, native packages, publish QA). WhisperX st
 2. Product `image_url` set (UI/CSV) **or** APF import with vendor sales/offer page URLs (auto og:image / product photo extract)
 3. Generate with TTS on; confirm Shorts captions + `.srt` beside MP4
 4. Drop licensed beds into `backend/assets/music/{mood}.wav` if possible
-5. Eyeball one short_form + one thumbnail; contrast should not WARN
-6. Run **Pre-Publish QA** (`POST /api/publish/quality`) — overall must not be `FAIL`
-7. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`
+5. Optional: `SHADOWCAST_WHISPERX_ALIGN=1` + install `whisperx` for real word karaoke
+6. Eyeball one short_form + one thumbnail; contrast should not WARN
+7. Run **Pre-Publish QA** (`POST /api/publish/quality`) — overall must not be `FAIL`
+8. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`
