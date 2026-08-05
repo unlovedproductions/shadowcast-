@@ -94,6 +94,8 @@ from video_renderer import (
 )
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
+from product_media import resolve_product_image
+from visual_quality import audit_thumbnail_contrast
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 from social_poster import SocialPoster, get_platform_status
 from analytics_tracker import AnalyticsTracker, create_tracking_link
@@ -847,7 +849,7 @@ CSV_COLUMNS = [
     "keywords", "target_audience", "product_category", "competitors",
     "unique_selling_point", "discount_info", "coupon_code",
     "common_complaints", "common_praises", "who_not_for",
-    "series_name", "price_comparison", "content_style", "amazon_url",
+    "series_name", "price_comparison", "content_style", "amazon_url", "image_url",
 ]
 
 
@@ -886,6 +888,7 @@ def parse_csv_products(csv_text: str) -> List[dict]:
             "price_comparison": norm.get("price_comparison", ""),
             "content_style": normalize_content_style(norm.get("content_style", DEFAULT_CONTENT_STYLE)),
             "amazon_url": norm.get("amazon_url", ""),
+            "image_url": norm.get("image_url", ""),
         }
         products.append(product)
     return products
@@ -935,6 +938,23 @@ def _prepare_products_for_generate(
     return prepared, warnings
 
 
+def _tts_default_enabled() -> bool:
+    """API default: TTS on unless SHADOWCAST_TTS_DEFAULT=0."""
+    return os.getenv("SHADOWCAST_TTS_DEFAULT", "1").strip() not in ("0", "false", "False")
+
+
+def _resolve_use_tts(requested: bool) -> bool:
+    """Honor client flag; SHADOWCAST_TTS_DEFAULT=0 forces off."""
+    if not _tts_default_enabled():
+        return False
+    return bool(requested)
+
+
+def _resolve_product_image_path(product: dict) -> str | None:
+    path = resolve_product_image(product.get("image_url") or product.get("imageUrl") or "")
+    return str(path) if path else None
+
+
 # ── Single Product Generation Worker ──────────────────────────────────
 def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         hook_types: list, formats: list,
@@ -942,7 +962,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         step_offset: int, total_steps: int,
                         audio_enabled: bool = True,
                         audio_mood: str = "auto",
-                        use_tts: bool = False,
+                        use_tts: bool = True,
                         tts_provider: str = "auto",
                         tts_voice: Optional[str] = None,
                         video_preset: str = "medium"):
@@ -966,6 +986,11 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     mood_arg = None if audio_mood in (None, "", "auto") else audio_mood
     render_preset = resolve_video_preset(video_preset)
+    product_image_path = _resolve_product_image_path(product)
+    if product.get("image_url") and not product_image_path:
+        job.setdefault("warnings", []).append(
+            f"[{product.get('product_name', '?')}] Product image_url could not be downloaded; using procedural backgrounds."
+        )
 
     all_scripts = {}
     all_yt_packages = {}
@@ -1082,6 +1107,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                     "tts_provider": tts_provider,
                     "tts_voice": tts_voice,
                     "video_preset": render_preset,
+                    "product_image_path": product_image_path or "",
                 }
                 fingerprint = compute_render_fingerprint(
                     scripts_data[fmt],
@@ -1104,6 +1130,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         tts_voice=tts_voice,
                         video_preset=render_preset,
                         render_warnings=job.setdefault("warnings", []),
+                        product_image_path=product_image_path,
                     )
                     if fmt == "short_form":
                         render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
@@ -1229,6 +1256,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                     hook_type,
                     content_style_name,
                     keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
+                    product_image_path=product_image_path,
                 )
                 for variant_key, thumb_img in thumb_set.items():
                     badge_text = style_badge_text(content_style_name)
@@ -1237,7 +1265,13 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         thumb_img = add_badge(thumb_img, badge_text)
 
                     thumb_fname = f"{slug}_{hook_type}_thumbnail_{variant_key}.png"
-                    thumb_img.save(str(product_dir / thumb_fname))
+                    thumb_path = product_dir / thumb_fname
+                    thumb_img.save(str(thumb_path))
+                    severity, _expected, actual, detail = audit_thumbnail_contrast(thumb_path)
+                    if severity == "WARN":
+                        job.setdefault("warnings", []).append(
+                            f"[{product['product_name']}] Thumbnail {variant_key} contrast {actual}: {detail}"
+                        )
 
                     if hook_type not in product_results["hooks"]:
                         product_results["hooks"][hook_type] = {}
@@ -1698,7 +1732,7 @@ def start_generation(req: GenerateRequest):
         "formats": req.formats, "content_style": product["content_style"],
         "audio_enabled": req.audio_enabled,
         "audio_mood": req.audio_mood,
-        "use_tts": req.use_tts,
+        "use_tts": _resolve_use_tts(req.use_tts),
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
@@ -1725,7 +1759,7 @@ async def batch_upload(
     content_style: str = Form(DEFAULT_CONTENT_STYLE),
     audio_enabled: bool = Form(True),
     audio_mood: str = Form("auto"),
-    use_tts: bool = Form(False),
+    use_tts: bool = Form(True),
     tts_provider: str = Form("auto"),
     tts_voice: str = Form(""),
     video_preset: str = Form("medium"),
@@ -1758,7 +1792,7 @@ async def batch_upload(
         "formats": fmt_list, "content_style": style,
         "audio_enabled": audio_enabled,
         "audio_mood": audio_mood,
-        "use_tts": use_tts,
+        "use_tts": _resolve_use_tts(use_tts),
         "tts_provider": tts_provider,
         "tts_voice": tts_voice or None,
         "video_preset": resolve_video_preset(video_preset),
@@ -1854,7 +1888,7 @@ def batch_generate(req: BatchGenerateRequest):
         "formats": req.formats, "content_style": style,
         "audio_enabled": req.audio_enabled,
         "audio_mood": req.audio_mood,
-        "use_tts": req.use_tts,
+        "use_tts": _resolve_use_tts(req.use_tts),
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),

@@ -51,12 +51,41 @@ async def scrape_amazon_product(url: str) -> Dict[str, Any]:
         "negative_reviews": [],
         "common_praise_themes": "(Requires NLP on full reviews)",
         "common_complaint_themes": "(Requires NLP on full reviews)",
+        "image_url": None,
     }
 
     # Product Name
     product_name_element = soup.find('span', id='productTitle')
     if product_name_element:
         product_data['product_name'] = product_name_element.get_text(strip=True)
+
+    # Primary product image (landing image / dynamic hi-res map)
+    landing = soup.select_one("#landingImage") or soup.select_one("#imgTagWrapperId img")
+    if landing is not None:
+        candidates = []
+        for attr in ("data-old-hires", "data-a-hires", "src"):
+            val = landing.get(attr)
+            if val and val.startswith("http"):
+                candidates.append(val)
+        dynamic = landing.get("data-a-dynamic-image")
+        if dynamic:
+            try:
+                import json as _json
+                mapping = _json.loads(dynamic)
+                if isinstance(mapping, dict):
+                    # Prefer largest by declared dimensions key "(w, h)"
+                    ranked = sorted(
+                        mapping.keys(),
+                        key=lambda u: (mapping.get(u) or [0, 0])[0] * (mapping.get(u) or [0, 0])[1],
+                        reverse=True,
+                    )
+                    candidates.extend(ranked)
+            except Exception:
+                pass
+        for url in candidates:
+            if url and url.startswith("http"):
+                product_data["image_url"] = url
+                break
 
     # Price
     # Attempt to find price using common selectors

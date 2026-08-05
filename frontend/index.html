@@ -296,7 +296,7 @@
         providerPresets: {},
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
-        affiliateLink: '', keywords: '', targetAudience: '',
+        affiliateLink: '', imageUrl: '', keywords: '', targetAudience: '',
         amazonUrl: '',
         productCategory: '', competitors: '', usp: '',
         discountInfo: '', couponCode: '',
@@ -314,7 +314,7 @@
         selectedFormats: ['short_form', 'long_form'],
         audioMood: 'chill',
         audioEnabled: true,
-        useTts: false,
+        useTts: true,
         useTtsUserSet: false,
         ttsProvider: 'auto',
         ttsVoice: '',
@@ -500,6 +500,7 @@
                 <div class="form-group full"><label>Key Features <span class="req">*</span></label><input id="keyFeatures" value="${esc(state.keyFeatures)}" placeholder="Comma-separated: ANC, 50hr battery, Hi-Res Audio"><span class="hint">Separate each feature with a comma</span></div>
                 <div class="form-group"><label>Price</label><input id="price" value="${esc(state.price)}" placeholder="$79.99"></div>
                 <div class="form-group"><label>Affiliate Link <span class="req">*</span></label><input id="affiliateLink" value="${esc(state.affiliateLink)}" placeholder="https://amzn.to/your-link"></div>
+                <div class="form-group full"><label>Product Image URL</label><input id="imageUrl" value="${esc(state.imageUrl)}" placeholder="https://…/product.jpg"><span class="hint">Optional. APF imports auto-pull photos from vendor sales pages when available; this overrides.</span></div>
                 <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
                 <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
                 <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
@@ -2315,6 +2316,7 @@
                 key_features: (row.key_features||'').split(',').map(s=>s.trim()).filter(Boolean),
                 price: row.price||'$49.99',
                 affiliate_link: row.affiliate_link||'[YOUR_AFFILIATE_LINK]',
+                image_url: row.image_url||'',
                 keywords: (row.keywords||'').split(',').map(s=>s.trim()).filter(Boolean),
                 target_audience: row.target_audience||'General consumers',
                 product_category: row.product_category||row.niche||'General',
@@ -2359,6 +2361,7 @@
         state.keyFeatures=document.getElementById('keyFeatures')?.value||'';
         state.price=document.getElementById('price')?.value||'';
         state.affiliateLink=document.getElementById('affiliateLink')?.value||'';
+        state.imageUrl=document.getElementById('imageUrl')?.value||'';
         state.keywords=document.getElementById('keywords')?.value||'';
         state.targetAudience=document.getElementById('targetAudience')?.value||'';
         state.productCategory=document.getElementById('productCategory')?.value||'';
@@ -2393,6 +2396,7 @@
                 product_name:state.productName, niche:state.niche||'General',
                 key_features:state.keyFeatures.split(',').map(s=>s.trim()).filter(Boolean),
                 price:state.price||'$49.99', affiliate_link:state.affiliateLink,
+                image_url:state.imageUrl||'',
                 keywords:state.keywords?state.keywords.split(',').map(s=>s.trim()).filter(Boolean):[],
                 target_audience:state.targetAudience||'General consumers',
                 product_category:state.productCategory||state.niche||'General',
@@ -2755,6 +2759,7 @@
       key_features: featureList,
       price: clean(n.price) || "Varies",
       affiliate_link: clean(n.affiliateLink || n.affiliate_link) || "[YOUR_AFFILIATE_LINK]",
+      image_url: clean(n.imageUrl || n.image_url || n.image || n.productImage || n.mainImage),
       keywords: keywordList,
       target_audience: clean(n.targetAudience || n.target_audience) || "General consumers",
       product_category: clean(n.productCategory || n.product_category || n.niche) || "General",

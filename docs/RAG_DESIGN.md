@@ -9,15 +9,20 @@ ShadowCast runs two retrieval layers:
 
 ## Style-rules corpus
 
-Seven markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpus/):
+Eight markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpus/):
 
-| Doc | Role |
-|-----|------|
-| `BUYER_LANGUAGE_RULES.md` | Banned affiliate-speak, buyer-facing tone |
-| `AUDIT.md` | Prompt eval gates (corpus copy) |
-| `MOCK_SCRIPT_EXAMPLES.md` | Format exemplars |
-| `STYLE_RENDERING_CHECKLIST.md` | Layout / segment rules |
-| `ARCHITECTURE.md`, `RUNBOOK.md`, `RECOVERY.md` | Ops and recovery context |
+| Doc | Role | Sync policy |
+|-----|------|-------------|
+| `BUYER_LANGUAGE_RULES.md` | Banned affiliate-speak, buyer-facing tone | RAG-only (canonical here) |
+| `AUDIT.md` | Prompt eval gates (corpus copy) | Mirror of themes in `backend/eval/AUDIT.md` |
+| `MOCK_SCRIPT_EXAMPLES.md` | Format exemplars | RAG-only |
+| `RENDERER_CONTRACT.md` | LLM ↔ MoviePy duration/layout contract | RAG-only (canonical here) |
+| `STYLE_RENDERING_CHECKLIST.md` | Layout / segment rules | Prefer layout rules for retrieval; keep in sync with `docs/STYLE_RENDERING_CHECKLIST.md` |
+| `ARCHITECTURE.md` | System structure | Mirror of `docs/ARCHITECTURE.md` |
+| `RUNBOOK.md` | Ops | Mirror of `docs/RUNBOOK.md` |
+| `RECOVERY.md` | Recovery | Mirror of `docs/RECOVERY.md` |
+
+Canonical product docs live under [`docs/`](.). When editing ops/architecture/recovery/style checklist, update `docs/` first, then copy mirrors into `rag_corpus/`.
 
 Canonical prompt audit lives in [`backend/eval/AUDIT.md`](../backend/eval/AUDIT.md).
 
@@ -36,8 +41,8 @@ Product and style stores share chunking/hybrid primitives; style retrieval is do
 
 | Gate | Script | Baseline |
 |------|--------|----------|
-| Corpus precision@5 | `eval/run_corpus_rag_eval.py` | **0.933** (`eval/baselines/rag_product_baseline.json` / corpus artifacts) |
-| Product groundedness | `eval/run_rag_eval.py` | **0.979** |
+| Corpus precision@5 | `eval/run_corpus_rag_eval.py` | CI gate **≥ 0.80** (re-run locally after corpus edits; do not cite product groundedness file for this metric) |
+| Product groundedness | `eval/run_rag_eval.py` | **0.979** (`eval/baselines/rag_product_baseline.json`) |
 
 CI runs both gates in [`.github/workflows/quality-gates.yml`](../.github/workflows/quality-gates.yml).
 

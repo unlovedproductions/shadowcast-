@@ -30,3 +30,7 @@
 - Two-pass loudnorm vs single-pass pumping
 - TTS segment seam/timbre drift mitigations
 - YouTube Shorts safe-zone pixel maps (UI chrome changes)
+
+## Status note (2026-08-05)
+
+P0 items from this investigation (audio-driven TTS, loudnorm/ducking, Shorts captions, lower-thirds) are implemented in the live assemble pipeline. Treat remaining findings as P1+ backlog; see docs/SOCIAL_READINESS.md.

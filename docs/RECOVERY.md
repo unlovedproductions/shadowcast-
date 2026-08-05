@@ -10,33 +10,37 @@ ShadowCast generates faceless affiliate videos from structured product inputs an
 
 ## 3) Dependencies
 - Python 3.10+
-- Virtual environment at `venv/`
-- FFmpeg
+- Virtual environment at `.venv/` (preferred; `venv/` acceptable as legacy alias)
+- Install lock for CI parity: `backend/requirements.lock` (symlink `poetry.lock` at repo root)
+- FFmpeg + ffprobe
 - FastAPI runtime (`backend/app.py`)
 - Optional: Ollama/OpenAI/custom providers depending on local settings
+- Optional quality TTS: Kokoro, Piper, or OpenAI TTS
 
 ## 4) Secrets Inventory (names only)
 - `INTERNAL_SERVICE_SECRET`
 - LLM provider variables configured through backend env/UI settings
+- Platform OAuth credentials for publish
 
 ## 5) Data To Back Up
-- Generated assets under `output/` (if present)
+- Generated assets under `backend/output/` (if present)
 - Any local runtime data used for jobs/assets
 - Optional local config files used for provider configuration
+- Dropped music beds under `backend/assets/music/`
 
 ## 6) Recovery A: New Machine
 1. Clone:
    - `git clone https://github.com/unlovedproductions/shadowcast-.git`
 2. Create and activate venv:
-   - `python3 -m venv venv`
-   - `source venv/bin/activate`
+   - `python3 -m venv .venv`
+   - `source .venv/bin/activate`
 3. Install dependencies:
    - `pip install -r backend/requirements.txt`
 4. Ensure FFmpeg is installed.
 5. Restore backend env values.
 6. Start app:
    - `python3 backend/app.py`
-7. Verify health endpoint.
+7. Verify health and readiness endpoints.
 
 ## 7) Recovery B: Corrupted Working Tree
 1. Inspect local changes:
@@ -47,19 +51,20 @@ ShadowCast generates faceless affiliate videos from structured product inputs an
    - `git fetch origin`
    - `git checkout main`
    - `git reset --hard origin/main`
-4. Reinstall Python deps in venv.
+4. Reinstall Python deps in `.venv`.
 
 ## 8) Recovery C: Data Loss
 ShadowCast is mostly stateless code + generated artifacts. If generated output is lost, regenerate from source inputs in APF/Mission Control.
 
 ## 9) Verification Checklist
 - `python3 -c "import fastapi, moviepy, PIL"`
-- `curl -fsS http://localhost:8000/api/health >/dev/null`
+- `curl -fsS http://127.0.0.1:8000/api/health >/dev/null`
+- `curl -fsS http://127.0.0.1:8000/api/readiness`
 
 ## 10) Stack Dependencies
 - APF and Mission Control expect shared `INTERNAL_SERVICE_SECRET`.
 - Mission Control orchestrates ShadowCast job execution over API.
 
 ## 11) Last Verified
-- Date: 2026-07-09
-- Commit: `53c7ae1`
+- Date: 2026-08-05
+- Commit: `5908406`

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -169,6 +170,19 @@ class PublishService:
         payload = build(platform, resolved["posting_package"], {"format": effective_format})
         video_path = resolved["video_path"]
         thumb_path = resolved.get("thumbnail_path")
+
+        if not dry_run:
+            allow_gtts = os.getenv("ALLOW_GTTS_PUBLISH", "").strip() in ("1", "true", "True")
+            try:
+                from tts_generator import get_best_provider as get_best_tts
+                best = get_best_tts()
+            except Exception:
+                best = "gtts"
+            if best not in ("kokoro", "openai", "piper") and not allow_gtts:
+                raise RuntimeError(
+                    "Live publish blocked: only gTTS (or no quality TTS) is available. "
+                    "Install Kokoro/Piper or configure OpenAI TTS, or set ALLOW_GTTS_PUBLISH=1."
+                )
 
         rel_video = self._relative_media_path(job_id, video_path, product_slug)
         rel_thumb = self._relative_media_path(job_id, thumb_path, product_slug) if thumb_path else None
