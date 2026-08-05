@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from eval.tts_timing_ab import (
     DEFAULT_CLIPS,
     compare_clip,
+    load_clips,
     main,
     make_mock_generate,
     mock_tts_duration_seconds,
@@ -24,6 +25,21 @@ def test_mock_duration_scales_with_words():
     short = mock_tts_duration_seconds("one two")
     long = mock_tts_duration_seconds("one two three four five six seven eight")
     assert long > short
+
+
+def test_load_clips_rejects_missing_segment_duration(tmp_path):
+    fixtures = {
+        "clips": [
+            {
+                "clip_id": "bad_fixture",
+                "segments": [{"segment_id": 1, "text": "hello world"}],
+            }
+        ]
+    }
+    fixtures_path = tmp_path / "fixtures.json"
+    fixtures_path.write_text(json.dumps(fixtures), encoding="utf-8")
+    with pytest.raises(ValueError, match="segment 0 missing duration"):
+        load_clips(fixtures_path)
 
 
 def test_harness_detects_trim_vs_pad(tmp_path, monkeypatch):
