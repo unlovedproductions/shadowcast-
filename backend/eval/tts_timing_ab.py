@@ -304,6 +304,10 @@ def run_ab(
     clipped = sum(1 for r in results if r["totals"]["segments_trimmed_a"] > 0)
     total_trim_segs = sum(r["totals"]["segments_trimmed_a"] for r in results)
     total_delta = sum(r["totals"]["length_delta_b_minus_a"] for r in results)
+    total_trim_seconds = round(
+        sum(float(seg.get("trim_seconds_a") or 0.0) for r in results for seg in r.get("segments", [])),
+        3,
+    )
     clips_without_trim = len(results) - clipped
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -317,6 +321,7 @@ def run_ab(
             "clips_with_trim_under_a": clipped,
             "clips_without_trim_under_a": clips_without_trim,
             "segments_trimmed_under_a": total_trim_segs,
+            "total_trim_seconds_under_a": total_trim_seconds,
             "total_length_delta_b_minus_a": round(total_delta, 3),
             "note": (
                 "speech_trimmed_a is a cut-off proxy (A tts_duration < B). "
@@ -378,10 +383,21 @@ def main(argv: list[str] | None = None) -> int:
             "is below this value"
         ),
     )
+    parser.add_argument(
+        "--require-trim-seconds-under-a",
+        type=float,
+        default=None,
+        help=(
+            "Optional CI guard: fail (exit 2) if summary.total_trim_seconds_under_a "
+            "is below this value"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.require_trimmed_under_a is not None and args.require_trimmed_under_a < 0:
         parser.error("--require-trimmed-under-a must be >= 0")
+    if args.require_trim_seconds_under_a is not None and args.require_trim_seconds_under_a < 0:
+        parser.error("--require-trim-seconds-under-a must be >= 0")
 
     if args.pause is not None:
         os.environ["SHADOWCAST_TTS_INTER_SEGMENT_PAUSE"] = str(args.pause)
@@ -401,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Wrote {out} · clips={report['clip_count']} · "
         f"trimmed_segs_A={s['segments_trimmed_under_a']} · "
+        f"trim_seconds_A={s['total_trim_seconds_under_a']}s · "
         f"ΔB−A={s['total_length_delta_b_minus_a']}s"
     )
     if args.require_trimmed_under_a is not None:
@@ -409,6 +426,15 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 "FAIL require-trimmed-under-a: "
                 f"required={args.require_trimmed_under_a} observed={observed}",
+                file=sys.stderr,
+            )
+            return 2
+    if args.require_trim_seconds_under_a is not None:
+        observed_seconds = float(s["total_trim_seconds_under_a"])
+        if observed_seconds < args.require_trim_seconds_under_a:
+            print(
+                "FAIL require-trim-seconds-under-a: "
+                f"required={args.require_trim_seconds_under_a} observed={observed_seconds}",
                 file=sys.stderr,
             )
             return 2
