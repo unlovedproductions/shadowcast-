@@ -16,7 +16,7 @@ Local verification matrix for all 6 content styles × 2 video formats. No full v
 |--------------|-----------|-----------|--------------------|-----------------|
 | honest_review | [x] pass | [x] pass | N/A | HONEST REVIEW |
 | elimination | [x] pass | [x] pass | winner_reveal | ELIMINATION |
-| vs_battle | [x] pass | [x] pass | vs_split + scorecard | VS BATTLE |
+| vs_battle | [x] pass | [x] pass | vs_split + scorecard + winner_reveal | VS BATTLE |
 | budget_challenge | [x] pass | [x] pass | price_compare | BUDGET PICK |
 | worth_it_or_waste | [x] pass | [x] pass | verdict styling | WORTH IT? |
 | standard | [x] pass | [x] pass | N/A | none |
@@ -43,6 +43,7 @@ For each style, select it in the ShadowCast UI (or confirm APF pre-selection), t
 
 - [ ] Script includes `vs_split` opener
 - [ ] Script includes `scorecard` segment
+- [ ] Script includes `winner_reveal` before final CTA
 - [ ] Competitors populated (from APF or manual)
 - [ ] Thumbnail shows **VS BATTLE** badge
 
@@ -78,7 +79,7 @@ After generation, inspect saved script JSON under `output/`:
 
 | Style | Look for in segments |
 |-------|---------------------|
-| vs_battle | `"layout": "vs_split"`, `"layout": "scorecard"` |
+| vs_battle | `"layout": "vs_split"`, `"layout": "scorecard"`, `"layout": "winner_reveal"` |
 | elimination | `"layout": "winner_reveal"`, `"text_style": "elimination"` |
 | budget_challenge | `"layout": "price_compare"` |
 | worth_it_or_waste | `"text_style": "verdict"` |

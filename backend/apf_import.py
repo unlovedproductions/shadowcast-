@@ -43,6 +43,194 @@ _MARKETPLACE_NICHE_RE = re.compile(
 )
 _VENDOR_SLOGAN_RE = re.compile(r"(?i)^(trust us[,']?\s*|for everyone'?s benefit)")
 _PRIMARY_PRICE_RE = re.compile(r"\$\s*\d{1,6}(?:[.,]\d{1,2})?")
+_IMAGE_URL_RE = re.compile(
+    r"https?://[^\s\"'<>]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s\"'<>]*)?",
+    re.I,
+)
+_META_OG_IMAGE_RE = re.compile(
+    r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image)["\'][^>]+content=["\']([^"\']+)["\']'
+    r'|<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:og:image|twitter:image)["\']',
+    re.I,
+)
+_IMG_SRC_RE = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", re.I)
+_JUNK_IMAGE_HINTS = (
+    "logo",
+    "icon",
+    "favicon",
+    "sprite",
+    "pixel",
+    "1x1",
+    "tracking",
+    "badge",
+    "facebook",
+    "twitter",
+    "linkedin",
+    "pinterest",
+    "whatsapp",
+    "gravatar",
+    "avatar",
+    "placeholder",
+    "spinner",
+    "digistore24.com/assets",
+)
+_IMAGE_SOURCE_PRIORITY = {
+    "sales_page": 0,
+    "offer_page": 1,
+    "order_page": 2,
+}
+
+
+def _looks_like_product_image(url: str) -> bool:
+    token = (url or "").strip().lower()
+    if not token.startswith("http"):
+        return False
+    if any(hint in token for hint in _JUNK_IMAGE_HINTS):
+        return False
+    if not re.search(r"\.(?:jpe?g|png|webp|gif)(?:\?|$)", token):
+        # CDN paths often omit extensions — allow if clearly media-ish
+        if not any(x in token for x in ("/image", "/images/", "/media/", "/cdn/", "cloudfront", "wp-content")):
+            return False
+    return True
+
+
+def _image_urls_from_text(text: str) -> list[str]:
+    if not text:
+        return []
+    found: list[str] = []
+    for match in _IMAGE_URL_RE.findall(text):
+        url = match.rstrip(").,;'\"")
+        if _looks_like_product_image(url) and url not in found:
+            found.append(url)
+    return found
+
+
+def _absolute_url(base: str, maybe_relative: str) -> str:
+    from urllib.parse import urljoin
+
+    return urljoin(base, (maybe_relative or "").strip())
+
+
+def _image_urls_from_html(html: str, base_url: str = "") -> list[str]:
+    if not html:
+        return []
+    found: list[str] = []
+    for match in _META_OG_IMAGE_RE.finditer(html):
+        url = _absolute_url(base_url, match.group(1) or match.group(2) or "")
+        if _looks_like_product_image(url) and url not in found:
+            found.append(url)
+    for match in _IMG_SRC_RE.finditer(html):
+        url = _absolute_url(base_url, match.group(1))
+        if _looks_like_product_image(url) and url not in found:
+            found.append(url)
+    found.extend(u for u in _image_urls_from_text(html) if u not in found)
+    return found
+
+
+def _vendor_material_page_url(material: dict) -> str:
+    return _clean(_pick(material, ["url", "source_url", "sourceUrl", "href", "page_url", "pageUrl"]))
+
+
+def _fetch_page_html(url: str, *, timeout: float = 8.0) -> str:
+    """Best-effort GET of vendor sales/offer HTML. Soft-fail → empty string."""
+    if not url or not re.match(r"^https?://", url, re.I):
+        return ""
+    if os.getenv("SHADOWCAST_FETCH_VENDOR_IMAGES", "1").strip() in ("0", "false", "False"):
+        return ""
+    try:
+        import httpx
+    except ImportError:
+        return ""
+    try:
+        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+            resp = client.get(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (compatible; ShadowCast/1.0; +https://github.com/unlovedproductions/shadowcast-)"
+                    ),
+                    "Accept": "text/html,application/xhtml+xml",
+                },
+            )
+            if resp.status_code >= 400:
+                return ""
+            ctype = (resp.headers.get("content-type") or "").lower()
+            if "html" not in ctype and "text/" not in ctype and ctype:
+                return ""
+            return resp.text or ""
+    except Exception:
+        return ""
+
+
+def _resolve_product_image_url(
+    product: dict,
+    vendor_materials,
+    shadowcast_import: dict,
+    *,
+    fetch_pages: bool = True,
+) -> str:
+    """
+    Prefer explicit image fields, then image URLs embedded in vendor materials,
+    then og:image / <img> from sales/offer pages (vendor pages almost always have product photos).
+    """
+    explicit = _clean(
+        _pick(shadowcast_import, ["image_url", "imageUrl", "product_image", "productImage", "main_image"])
+        or _pick(product, [
+            "image_url", "imageUrl", "image", "product_image", "productImage",
+            "main_image", "mainImage", "thumbnail_url", "thumbnailUrl", "photo",
+        ])
+    )
+    if explicit and _looks_like_product_image(explicit):
+        return explicit
+
+    materials = [m for m in (vendor_materials or []) if isinstance(m, dict)]
+    materials_sorted = sorted(
+        materials,
+        key=lambda m: _IMAGE_SOURCE_PRIORITY.get(str(m.get("source_type") or "").lower(), 50),
+    )
+
+    # 1) Embedded URLs in excerpts / structured blocks / content
+    for material in materials_sorted:
+        title = _clean(material.get("title"))
+        if title and _JUNK_VENDOR_TITLE_RE.match(title):
+            continue
+        blobs = [
+            _clean(material.get("excerpt")),
+            _clean(material.get("content_text") or material.get("contentText")),
+            json.dumps(material.get("structured_blocks") or material.get("structuredBlocks") or {}, ensure_ascii=False),
+        ]
+        for blob in blobs:
+            urls = _image_urls_from_text(blob)
+            if urls:
+                return urls[0]
+
+    if not fetch_pages:
+        return ""
+
+    # 2) Fetch vendor sales/offer HTML for og:image / product <img>
+    page_candidates: list[str] = []
+    for material in materials_sorted:
+        title = _clean(material.get("title"))
+        if title and _JUNK_VENDOR_TITLE_RE.match(title):
+            continue
+        page_url = _vendor_material_page_url(material)
+        if page_url and page_url not in page_candidates:
+            page_candidates.append(page_url)
+    for key in ("product_detail_url", "productDetailUrl", "sales_page_url", "salesPageUrl", "url"):
+        extra = _clean(_pick(product, [key]))
+        if extra and extra not in page_candidates and re.match(r"^https?://", extra, re.I):
+            # Skip obvious marketplace hop trackers without a product path
+            if "digistore24.com/redir" in extra.lower() or "clickbank.net" in extra.lower():
+                continue
+            page_candidates.append(extra)
+
+    for page_url in page_candidates:
+        html = _fetch_page_html(page_url)
+        if not html:
+            continue
+        urls = _image_urls_from_html(html, base_url=page_url)
+        if urls:
+            return urls[0]
+    return ""
 
 
 def _clean(value):
@@ -548,6 +736,8 @@ def normalize_apf_payload(payload: dict) -> dict:
         or brief.get("priceComparison")
     )
 
+    image_url = _resolve_product_image_url(product, vendor_materials, shadowcast_import)
+
     normalized = {
         "productName": product_name,
         "product_name": product_name,
@@ -557,6 +747,8 @@ def normalize_apf_payload(payload: dict) -> dict:
         "price": price,
         "affiliateLink": affiliate_link,
         "affiliate_link": affiliate_link,
+        "image_url": image_url,
+        "imageUrl": image_url,
         "keywords": keywords,
         "targetAudience": target_audience,
         "target_audience": target_audience,
@@ -616,6 +808,7 @@ _SNAKE_PRODUCT_KEYS = (
     "price_comparison",
     "content_style",
     "amazon_url",
+    "image_url",
     "cta",
 )
 
@@ -645,6 +838,17 @@ def as_snake_product_info(normalized: dict) -> dict:
         "price_comparison": ("price_comparison", "priceComparison"),
         "content_style": ("content_style", "contentStyle"),
         "amazon_url": ("amazon_url", "amazonUrl"),
+        "image_url": (
+            "image_url",
+            "imageUrl",
+            "image",
+            "product_image",
+            "productImage",
+            "main_image",
+            "mainImage",
+            "thumbnail_url",
+            "thumbnailUrl",
+        ),
         "cta": ("cta",),
     }
     for key in _SNAKE_PRODUCT_KEYS:

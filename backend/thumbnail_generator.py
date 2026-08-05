@@ -249,7 +249,7 @@ def add_badge(image, badge_text, position="top_right", color=DARK_PINK):
 
     return image
 
-def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None):
+def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None, product_image_path=None):
     variants = {}
     style_label = human_style_name(content_style)
 
@@ -284,6 +284,12 @@ def generate_thumbnail_set(product_name, hook_type, content_style, keywords=None
             style="bold_text",
             accent_color=DARK_PINK
         )
+
+    if product_image_path:
+        from product_media import thumbnail_with_product_hero
+        # Prefer product hero on A/B for CTR; keep C as text-only fallback.
+        for key in ("variant_a", "variant_b"):
+            variants[key] = thumbnail_with_product_hero(variants[key], product_image_path)
 
     return variants
 

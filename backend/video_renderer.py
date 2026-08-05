@@ -51,6 +51,7 @@ from sound_design import (
     SAMPLE_RATE as AUDIO_SAMPLE_RATE,
 )
 from audio_options import MOOD_TEMPO, resolve_audio_mood
+from product_media import frame_with_product_hero, segment_wants_product_hero
 from scipy.io.wavfile import read as read_wav
 from tts_generator import generate_voiceover_for_script, resolve_tts_timing
 
@@ -618,6 +619,8 @@ def build_segment_clip(
     base_bg,
     content_style="honest_review",
     bg_seed: int | None = None,
+    product_image_path: str | None = None,
+    segment_index: int = 0,
 ):
     """Build a clip for a single segment and return (clip, terminal_frame)."""
     text = seg.get("text", "")
@@ -625,7 +628,17 @@ def build_segment_clip(
     text_style = normalize_text_style(seg.get("text_style", "headline_bold"))
     animation = seg.get("animation", "fade_in")
     is_interrupt = seg.get("is_pattern_interrupt", False)
-    
+    use_hero = bool(product_image_path) and segment_wants_product_hero(
+        seg, segment_index=segment_index
+    )
+
+    def _maybe_hero(frame):
+        if not use_hero:
+            return frame
+        return frame_with_product_hero(
+            frame, product_image_path, is_short_form=is_short_form
+        )
+
     # Parse colors
     try:
         text_color = hex_to_rgb(seg.get("text_color", "#FFFFFF"))
@@ -648,7 +661,7 @@ def build_segment_clip(
     if layout == "vs_split":
         product_a = seg.get("product_a", "Product A")
         product_b = seg.get("product_b", "Product B")
-        frame = render_vs_split_screen(width, height, product_a, product_b, accent_color)
+        frame = _maybe_hero(render_vs_split_screen(width, height, product_a, product_b, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
         return clip, frame
@@ -657,7 +670,7 @@ def build_segment_clip(
         value_a = seg.get("value_a", "")
         value_b = seg.get("value_b", "")
         winner = seg.get("winner", "a")
-        frame = render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color)
+        frame = _maybe_hero(render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
         return clip, frame
@@ -665,19 +678,19 @@ def build_segment_clip(
         product_a = seg.get("product_a", "Product A")
         product_b = seg.get("product_b", "Product B")
         scores = seg.get("scores", [])
-        frame = render_scorecard(width, height, product_a, product_b, scores, accent_color)
+        frame = _maybe_hero(render_scorecard(width, height, product_a, product_b, scores, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
         return clip, frame
     elif layout == "price_compare":
         products = seg.get("price_products", [])
-        frame = render_price_comparison(width, height, products, accent_color)
+        frame = _maybe_hero(render_price_comparison(width, height, products, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
         return clip, frame
     elif layout == "winner_reveal":
         winner_name = seg.get("winner_name", text)
-        frame = render_winner_reveal(width, height, winner_name, accent_color)
+        frame = _maybe_hero(render_winner_reveal(width, height, winner_name, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
         return clip, frame
@@ -690,6 +703,11 @@ def build_segment_clip(
         content_style=content_style,
         bg_seed=bg_seed,
     )
+    static_frame = _maybe_hero(static_frame)
+
+    # Hero stills use the static path so the product image stays visible.
+    if use_hero:
+        animation = "fade_in"
     
     # ── Kinetic typography path ──
     if animation == "word_by_word":
@@ -802,6 +820,7 @@ def render_short_form_video(
     video_preset: str | None = None,
     render_warnings: list | None = None,
     render_seed: int | None = None,
+    product_image_path: str | None = None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
     if competitors is None:
@@ -843,6 +862,7 @@ def render_short_form_video(
             render_preset=render_preset,
             render_warnings=render_warnings,
             render_seed=render_seed,
+            product_image_path=product_image_path,
         )
 
 
@@ -862,6 +882,7 @@ def _render_short_form_video_impl(
     render_preset: str,
     render_warnings: list | None,
     render_seed: int,
+    product_image_path: str | None = None,
 ) -> str:
     WIDTH, HEIGHT = 1080, 1920  # 9:16 vertical
     FPS = 30
@@ -897,6 +918,8 @@ def _render_short_form_video_impl(
         clip, frame = build_segment_clip(
             seg, WIDTH, HEIGHT, True, accent_color, base_bg, content_style,
             bg_seed=render_seed + i + 1,
+            product_image_path=product_image_path,
+            segment_index=i,
         )
         segment_clips.append(clip)
         rendered_frames.append(frame)
@@ -1070,6 +1093,7 @@ def render_long_form_video(
     video_preset: str | None = None,
     render_warnings: list | None = None,
     render_seed: int | None = None,
+    product_image_path: str | None = None,
 ) -> str:
     if competitors is None:
         competitors = []
@@ -1111,6 +1135,7 @@ def render_long_form_video(
                 render_preset=render_preset,
                 render_warnings=render_warnings,
                 render_seed=render_seed,
+                product_image_path=product_image_path,
             )
 
 
@@ -1130,6 +1155,7 @@ def _render_long_form_video_impl(
     render_preset: str,
     render_warnings: list | None,
     render_seed: int,
+    product_image_path: str | None = None,
 ) -> str:
     WIDTH, HEIGHT = 1920, 1080  # 16:9 landscape
     FPS = 30
@@ -1204,6 +1230,8 @@ def _render_long_form_video_impl(
             clip, frame = build_segment_clip(
                 seg, WIDTH, HEIGHT, False, accent_color, base_bg, content_style,
                 bg_seed=render_seed + 2000 + segment_counter,
+                product_image_path=product_image_path,
+                segment_index=segment_counter,
             )
             segment_clips_ch.append(clip)
             rendered_frames.append(frame)

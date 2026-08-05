@@ -96,14 +96,64 @@ def test_price_fallback_to_apv_then_varies():
     assert empty_price["price"] == "Varies"
 
 
-def test_style_inference_from_angles():
+def test_image_url_from_vendor_material_excerpt():
     payload = {
-        "product": {"name": "Budget Gadget"},
-        "review_brief": {
-            "best_video_angles": ["Best budget pick under $50"],
-        },
+        "product": {"name": "Glow Serum", "affiliate_url": "https://example.com/hop"},
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Glow Serum Official",
+                "url": "https://vendor.example.com/glow",
+                "excerpt": "See the bottle https://cdn.example.com/products/glow-serum.jpg on the page.",
+            }
+        ],
     }
-    assert normalize_apf_payload(payload)["recommended_content_style"] == "budget_challenge"
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/products/glow-serum.jpg"
+
+
+def test_image_url_from_sales_page_og_image(monkeypatch):
+    html = """
+    <html><head>
+      <meta property="og:image" content="https://cdn.example.com/media/product-hero.png"/>
+    </head><body><img src="/logo.png"/></body></html>
+    """
+
+    def fake_fetch(url, timeout=8.0):
+        assert "vendor.example.com" in url
+        return html
+
+    monkeypatch.setattr("apf_import._fetch_page_html", fake_fetch)
+    payload = {
+        "product": {"name": "Hero Bottle"},
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Hero Bottle Offer",
+                "url": "https://vendor.example.com/hero",
+            }
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/media/product-hero.png"
+
+
+def test_explicit_image_url_wins_over_vendor_page(monkeypatch):
+    monkeypatch.setattr(
+        "apf_import._fetch_page_html",
+        lambda *a, **k: '<meta property="og:image" content="https://cdn.example.com/wrong.jpg"/>',
+    )
+    payload = {
+        "product": {
+            "name": "Explicit",
+            "image_url": "https://cdn.example.com/products/explicit.webp",
+        },
+        "vendor_materials": [
+            {"source_type": "sales_page", "title": "Offer", "url": "https://vendor.example.com/x"}
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/products/explicit.webp"
 
 
 def test_shadowcast_import_style_from_enriched_brief():

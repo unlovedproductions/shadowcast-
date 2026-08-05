@@ -34,6 +34,7 @@ class ProductInfo(BaseModel):
     price_comparison: str = Field(default="", max_length=500)
     content_style: str = Field(default=DEFAULT_CONTENT_STYLE, max_length=64)
     amazon_url: str = Field(default="", max_length=500)
+    image_url: str = Field(default="", max_length=1000)
 
     @field_validator("content_style")
     @classmethod
@@ -57,7 +58,7 @@ class GenerateRequest(BaseModel):
     content_style: str = Field(default=DEFAULT_CONTENT_STYLE, max_length=64)
     audio_enabled: bool = True
     audio_mood: str = Field(default="auto", max_length=32)
-    use_tts: bool = False
+    use_tts: bool = True
     tts_provider: str = Field(default="auto", max_length=32)
     tts_voice: Optional[str] = Field(default=None, max_length=64)
     video_preset: str = Field(default="medium", max_length=32)
@@ -75,7 +76,7 @@ class BatchGenerateRequest(BaseModel):
     content_style: str = Field(default=DEFAULT_CONTENT_STYLE, max_length=64)
     audio_enabled: bool = True
     audio_mood: str = Field(default="auto", max_length=32)
-    use_tts: bool = False
+    use_tts: bool = True
     tts_provider: str = Field(default="auto", max_length=32)
     tts_voice: Optional[str] = Field(default=None, max_length=64)
     video_preset: str = Field(default="medium", max_length=32)

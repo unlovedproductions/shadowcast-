@@ -6,9 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Root `README.md` and `docs/SOCIAL_READINESS.md` (dual-bar posting readiness).
+- Product still support via `image_url` (`product_media.py`) for hero segments and thumbnails.
+- Drop-in music beds under `backend/assets/music/` with synth fallback.
+- Publish soft-gate against gTTS-only live uploads (`ALLOW_GTTS_PUBLISH` escape hatch).
+- Playwright E2E tiers (mocked + live) and quality-gate scripts under `scripts/quality/`.
+- Style-rules RAG runtime + corpus under `backend/eval/rag_corpus/`.
+- TTS-first audio-driven timing, Shorts burn-in captions, entity lower-thirds, two-pass loudnorm.
+- `job_store` extraction and optional `SHADOWCAST_BATCH_WORKERS`.
+
 ### Changed
 
-- Refreshed live eval baseline timestamp in `backend/eval/baselines/eval_live_baseline.json`
+- Docs synced to current architecture (ARCHITECTURE, RUNBOOK, RECOVERY, RAG_DESIGN, style matrix).
+- API/UI prefer quality TTS when available (`SHADOWCAST_TTS_DEFAULT` to force off).
+- Canonical venv documented as `.venv`.
+
+### Security
+
+- Localhost-default bind (`HOST`/`PORT`); documented CORS and service-key schemes (see 4.1.0).
 
 ## [4.1.0] - 2026-07-20
 
@@ -34,5 +51,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Documented `X-Service-Key` and OAuth2 security schemes in OpenAPI for protected admin/publish routes.
 
-[Unreleased]: https://github.com/unloved/shadowcast-/compare/v4.1.0...HEAD
-[4.1.0]: https://github.com/unloved/shadowcast-/releases/tag/v4.1.0
+[Unreleased]: https://github.com/unlovedproductions/shadowcast-/compare/main...HEAD
+[4.1.0]: https://github.com/unlovedproductions/shadowcast-/releases/tag/v4.1.0

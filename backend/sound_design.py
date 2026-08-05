@@ -132,6 +132,53 @@ def get_note_frequency(note_name, octave_offset=0):
         return 0 # Return 0 frequency if not found
 
 def generate_background_music(duration_seconds, mood="chill", tempo=100):
+    bed = _load_music_bed(mood, duration_seconds)
+    if bed is not None:
+        return bed
+    return _synthesize_background_music(duration_seconds, mood, tempo)
+
+
+def _music_beds_dir() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "music")
+
+
+def _load_music_bed(mood: str, duration_seconds: float):
+    """Prefer drop-in royalty-free beds: assets/music/{mood}.wav|.mp3."""
+    base = _music_beds_dir()
+    for ext in (".wav", ".mp3", ".flac"):
+        path = os.path.join(base, f"{mood}{ext}")
+        if not os.path.isfile(path):
+            continue
+        try:
+            if path.endswith(".wav"):
+                rate, data = read_wav(path)
+                arr = data.astype(np.float32)
+                if arr.ndim > 1:
+                    arr = arr.mean(axis=1)
+                max_abs = np.max(np.abs(arr)) or 1.0
+                arr = arr / max_abs
+                if rate != SAMPLE_RATE and len(arr) > 1:
+                    # Naive resample for bed loops
+                    x_old = np.linspace(0.0, 1.0, num=len(arr), endpoint=False)
+                    n_new = int(len(arr) * SAMPLE_RATE / float(rate))
+                    x_new = np.linspace(0.0, 1.0, num=max(1, n_new), endpoint=False)
+                    arr = np.interp(x_new, x_old, arr).astype(np.float32)
+            else:
+                # ffmpeg decode to wav temp via scipy path not available — skip non-wav
+                continue
+            target = int(duration_seconds * SAMPLE_RATE)
+            if len(arr) == 0:
+                continue
+            if len(arr) >= target:
+                return arr[:target]
+            reps = int(np.ceil(target / len(arr)))
+            return np.tile(arr, reps)[:target]
+        except Exception as exc:
+            print(f"Warning: music bed load failed ({path}): {exc}")
+    return None
+
+
+def _synthesize_background_music(duration_seconds, mood="chill", tempo=100):
     settings = MOOD_SETTINGS.get(mood, MOOD_SETTINGS["chill"])
     
     all_music = np.array([])

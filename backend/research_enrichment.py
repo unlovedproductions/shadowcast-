@@ -31,6 +31,8 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
     if scraped.get("key_features") and not out.get("key_features"):
         features = scraped.get("key_features")
         out["key_features"] = features if isinstance(features, list) else [features]
+    if scraped.get("image_url") and _is_blank(out.get("image_url")):
+        out["image_url"] = scraped["image_url"]
 
     positives = scraped.get("positive_reviews") or []
     negatives = scraped.get("negative_reviews") or []
