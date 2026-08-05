@@ -78,6 +78,23 @@ def test_harness_detects_trim_vs_pad(tmp_path, monkeypatch):
             assert seg["final_duration_b"] >= seg["tts_duration_b"]
 
 
+def test_compare_clip_fails_when_timing_rows_diverge(tmp_path, monkeypatch):
+    def _fake_voiceover(_segments, output_path, *, audio_driven, **_kwargs):
+        if audio_driven:
+            return output_path, [{"index": 1, "text": "hello", "tts_duration": 1.0, "duration": 1.0}]
+        return output_path, [{"index": 0, "text": "hello", "tts_duration": 0.9, "duration": 0.9}]
+
+    monkeypatch.setattr("eval.tts_timing_ab.generate_voiceover_for_segments", _fake_voiceover)
+    script = {
+        "clip_id": "mismatch_probe",
+        "content_style": "honest_review",
+        "format": "short_form",
+        "segments": [{"segment_id": 1, "text": "hello world", "duration": 1.0}],
+    }
+    with pytest.raises(RuntimeError, match="timing row mismatch"):
+        compare_clip(script, work_dir=tmp_path / "mismatch_probe", live=False)
+
+
 def test_run_ab_default_five_clips_writes_report_shape(tmp_path, monkeypatch):
     monkeypatch.setenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.35")
     assert len(DEFAULT_CLIPS) == 5

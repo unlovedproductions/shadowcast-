@@ -262,6 +262,13 @@ def compare_clip(
     by_a = {int(r["index"]): r for r in timing_a}
     by_b = {int(r["index"]): r for r in timing_b}
     indices = sorted(set(by_a) | set(by_b))
+    missing_in_a = [idx for idx in indices if idx not in by_a]
+    missing_in_b = [idx for idx in indices if idx not in by_b]
+    if missing_in_a or missing_in_b:
+        raise RuntimeError(
+            "timing row mismatch between A and B for "
+            f"clip {clip_id}: missing_in_a={missing_in_a} missing_in_b={missing_in_b}"
+        )
     segments_out: list[dict[str, Any]] = []
     for idx in indices:
         llm = None
@@ -270,9 +277,9 @@ def compare_clip(
                 llm = float(segments_src[idx].get("duration") or 0) or None
             except (TypeError, ValueError):
                 llm = None
-        if idx not in by_a or idx not in by_b:
-            continue
         segments_out.append(_segment_compare(llm, by_a[idx], by_b[idx]))
+    if not segments_out:
+        raise RuntimeError(f"no comparable timing rows for clip {clip_id}")
 
     total_a = sum(float(r.get("duration") or 0) for r in timing_a)
     total_b = sum(float(r.get("duration") or 0) for r in timing_b)
