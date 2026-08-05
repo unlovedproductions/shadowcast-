@@ -53,6 +53,7 @@ from sound_design import (
 from audio_options import MOOD_TEMPO, resolve_audio_mood
 from product_media import frame_with_product_hero, segment_wants_product_hero
 from scipy.io.wavfile import read as read_wav
+from caption_srt import write_srt_sidecar
 from tts_generator import generate_voiceover_for_script, resolve_tts_timing
 
 from comparison_layouts import (
@@ -1074,6 +1075,9 @@ def _render_short_form_video_impl(
         except Exception:
             pass
 
+    if use_tts and timing_rows and os.path.exists(output_path):
+        write_srt_sidecar(output_path, timing_rows, intro_offset=intro_seconds)
+
     return output_path
 
 
@@ -1375,6 +1379,9 @@ def _render_long_form_video_impl(
             c.close()
         except Exception:
             pass
+
+    if use_tts and timing_rows and os.path.exists(output_path):
+        write_srt_sidecar(output_path, timing_rows, intro_offset=intro_seconds)
 
     return output_path
 

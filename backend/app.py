@@ -102,6 +102,7 @@ from analytics_tracker import AnalyticsTracker, create_tracking_link
 from youtube_analytics import YouTubeAnalyticsClient, extract_youtube_video_id
 from oauth_manager import OAuthManager
 from publish_service import PublishService, resolve_job_assets
+from publish_quality import evaluate_publish_quality
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
@@ -2229,6 +2230,46 @@ def oauth_disconnect(platform: str):
 
 
 # ── Publish ───────────────────────────────────────────────────────────
+class PublishQualityRequest(BaseModel):
+    job_id: Optional[str] = None
+    video_path: Optional[str] = None
+    thumbnail_path: Optional[str] = None
+    hook_type: Optional[str] = None
+    video_format: str = "short_form"
+    product_slug: Optional[str] = None
+    thumbnail_variant: str = "variant_a"
+
+
+@app.post("/api/publish/quality")
+def publish_quality_check(req: PublishQualityRequest):
+    try:
+        video_path = req.video_path
+        thumb_path = req.thumbnail_path
+        if req.job_id and req.hook_type:
+            resolved = resolve_job_assets(
+                req.job_id,
+                req.hook_type,
+                req.video_format,
+                product_slug=req.product_slug,
+                jobs=jobs,
+            )
+            video_path = video_path or resolved.get("video_path")
+            thumb_path = thumb_path or resolved.get("thumbnail_path")
+            if req.thumbnail_variant != "variant_a" and thumb_path:
+                thumb_path = str(thumb_path).replace("variant_a", req.thumbnail_variant)
+        if not video_path:
+            raise HTTPException(status_code=400, detail="video_path or job_id+hook_type required")
+        return evaluate_publish_quality(
+            video_path=video_path,
+            thumbnail_path=thumb_path,
+            video_format=req.video_format,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class PublishRequest(BaseModel):
     job_id: str
     hook_type: str

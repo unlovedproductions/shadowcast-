@@ -50,13 +50,18 @@ class MetaPublisher:
         video_url = f"{public_base}/api/media/serve?path={video_path}" if not video_path.startswith("http") else video_path
 
         params: dict[str, Any] = {
-            "media_type": "REELS",
+            "media_type": payload.get("media_type") or "REELS",
             "video_url": video_url,
             "caption": payload.get("caption", ""),
+            "share_to_feed": "true" if payload.get("share_to_feed", True) else "false",
             "access_token": token,
         }
         if cover_path and Path(cover_path).exists():
             params["cover_url"] = f"{public_base}/api/media/serve?path={cover_path}"
+        elif payload.get("cover_url"):
+            params["cover_url"] = payload["cover_url"]
+        if payload.get("location_id"):
+            params["location_id"] = payload["location_id"]
 
         with httpx.Client(timeout=120) as client:
             create = client.post(f"{GRAPH}/{ig_id}/media", data=params)
