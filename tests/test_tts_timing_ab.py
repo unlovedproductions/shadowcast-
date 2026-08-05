@@ -75,6 +75,7 @@ def test_run_ab_default_five_clips_writes_report_shape(tmp_path, monkeypatch):
     assert report["clip_count"] == 2
     assert "segments_trimmed_under_a" in report["summary"]
     assert "clips_without_trim_under_a" in report["summary"]
+    assert "total_trim_seconds_under_a" in report["summary"]
     assert all("totals" in c and "segments" in c for c in report["clips"])
 
     out = tmp_path / "report.json"
@@ -116,3 +117,38 @@ def test_main_can_fail_ci_guard_when_trim_signal_missing(tmp_path):
     assert exit_code == 2
     report = json.loads(out_path.read_text(encoding="utf-8"))
     assert report["summary"]["segments_trimmed_under_a"] == 0
+
+
+def test_main_can_fail_trim_seconds_guard_when_trim_signal_missing(tmp_path):
+    fixtures = {
+        "clips": [
+            {
+                "clip_id": "no_trim_probe",
+                "content_style": "honest_review",
+                "format": "short_form",
+                "segments": [
+                    {
+                        "segment_id": 1,
+                        "text": "short line",
+                        "duration": 5.0,
+                    }
+                ],
+            }
+        ]
+    }
+    fixtures_path = tmp_path / "fixtures.json"
+    fixtures_path.write_text(json.dumps(fixtures), encoding="utf-8")
+    out_path = tmp_path / "ab.json"
+    exit_code = main(
+        [
+            "--fixtures",
+            str(fixtures_path),
+            "--out",
+            str(out_path),
+            "--require-trim-seconds-under-a",
+            "0.1",
+        ]
+    )
+    assert exit_code == 2
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    assert report["summary"]["total_trim_seconds_under_a"] == 0.0
