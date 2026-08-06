@@ -17,8 +17,10 @@ Pipeline: **product → LLM scripts → TTS (optional/recommended) → MoviePy k
 
 - Motion-graphics / kinetic typography product — not UGC filming or diffusion gen-video.
 - Product stills are supported when `image_url` is provided **or auto-extracted from APF vendor sales/offer pages** (og:image / product `<img>`); otherwise procedural backgrounds.
+- Optional long-form B-roll pads when clips exist under `backend/assets/broll/` (see ATTRIBUTION).
 - Ship-quality voice needs Kokoro, Piper, or OpenAI TTS (gTTS is smoke-only).
-- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores and the path to postable output.
+- Postable checklist: Pre-Publish QA, `.srt` sidecars, thumb A/B/C pick, dry-run before live.
+- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores (~88% / ~72% after P0–P2).
 
 ## Quickstart
 

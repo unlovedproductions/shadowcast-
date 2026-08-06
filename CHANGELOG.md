@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Optional long-form B-roll pads (`broll.py`, `backend/assets/broll/`).
 - Publish UI A/B/C thumbnail pick (`thumbnail_variant` on batch publish).
 - Hardened Rumble Playwright selectors + dry-run vs live notes in RUNBOOK.
+- Architecture/README synced for P1–P2 modules (SRT, WhisperX flag, B-roll, publish QA).
 - Playwright E2E tiers (mocked + live) and quality-gate scripts under `scripts/quality/`.
 - Style-rules RAG runtime + corpus under `backend/eval/rag_corpus/`.
 - TTS-first audio-driven timing, Shorts burn-in captions, entity lower-thirds, two-pass loudnorm.
