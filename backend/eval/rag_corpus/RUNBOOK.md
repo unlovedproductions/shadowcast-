@@ -27,6 +27,14 @@
 - Quality providers: Kokoro, Piper, OpenAI. gTTS is smoke-only.
 - UI auto-enables TTS when a quality provider is ready; API defaults prefer TTS on unless `SHADOWCAST_TTS_DEFAULT=0`.
 - Live publish soft-blocks gTTS-only unless `ALLOW_GTTS_PUBLISH=1`.
+- Optional karaoke align: `SHADOWCAST_WHISPERX_ALIGN=1` (+ optional `whisperx` install).
+- Optional long-form B-roll pads: drop clips in `backend/assets/broll/` or set `SHADOWCAST_BROLL=1`.
+
+## Publish dry-run vs live
+- UI **Dry Run** and API `dry_run: true` never upload — publishers return synthetic success payloads.
+- Use dry-run first for YouTube / Meta / TikTok / **Rumble**.
+- Rumble live publish needs browser login cookies via OAuth/Rumble connect; Playwright selectors are multi-fallback (title/desc/file/submit). If upload DOM changes, reconnect session and check `rumble_publisher.py` selector tuples.
+- Pick thumbnail A/B/C in the Publish card before live YouTube/IG cover upload (`thumbnail_variant`).
 
 ## Playwright E2E
 

@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Native Instagram Reels / TikTok `post_info` fields in `posting_package_adapter.py`.
 - Pre-publish QA: `POST /api/publish/quality` + frontend **Pre-Publish QA** button.
 - Optional WhisperX forced-align behind `SHADOWCAST_WHISPERX_ALIGN=1` (`whisperx_align.py`).
+- Optional long-form B-roll pads (`broll.py`, `backend/assets/broll/`).
+- Publish UI A/B/C thumbnail pick (`thumbnail_variant` on batch publish).
+- Hardened Rumble Playwright selectors + dry-run vs live notes in RUNBOOK.
 - Playwright E2E tiers (mocked + live) and quality-gate scripts under `scripts/quality/`.
 - Style-rules RAG runtime + corpus under `backend/eval/rag_corpus/`.
 - TTS-first audio-driven timing, Shorts burn-in captions, entity lower-thirds, two-pass loudnorm.

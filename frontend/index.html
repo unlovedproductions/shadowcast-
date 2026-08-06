@@ -347,6 +347,7 @@
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
         publishQuality: null, publishQualityLoading: false,
+        publishThumbVariant: 'variant_a',
         bgRecommend: '',
         trackAffiliateUrl: '', trackingLinkResult: '',
         rumbleUsername: '', rumblePassword: '',
@@ -1044,7 +1045,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, '')}
-        ${renderPublishCard(ytAssets, '')}
+        ${renderPublishCard(ytAssets, '', data)}
         ${renderYTAssets(ytAssets, '')}`;
     }
 
@@ -1074,7 +1075,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, slug + '/')}
-        ${renderPublishCard(ytAssets, slug)}
+        ${renderPublishCard(ytAssets, slug, data)}
         ${renderYTAssets(ytAssets, slug + '/')}`;
     }
 
@@ -1089,15 +1090,34 @@
         </div>`;
     }
 
-    function renderPublishCard(ytAssets, productSlug) {
+    function renderPublishCard(ytAssets, productSlug, hookData) {
         if (!state.jobId || !ytAssets || !ytAssets.seo_title) return '';
         const caption = ytAssets.pinned_comment || ytAssets.seo_description || '';
-        const hashtags = (ytAssets.hashtags || []).join(' ');
+        const thumbs = (hookData && hookData.thumbnails) || {};
+        const thumbKeys = Object.keys(thumbs);
+        const pathPrefix = productSlug ? `${productSlug}/` : '';
+        const thumbPicker = thumbKeys.length
+            ? `<div style="margin:12px 0;">
+                <h3 style="font-size:13px;color:var(--text2);margin-bottom:8px;">Thumbnail for publish (pick A/B/C)</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                    ${thumbKeys.map(k => {
+                        const selected = (state.publishThumbVariant || 'variant_a') === k;
+                        const fname = thumbs[k];
+                        return `<label style="cursor:pointer;border:2px solid ${selected?'var(--cyan)':'#2a2a2a'};border-radius:8px;padding:6px;display:block;max-width:160px;">
+                            <input type="radio" name="publishThumb" value="${esc(k)}" ${selected?'checked':''} onchange="setPublishThumbVariant('${escJs(k)}')" style="margin-bottom:6px;">
+                            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${esc(k.replace('variant_','Variant ').toUpperCase())}</div>
+                            <img src="${API}/download/${state.jobId}/${pathPrefix}${fname}" alt="${esc(k)}" style="width:140px;height:auto;display:block;border-radius:4px;">
+                        </label>`;
+                    }).join('')}
+                </div>
+              </div>`
+            : `<p style="font-size:12px;color:var(--text2);margin:8px 0;">No thumbnail variants on this hook — publish uses default.</p>`;
         return `<div class="card" style="border-color:var(--pink);">
             <h2>Publish to Social</h2>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video.</p>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video. Dry-run never uploads (safe for Rumble/YouTube checks).</p>
             <div class="result-block"><h3>Title Preview</h3><div class="content">${esc(ytAssets.seo_title)}</div></div>
             <div class="result-block"><h3>Caption Preview</h3><div class="content">${esc(caption.substring(0, 280))}${caption.length>280?'...':''}</div></div>
+            ${thumbPicker}
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
                 ${publishPlatformOptions.map(p=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
                     <input type="checkbox" ${state.publishPlatforms.includes(p.id)?'checked':''} onchange="togglePublishPlatform('${p.id}', this.checked)"> ${p.label}
@@ -1978,7 +1998,7 @@
         } catch(e) { showToast('Error: ' + e.message); }
     }
 
-    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun }) {
+    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun, thumbnailVariant }) {
         const res = await fetch(`${API}/publish/batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1989,6 +2009,7 @@
                 platforms,
                 product_slug: productSlug || null,
                 dry_run: !!dryRun,
+                thumbnail_variant: thumbnailVariant || state.publishThumbVariant || 'variant_a',
             }),
         });
         const data = await res.json().catch(() => ({}));
@@ -2000,6 +2021,11 @@
             throw new Error(msg);
         }
         return data;
+    }
+
+    function setPublishThumbVariant(v) {
+        state.publishThumbVariant = v || 'variant_a';
+        render();
     }
 
     async function publishFromResults(dryRun, productSlug) {
@@ -2015,6 +2041,7 @@
                 platforms: state.publishPlatforms,
                 productSlug: productSlug || null,
                 dryRun: !!dryRun,
+                thumbnailVariant: state.publishThumbVariant || 'variant_a',
             });
             state.publishResults = data;
             showToast(dryRun ? 'Dry run complete' : 'Publish complete');

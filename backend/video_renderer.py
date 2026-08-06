@@ -54,6 +54,7 @@ from audio_options import MOOD_TEMPO, resolve_audio_mood
 from product_media import frame_with_product_hero, segment_wants_product_hero
 from scipy.io.wavfile import read as read_wav
 from caption_srt import write_srt_sidecar
+from broll import make_broll_clip
 from tts_generator import generate_voiceover_for_script, resolve_tts_timing
 from whisperx_align import (
     align_words_to_audio,
@@ -1246,6 +1247,16 @@ def _render_long_form_video_impl(
         chapter_clip = ImageClip(chapter_frame, duration=2.5)
         chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
         all_clips.append(chapter_clip)
+
+        # Optional stock B-roll pad between chapter title and first segment.
+        broll_clip = make_broll_clip(
+            section_type,
+            duration=2.0,
+            width=WIDTH,
+            height=HEIGHT,
+        )
+        if broll_clip is not None:
+            all_clips.append(broll_clip)
 
         rendered_frames = []
         segment_clips_ch = []
