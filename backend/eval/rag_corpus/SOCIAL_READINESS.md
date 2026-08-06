@@ -1,17 +1,17 @@
 # Social posting readiness
 
-Assessment date: 2026-08-05 (plan complete + P1 WhisperX flag). Target: videos good enough to start posting on YouTube and other social platforms.
+Assessment date: 2026-08-05 (P2 shipped). Target: videos good enough to start posting on YouTube and other social platforms.
 
 ## Dual score
 
 | Bar | Score | Meaning |
 |-----|------:|---------|
-| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~82%** | Docs + P0 + full P1 (SRT, native packages, publish QA, WhisperX flag). Remaining: visual variety without stills / licensed beds. |
-| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~62%** | Captions + packages + QA + optional WhisperX; still need licensed music swaps, consistent product imagery, stock B-roll (P2). |
+| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~88%** | Docs + P0 + P1 + P2 (B-roll pads, thumb pick, Rumble selector harden). Remaining: licensed beds / real stock footage quality. |
+| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~72%** | Differentiation hooks landed; still need strong licensed beds + real B-roll library content for true CTR parity. |
 
-**Blended “first public posts without cringe”:** ~72% with quality TTS + `image_url` + music beds + SRT. True ~100% still needs P2 below.
+**Blended “first public posts without cringe”:** ~80% with quality TTS + `image_url` + music/B-roll drops + SRT + thumb pick. True ~100% needs operator-supplied licensed media, not more code.
 
-Plan P0 shipped. Plan P1 shipped (WhisperX behind `SHADOWCAST_WHISPERX_ALIGN=1`; proportional fallback when package missing).
+Plan P0–P2 shipped in code. Operator media library quality is the remaining ceiling.
 
 ## What already counts
 
@@ -19,9 +19,11 @@ Plan P0 shipped. Plan P1 shipped (WhisperX behind `SHADOWCAST_WHISPERX_ALIGN=1`;
 - Cosine ducking + two-pass loudnorm −14 LUFS (`sound_design.py`)
 - Shorts burn-in captions + entity lower-thirds (`brand_overlays.py`)
 - Optional WhisperX word-align for karaoke highlights (`whisperx_align.py`)
+- Optional long-form B-roll chapter pads (`broll.py`, `assets/broll/`)
 - Long-form/short-form `.srt` sidecars from shared TTS timing (`caption_srt.py`)
 - Platform-native IG Reels / TikTok `post_info` fields (`posting_package_adapter.py`)
-- Pre-publish QA: `POST /api/publish/quality` + UI button
+- Pre-publish QA + A/B/C thumbnail pick before publish
+- Hardened Rumble Playwright selector fallbacks + dry-run docs
 - Style matrix + claim audit + live prompt eval 16/16
 - YouTube / Meta / TikTok / Rumble publish paths
 
@@ -37,15 +39,15 @@ Plan P0 shipped. Plan P1 shipped (WhisperX behind `SHADOWCAST_WHISPERX_ALIGN=1`;
 ### P1 — Retention / platform polish (shipped)
 
 5. Long-form SRT sidecar for YouTube captions (also short_form)
-6. Forced-align (WhisperX) behind `SHADOWCAST_WHISPERX_ALIGN=1` (optional dep; proportional fallback)
+6. Forced-align (WhisperX) behind `SHADOWCAST_WHISPERX_ALIGN=1`
 7. Platform-native TikTok/IG posting fields
-8. Pre-publish quality checklist API/UI (TTS + duration + captions + contrast)
+8. Pre-publish quality checklist API/UI
 
-### P2 — Differentiation
+### P2 — Differentiation (shipped)
 
-9. Optional stock B-roll for long-form chapter pads
-10. Explicit A/B thumb pick-before-publish
-11. Harden Rumble Playwright selectors
+9. Optional stock B-roll for long-form chapter pads (`SHADOWCAST_BROLL` / `assets/broll/`)
+10. Explicit A/B/C thumb pick-before-publish (Publish card + `thumbnail_variant`)
+11. Harden Rumble Playwright selectors + dry-run vs live docs in RUNBOOK
 
 ### Out of scope (wrong product class)
 
@@ -55,10 +57,11 @@ Plan P0 shipped. Plan P1 shipped (WhisperX behind `SHADOWCAST_WHISPERX_ALIGN=1`;
 ## Operator checklist before first public post
 
 1. `/api/readiness` → `ready`, `tts_quality: true`
-2. Product `image_url` set (UI/CSV) **or** APF import with vendor sales/offer page URLs (auto og:image / product photo extract)
+2. Product `image_url` set (UI/CSV) **or** APF import with vendor sales/offer page URLs
 3. Generate with TTS on; confirm Shorts captions + `.srt` beside MP4
 4. Drop licensed beds into `backend/assets/music/{mood}.wav` if possible
-5. Optional: `SHADOWCAST_WHISPERX_ALIGN=1` + install `whisperx` for real word karaoke
-6. Eyeball one short_form + one thumbnail; contrast should not WARN
-7. Run **Pre-Publish QA** (`POST /api/publish/quality`) — overall must not be `FAIL`
-8. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`
+5. Optional: drop B-roll into `backend/assets/broll/` or set `SHADOWCAST_BROLL=1`
+6. Optional: `SHADOWCAST_WHISPERX_ALIGN=1` + install `whisperx`
+7. Pick thumbnail A/B/C in Publish card; contrast should not WARN
+8. Run **Pre-Publish QA** — overall must not be `FAIL`
+9. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`

@@ -2288,6 +2288,7 @@ class PublishBatchRequest(BaseModel):
     platforms: List[str]
     product_slug: Optional[str] = None
     dry_run: bool = False
+    thumbnail_variant: str = "variant_a"
 
 
 @app.post("/api/publish")
@@ -2308,6 +2309,7 @@ def publish_video_batch(req: PublishBatchRequest):
         return {"results": publish_service.publish_batch(
             req.job_id, req.hook_type, req.video_format, req.platforms,
             product_slug=req.product_slug, dry_run=req.dry_run,
+            thumbnail_variant=req.thumbnail_variant,
         )}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
