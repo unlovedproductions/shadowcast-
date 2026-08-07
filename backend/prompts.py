@@ -451,6 +451,7 @@ def youtube_assets_json_schema(affiliate_link: str) -> str:
   "series_suggestions": [string]
 }}
 Constraints: seo_title max 70 chars; tags: 30 buyer-intent tags; pinned_comment 300-600 chars; seo_description 2000-3000 chars.
+Include the product affiliate URL as a raw https URL in seo_description and pinned_comment — never markdown [label](url).
 Product link: {affiliate_link}"""
 
 
@@ -566,4 +567,4 @@ Buyer Signal Lines:
 - Conclusion / Verdict: {verdict_lines}
 
 {youtube_assets_json_schema(affiliate_link)}
-Include the product link naturally in the description and pinned comment."""
+Include the product link naturally in the description and pinned comment as a raw https URL (never markdown [label](url))."""

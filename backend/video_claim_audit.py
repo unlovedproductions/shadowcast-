@@ -14,8 +14,17 @@ from content_styles import normalize_content_style
 from visual_quality import audit_thumbnail_contrast
 from video_claims import (
     FORMAT_CLAIMS,
+    LONG_CHAPTER_CARD_SECONDS,
+    LONG_COMMENT_PROMPT_SECONDS,
     LONG_FORM,
+    LONG_INTRO_SECONDS,
+    LONG_OUTRO_SECONDS,
+    LONG_SUBSCRIBE_SECONDS,
     SHORT_FORM,
+    SHORT_INTRO_SECONDS,
+    SHORT_OUTRO_SECONDS,
+    SHORT_SUBSCRIBE_SECONDS,
+    SHORT_SUBSCRIBE_THRESHOLD_SEGMENTS,
     expected_timeline_duration,
     missing_optional_layouts,
     missing_required_layouts,
@@ -359,6 +368,71 @@ def _audit_job_deliverables(output_dir: Path) -> list[Finding]:
     return findings
 
 
+def _tts_total_from_payload(data: Any) -> float | None:
+    if isinstance(data, list) and data:
+        return sum(_coerce_float(row.get("duration")) or 0.0 for row in data if isinstance(row, dict))
+    if not isinstance(data, dict):
+        return None
+    total = _coerce_float(data.get("total_duration_seconds"))
+    if total is not None and total > 0:
+        return total
+    segments = data.get("segments")
+    if isinstance(segments, list) and segments:
+        return sum(_coerce_float(row.get("duration")) or 0.0 for row in segments if isinstance(row, dict))
+    return None
+
+
+def _find_tts_total(video_path: Path, script: dict[str, Any], fmt: str) -> float | None:
+    """Return TTS clock seconds from script.tts_timing or voiceover timing sidecar."""
+    inline = _tts_total_from_payload(script.get("tts_timing"))
+    if inline is not None and inline > 0:
+        return inline
+
+    parent = video_path.parent
+    hook = str(script.get("hook_type") or "").strip()
+    candidates: list[Path] = []
+    if hook:
+        candidates.append(parent / f"{hook}_{fmt}_voiceover_timing.json")
+        candidates.append(parent / f"{hook}_{fmt}_timing.json")
+    candidates.append(parent / f"{video_path.stem}_voiceover_timing.json")
+    candidates.extend(sorted(parent.glob("*_voiceover_timing.json")))
+    candidates.extend(sorted(parent.glob("*_timing.json")))
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved in seen or not candidate.is_file():
+            continue
+        seen.add(resolved)
+        try:
+            payload = json.loads(candidate.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        total = _tts_total_from_payload(payload)
+        if total is not None and total > 0:
+            return total
+    return None
+
+
+def _tts_expected_timeline(tts_total: float, script: dict[str, Any], fmt: str) -> float:
+    """Expected MP4 duration from TTS segment clock plus known renderer chrome."""
+    if fmt == SHORT_FORM:
+        n_segments = len(script.get("segments") or [])
+        total = SHORT_INTRO_SECONDS + tts_total + SHORT_OUTRO_SECONDS
+        if n_segments > SHORT_SUBSCRIBE_THRESHOLD_SEGMENTS:
+            total += SHORT_SUBSCRIBE_SECONDS
+        return total
+
+    chapters = script.get("chapters") or []
+    total = LONG_INTRO_SECONDS + tts_total + (LONG_CHAPTER_CARD_SECONDS * len(chapters))
+    if chapters:
+        total += LONG_COMMENT_PROMPT_SECONDS + LONG_SUBSCRIBE_SECONDS + LONG_OUTRO_SECONDS
+    return total
+
+
 def _probe_video(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     command = [
         "ffprobe",
@@ -516,7 +590,14 @@ def audit_output(output_dir: Path) -> dict[str, Any]:
 
         script_total = _coerce_float(script.get("total_duration_seconds"))
         segment_total = sum_segment_durations(script, fmt)
-        timeline_expected = expected_timeline_duration(script, fmt)
+        tts_total = _find_tts_total(video_path, script, fmt)
+        if tts_total is not None:
+            timeline_expected = _tts_expected_timeline(tts_total, script, fmt)
+            duration_reference = timeline_expected
+        else:
+            timeline_expected = expected_timeline_duration(script, fmt)
+            duration_reference = script_total
+
         if script_total is not None and abs(script_total - segment_total) > 2.0:
             push(
                 check="total_vs_segments",
@@ -531,15 +612,27 @@ def audit_output(output_dir: Path) -> dict[str, Any]:
                 severity=WARN,
                 expected=f"{timeline_expected:.2f}s",
                 actual=f"{duration:.2f}s",
-                detail="Rendered duration diverges from segment durations plus renderer chrome.",
+                detail=(
+                    "Rendered duration diverges from TTS clock plus renderer chrome."
+                    if tts_total is not None
+                    else "Rendered duration diverges from segment durations plus renderer chrome."
+                ),
             )
-        if script_total is not None and duration is not None and abs(duration - script_total) > 5.0:
+        if (
+            duration_reference is not None
+            and duration is not None
+            and abs(duration - duration_reference) > 5.0
+        ):
             push(
                 check="total_vs_video",
                 severity=WARN,
-                expected=f"{script_total:.2f}s",
+                expected=f"{duration_reference:.2f}s",
                 actual=f"{duration:.2f}s",
-                detail="Declared total duration does not match emitted MP4.",
+                detail=(
+                    "TTS-derived expected duration does not match emitted MP4."
+                    if tts_total is not None
+                    else "Declared total duration does not match emitted MP4."
+                ),
             )
 
         style = normalize_content_style(script.get("content_style") or bundle.content_style)

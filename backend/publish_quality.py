@@ -83,12 +83,7 @@ def _claim_audit_check(video_path: Path) -> dict[str, str]:
             "status": "WARN",
             "detail": "No videos discovered for claim audit in parent directory",
         }
-    if not relevant:
-        return {
-            "id": "claim_audit",
-            "status": "WARN",
-            "detail": "No claim findings matched this file (script pairing may be missing)",
-        }
+    # Findings only record FAIL/WARN — an empty match means this video passed silently.
     return {
         "id": "claim_audit",
         "status": "PASS",

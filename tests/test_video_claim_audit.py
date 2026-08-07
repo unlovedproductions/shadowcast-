@@ -153,6 +153,82 @@ def test_expected_output_counts_from_job():
     assert _expected_output_counts({"hook_types": [], "formats": ["short_form"]}) is None
 
 
+def test_audit_tts_sidecar_skips_false_timeline_warn(tmp_path):
+    """Script segment sum may diverge from TTS clock; sidecar should drive timing checks."""
+    job = tmp_path / "ttsjob"
+    job.mkdir()
+    key = "demo_product_curiosity"
+    segments = [{"text": f"seg{i}", "duration": 1.2, "transition_to_next": "cut"} for i in range(8)]
+    scripts = {
+        "scripts": {
+            SHORT_FORM: {
+                "format": SHORT_FORM,
+                "hook_type": "curiosity",
+                "content_style": "honest_review",
+                "total_duration_seconds": 9.6,
+                "segments": segments,
+            }
+        },
+        "content_style": "honest_review",
+        "product_info": {},
+    }
+    (job / f"{key}_scripts.json").write_text(json.dumps(scripts))
+
+    # TTS clock ~22.5s; with intro+subscribe+outro chrome (~6s) ≈ 28.5s video.
+    tts_rows = []
+    t = 0.0
+    for i in range(8):
+        dur = 2.8
+        tts_rows.append({"index": i, "duration": dur, "start": t})
+        t += dur
+    (job / "curiosity_short_form_voiceover_timing.json").write_text(
+        json.dumps({"segments": tts_rows, "total_duration_seconds": round(t, 3)})
+    )
+
+    video = job / f"{key}_short_form.mp4"
+    # Minimal valid-ish file; ffprobe may fail → skip if no ffprobe/ffmpeg fixture.
+    # Use a real tiny mp4 via ffmpeg if available.
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg required")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=1080x1920:d=28.5",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=stereo",
+            "-c:v",
+            "libx264",
+            "-t",
+            "28.5",
+            "-c:a",
+            "aac",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+            str(video),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    result = audit_output(tmp_path)
+    timing_checks = [
+        f
+        for f in result["findings"]
+        if f["path"].endswith(video.name) and f["check"] in ("timeline_vs_video", "total_vs_video")
+    ]
+    assert timing_checks == [], timing_checks
+
+
 def test_validate_youtube_package_rejects_stub(tmp_path):
     stub = tmp_path / "pkg.json"
     stub.write_text(json.dumps({"seo_title": "Title", "tags": ["a"] * 5, "_shadowcast_fallback": True}))
