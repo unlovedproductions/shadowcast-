@@ -89,3 +89,7 @@ backend/eval/artifacts/rag_eval.json
 
 # Local music beds (LFS verify broken on remote; drop licensed/generated WAVs locally)
 backend/assets/music/*.wav
+
+# Local Kokoro ONNX weights (large; download per machine)
+backend/assets/kokoro/*.onnx
+backend/assets/kokoro/*.bin
