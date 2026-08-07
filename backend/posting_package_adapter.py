@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "rumble")
@@ -14,6 +15,8 @@ INSTAGRAM_CAPTION_MAX = 2200
 TIKTOK_TITLE_MAX = 150
 TIKTOK_HASHTAG_MAX = 5
 RUMBLE_TAG_MAX = 10
+
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
 
 # TikTok Content Posting API privacy_level values
 TIKTOK_PRIVACY_LEVELS = frozenset(
@@ -47,6 +50,11 @@ def _truncate(text: str, limit: int) -> str:
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _strip_markdown_links(text: str) -> str:
+    """Convert markdown links [label](url) to plain URLs for YouTube payloads."""
+    return _MD_LINK_RE.sub(r"\2", text)
+
+
 def _sanitize_youtube_text(text: str, *, max_bytes: int | None = None) -> str:
     """YouTube rejects < and > in snippet text; descriptions are limited to 5000 bytes."""
     if text is None:
@@ -54,6 +62,7 @@ def _sanitize_youtube_text(text: str, *, max_bytes: int | None = None) -> str:
     if not isinstance(text, str):
         text = str(text)
     text = "".join(ch for ch in text if ch in "\n\r\t" or ord(ch) >= 32)
+    text = _strip_markdown_links(text)
     text = text.replace("<", "(").replace(">", ")").strip()
     if not max_bytes:
         return text

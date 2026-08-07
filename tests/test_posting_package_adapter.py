@@ -95,6 +95,19 @@ def test_rumble_tags_limit():
     assert len(payload["tags"]) <= 10
 
 
+def test_youtube_build_strips_markdown_links():
+    assets = {
+        **SAMPLE_ASSETS,
+        "pinned_comment": "Check it out: [Product Link](https://example.com/aff).",
+        "seo_description": "Buy here [Shop Now](https://example.com/buy) today.",
+    }
+    payload = build("youtube", assets, {"format": "short_form"})
+    assert "[Product Link]" not in payload["pinned_comment"]
+    assert "https://example.com/aff" in payload["pinned_comment"]
+    assert "[Shop Now]" not in payload["description"]
+    assert "https://example.com/buy" in payload["description"]
+
+
 def test_youtube_tags_char_limit():
     tags = [f"keyword{i}" for i in range(100)]
     trimmed = _truncate_youtube_tags(tags)
