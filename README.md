@@ -20,7 +20,7 @@ Pipeline: **product → LLM scripts → TTS (optional/recommended) → MoviePy k
 - Optional long-form B-roll pads when clips exist under `backend/assets/broll/` (see ATTRIBUTION).
 - Ship-quality voice needs Kokoro, Piper, or OpenAI TTS (gTTS is smoke-only).
 - Postable checklist: Pre-Publish QA, `.srt` sidecars, thumb A/B/C pick, dry-run before live.
-- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores (~88% / ~72% after P0–P2).
+- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores (~90% / ~75% after P0–P2 + claim-audit QA).
 
 ## Quickstart
 

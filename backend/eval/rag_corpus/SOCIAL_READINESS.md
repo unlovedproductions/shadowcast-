@@ -1,15 +1,15 @@
 # Social posting readiness
 
-Assessment date: 2026-08-05 (P2 shipped). Target: videos good enough to start posting on YouTube and other social platforms.
+Assessment date: 2026-08-06 (audit rerun — plan gaps closed; code bar verified). Target: videos good enough to start posting on YouTube and other social platforms.
 
 ## Dual score
 
 | Bar | Score | Meaning |
 |-----|------:|---------|
-| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~88%** | Docs + P0 + P1 + P2 (B-roll pads, thumb pick, Rumble selector harden). Remaining: licensed beds / real stock footage quality. |
-| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~72%** | Differentiation hooks landed; still need strong licensed beds + real B-roll library content for true CTR parity. |
+| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~90%** | P0–P2 + claim-audit QA + long-form burn-in. Remaining: licensed beds / real stock footage. |
+| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~75%** | Captions + QA complete; ceiling is operator media library quality. |
 
-**Blended “first public posts without cringe”:** ~80% with quality TTS + `image_url` + music/B-roll drops + SRT + thumb pick. True ~100% needs operator-supplied licensed media, not more code.
+**Blended “first public posts without cringe”:** ~82% with quality TTS + `image_url` + music/B-roll drops + SRT/burn-in + thumb pick. True ~100% needs operator-supplied licensed media, not more code.
 
 Plan P0–P2 shipped in code. Operator media library quality is the remaining ceiling.
 
