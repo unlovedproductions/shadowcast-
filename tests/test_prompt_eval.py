@@ -106,7 +106,7 @@ def test_validate_script_honest_review_short():
     assert ok, errors
 
 
-def test_validate_script_rejects_duration_mismatch():
+def test_validate_script_normalizes_duration_mismatch():
     script = {
         "hook_type": "curiosity",
         "content_style": "honest_review",
@@ -120,8 +120,8 @@ def test_validate_script_rejects_duration_mismatch():
         ],
     }
     ok, errors = validate_script_output(script, "honest_review", "short_form")
-    assert not ok
-    assert any("total_duration_seconds" in e for e in errors)
+    assert ok, errors
+    assert script["total_duration_seconds"] == pytest.approx(3.6)
 
 
 def test_validate_script_rejects_unsupported_animation():
