@@ -1,15 +1,15 @@
 # Social posting readiness
 
-Assessment date: 2026-08-05 (P2 shipped). Target: videos good enough to start posting on YouTube and other social platforms.
+Assessment date: 2026-08-06 (plan gaps closed). Target: videos good enough to start posting on YouTube and other social platforms.
 
 ## Dual score
 
 | Bar | Score | Meaning |
 |-----|------:|---------|
-| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~88%** | Docs + P0 + P1 + P2 (B-roll pads, thumb pick, Rumble selector harden). Remaining: licensed beds / real stock footage quality. |
-| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~72%** | Differentiation hooks landed; still need strong licensed beds + real B-roll library content for true CTR parity. |
+| **Faceless niche** (kinetic text affiliate Shorts/long that niches already tolerate) | **~90%** | P0–P2 + claim-audit QA + long-form burn-in. Remaining: licensed beds / real stock footage. |
+| **Mainstream affiliate** (competes on CTR with typical Amazon-review YT / TikTok) | **~75%** | Captions + QA complete; ceiling is operator media library quality. |
 
-**Blended “first public posts without cringe”:** ~80% with quality TTS + `image_url` + music/B-roll drops + SRT + thumb pick. True ~100% needs operator-supplied licensed media, not more code.
+**Blended “first public posts without cringe”:** ~82% with quality TTS + `image_url` + music/B-roll drops + SRT/burn-in + thumb pick. True ~100% needs operator-supplied licensed media, not more code.
 
 Plan P0–P2 shipped in code. Operator media library quality is the remaining ceiling.
 
@@ -19,10 +19,10 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 - Cosine ducking + two-pass loudnorm −14 LUFS (`sound_design.py`)
 - Shorts burn-in captions + entity lower-thirds (`brand_overlays.py`)
 - Optional WhisperX word-align for karaoke highlights (`whisperx_align.py`)
+- Long-form burn-in captions when TTS on (`SHADOWCAST_LONGFORM_BURNIN`, default on) + `.srt` sidecars
 - Optional long-form B-roll chapter pads (`broll.py`, `assets/broll/`)
-- Long-form/short-form `.srt` sidecars from shared TTS timing (`caption_srt.py`)
 - Platform-native IG Reels / TikTok `post_info` fields (`posting_package_adapter.py`)
-- Pre-publish QA + A/B/C thumbnail pick before publish
+- Pre-publish QA including **claim audit** + contrast + TTS + duration (`POST /api/publish/quality`)
 - Hardened Rumble Playwright selector fallbacks + dry-run docs
 - Style matrix + claim audit + live prompt eval 16/16
 - YouTube / Meta / TikTok / Rumble publish paths
@@ -38,10 +38,10 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 
 ### P1 — Retention / platform polish (shipped)
 
-5. Long-form SRT sidecar for YouTube captions (also short_form)
+5. Long-form SRT sidecar for YouTube captions (also short_form) + long-form burn-in captions
 6. Forced-align (WhisperX) behind `SHADOWCAST_WHISPERX_ALIGN=1`
 7. Platform-native TikTok/IG posting fields
-8. Pre-publish quality checklist API/UI
+8. Pre-publish quality checklist API/UI (TTS + duration + captions + contrast + **claim audit**)
 
 ### P2 — Differentiation (shipped)
 

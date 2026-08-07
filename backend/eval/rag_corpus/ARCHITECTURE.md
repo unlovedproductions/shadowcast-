@@ -62,6 +62,7 @@ flowchart LR
 | `SHADOWCAST_TTS_DEFAULT` | `0` forces API default TTS off |
 | `SHADOWCAST_WHISPERX_ALIGN` | `1` enables optional WhisperX karaoke (needs `whisperx`) |
 | `SHADOWCAST_BROLL` | `1` force B-roll pads; `0` disable; unset = auto if files in `assets/broll/` |
+| `SHADOWCAST_LONGFORM_BURNIN` | `0` disables long-form burn-in captions (default on when TTS) |
 
 ## Integration points
 

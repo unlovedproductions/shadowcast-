@@ -49,6 +49,7 @@ def test_evaluate_publish_quality_missing_video(tmp_path):
     assert result["overall"] == "FAIL"
     assert result["ready_for_live_publish"] is False
     assert any(c["id"] == "video_exists" and c["status"] == "FAIL" for c in result["checks"])
+    assert any(c["id"] == "claim_audit" and c["status"] == "FAIL" for c in result["checks"])
 
 
 def test_evaluate_publish_quality_pass_path(tmp_path):
@@ -57,6 +58,9 @@ def test_evaluate_publish_quality_pass_path(tmp_path):
     (tmp_path / "ok_short_form.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHi\n", encoding="utf-8")
     with patch("publish_quality.get_best_tts", return_value="kokoro"), patch(
         "publish_quality._ffprobe_duration", return_value=30.0
+    ), patch(
+        "publish_quality._claim_audit_check",
+        return_value={"id": "claim_audit", "status": "PASS", "detail": "ok"},
     ):
         result = evaluate_publish_quality(
             video_path=video,
@@ -65,3 +69,4 @@ def test_evaluate_publish_quality_pass_path(tmp_path):
     assert result["overall"] in ("PASS", "WARN")
     assert result["ready_for_live_publish"] is True
     assert any(c["id"] == "captions_sidecar" and c["status"] == "PASS" for c in result["checks"])
+    assert any(c["id"] == "claim_audit" and c["status"] == "PASS" for c in result["checks"])

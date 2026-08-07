@@ -19,10 +19,10 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 - Cosine ducking + two-pass loudnorm −14 LUFS (`sound_design.py`)
 - Shorts burn-in captions + entity lower-thirds (`brand_overlays.py`)
 - Optional WhisperX word-align for karaoke highlights (`whisperx_align.py`)
+- Long-form burn-in captions when TTS on (`SHADOWCAST_LONGFORM_BURNIN`, default on) + `.srt` sidecars
 - Optional long-form B-roll chapter pads (`broll.py`, `assets/broll/`)
-- Long-form/short-form `.srt` sidecars from shared TTS timing (`caption_srt.py`)
 - Platform-native IG Reels / TikTok `post_info` fields (`posting_package_adapter.py`)
-- Pre-publish QA + A/B/C thumbnail pick before publish
+- Pre-publish QA including **claim audit** + contrast + TTS + duration (`POST /api/publish/quality`)
 - Hardened Rumble Playwright selector fallbacks + dry-run docs
 - Style matrix + claim audit + live prompt eval 16/16
 - YouTube / Meta / TikTok / Rumble publish paths
@@ -38,10 +38,10 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 
 ### P1 — Retention / platform polish (shipped)
 
-5. Long-form SRT sidecar for YouTube captions (also short_form)
+5. Long-form SRT sidecar for YouTube captions (also short_form) + long-form burn-in captions
 6. Forced-align (WhisperX) behind `SHADOWCAST_WHISPERX_ALIGN=1`
 7. Platform-native TikTok/IG posting fields
-8. Pre-publish quality checklist API/UI
+8. Pre-publish quality checklist API/UI (TTS + duration + captions + contrast + **claim audit**)
 
 ### P2 — Differentiation (shipped)
 

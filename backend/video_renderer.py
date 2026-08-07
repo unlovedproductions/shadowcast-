@@ -42,6 +42,7 @@ from brand_overlays import (
     lower_third_event_from_timing,
     render_shorts_caption,
     shorts_word_highlight_enabled,
+    longform_burnin_captions_enabled,
 )
 from sound_design import (
     generate_background_music,
@@ -1343,6 +1344,32 @@ def _render_long_form_video_impl(
                 fade = min(0.25, lt_dur / 4.0)
                 lt_clip = lt_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
             overlay_layers.append(lt_clip)
+
+    # Burn-in long-form captions on shared TTS clock (lower band; SRT still written).
+    if use_tts and timing_rows and longform_burnin_captions_enabled():
+        chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
+        caption_events = expand_caption_word_highlights(
+            chunk_events, enabled=shorts_word_highlight_enabled()
+        )
+        for ev in caption_events:
+            start = float(ev["start"])
+            if start >= float(final.duration):
+                continue
+            dur = min(float(ev["duration"]), max(0.1, float(final.duration) - start))
+            cap_img = render_shorts_caption(
+                WIDTH,
+                HEIGHT,
+                ev["text"],
+                highlight_index=ev.get("highlight_index"),
+                y_frac=0.72,
+                max_width_frac=0.82,
+                font_size_frac=0.032,
+            )
+            cap_clip = ImageClip(np.array(cap_img.convert("RGBA")), duration=dur).with_start(start)
+            if dur >= 0.25:
+                fade = min(0.08, dur / 3.0)
+                cap_clip = cap_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(cap_clip)
 
     # Progress bar overlay (numpy slice animator — no PIL per frame)
     overlay_layers.append(
