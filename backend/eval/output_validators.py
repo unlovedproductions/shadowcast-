@@ -21,8 +21,6 @@ CON_SIGNAL = re.compile(
     re.I,
 )
 
-_DURATION_TOLERANCE_SECONDS = 1.5
-
 
 def _iter_segments(script: dict):
     if "chapters" in script:
@@ -58,7 +56,7 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     if declared is None:
         return
     try:
-        declared_f = float(declared)
+        float(declared)
     except (TypeError, ValueError):
         errors.append("total_duration_seconds must be a number")
         return
@@ -67,12 +65,10 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
         return
     if any(seg.get("duration") is None for seg in segments):
         return
+    # Segment durations are the contract (TTS re-times later). LLMs often stamp a
+    # target runtime (e.g. 240) instead of sum(duration) — rewrite, don't hard-fail.
     summed = sum_segment_durations(script, fmt)
-    if abs(summed - declared_f) > _DURATION_TOLERANCE_SECONDS:
-        errors.append(
-            f"total_duration_seconds {declared_f} diverges from sum(duration) {summed:.2f} "
-            f"(tolerance {_DURATION_TOLERANCE_SECONDS}s)"
-        )
+    script["total_duration_seconds"] = round(float(summed), 3)
 
 
 def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:
