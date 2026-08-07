@@ -613,6 +613,12 @@ def shorts_word_highlight_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def longform_burnin_captions_enabled() -> bool:
+    """Env gate for long-form burn-in captions when TTS is on (default ON)."""
+    raw = (os.getenv("SHADOWCAST_LONGFORM_BURNIN") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
 def chunk_caption_text(
     text: str,
     min_words: int = SHORTS_CAPTION_MIN_WORDS,
@@ -738,13 +744,16 @@ def render_shorts_caption(
     height: int,
     text: str,
     highlight_index: int | None = None,
+    *,
+    y_frac: float | None = None,
+    max_width_frac: float | None = None,
+    font_size_frac: float | None = None,
 ) -> Image.Image:
     """
-    High-contrast Shorts caption frame (RGBA).
+    High-contrast burn-in caption frame (RGBA).
 
-    Placed in the upper-middle safe zone (~35–45% from top), width-capped to
-    stay clear of the right action rail. When highlight_index is set, that word
-    uses brand accent fill (approx karaoke); others stay white.
+    Default layout is Shorts upper-middle safe zone. Pass y_frac / max_width_frac
+    for long-form (typically lower-third band above progress chrome).
     """
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -752,18 +761,22 @@ def render_shorts_caption(
     if not clean:
         return img
 
-    font_size = max(28, int(width * 0.055))
+    y_use = SHORTS_CAPTION_Y_FRAC if y_frac is None else float(y_frac)
+    width_use = SHORTS_CAPTION_MAX_WIDTH_FRAC if max_width_frac is None else float(max_width_frac)
+    font_frac = 0.055 if font_size_frac is None else float(font_size_frac)
+
+    font_size = max(24, int(width * font_frac))
     font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
-    max_text_width = int(width * SHORTS_CAPTION_MAX_WIDTH_FRAC)
+    max_text_width = int(width * width_use)
 
     # Shrink font until the line fits the safe width (wrap to 2 lines max).
     for _ in range(8):
         lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
         bbox = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, align="center", spacing=6)
         text_w = bbox[2] - bbox[0]
-        if text_w <= max_text_width or font_size <= 24:
+        if text_w <= max_text_width or font_size <= 22:
             break
-        font_size = max(24, int(font_size * 0.9))
+        font_size = max(22, int(font_size * 0.9))
         font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
         lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
 
@@ -774,8 +787,10 @@ def render_shorts_caption(
     # Center horizontally within the left-safe band (not full frame).
     band_left = int((width - max_text_width) / 2)
     x = band_left + max(0, (max_text_width - text_w) // 2)
-    y = int(height * SHORTS_CAPTION_Y_FRAC) - text_h // 2
-    y = max(int(height * 0.32), min(y, int(height * 0.48) - text_h))
+    y = int(height * y_use) - text_h // 2
+    y_lo = int(height * max(0.05, y_use - 0.08))
+    y_hi = int(height * min(0.92, y_use + 0.08)) - text_h
+    y = max(y_lo, min(y, max(y_lo, y_hi)))
 
     if highlight_index is None:
         for dx, dy in _CAPTION_STROKE_OFFSETS:

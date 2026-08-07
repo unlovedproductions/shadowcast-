@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tts_generator import get_best_provider as get_best_tts
+from video_claim_audit import audit_output
 from video_claims import FORMAT_CLAIMS, LONG_FORM, SHORT_FORM
 from visual_quality import audit_thumbnail_contrast
 
@@ -41,6 +42,58 @@ def _ffprobe_duration(path: Path) -> float | None:
         return float(data.get("format", {}).get("duration"))
     except Exception:
         return None
+
+
+def _claim_audit_check(video_path: Path) -> dict[str, str]:
+    """Run directory claim audit and project findings for this video."""
+    try:
+        report = audit_output(video_path.parent)
+    except Exception as exc:
+        return {
+            "id": "claim_audit",
+            "status": "WARN",
+            "detail": f"Claim audit skipped: {exc}",
+        }
+
+    name = video_path.name
+    relevant = [
+        f
+        for f in (report.get("findings") or [])
+        if name in str(f.get("path") or "")
+    ]
+    fails = [f for f in relevant if f.get("severity") == "FAIL"]
+    warns = [f for f in relevant if f.get("severity") == "WARN"]
+    if fails:
+        first = fails[0]
+        return {
+            "id": "claim_audit",
+            "status": "FAIL",
+            "detail": f"{len(fails)} FAIL — {first.get('check')}: {first.get('detail') or first.get('actual')}",
+        }
+    if warns:
+        first = warns[0]
+        return {
+            "id": "claim_audit",
+            "status": "WARN",
+            "detail": f"{len(warns)} WARN — {first.get('check')}: {first.get('detail') or first.get('actual')}",
+        }
+    if report.get("videos_checked", 0) == 0:
+        return {
+            "id": "claim_audit",
+            "status": "WARN",
+            "detail": "No videos discovered for claim audit in parent directory",
+        }
+    if not relevant:
+        return {
+            "id": "claim_audit",
+            "status": "WARN",
+            "detail": "No claim findings matched this file (script pairing may be missing)",
+        }
+    return {
+        "id": "claim_audit",
+        "status": "PASS",
+        "detail": "No FAIL/WARN claim findings for this video",
+    }
 
 
 def evaluate_publish_quality(
@@ -185,6 +238,17 @@ def evaluate_publish_quality(
                 "id": "thumbnail_contrast",
                 "status": "WARN",
                 "detail": "No thumbnail path provided",
+            }
+        )
+
+    if path.exists():
+        checks.append(_claim_audit_check(path))
+    else:
+        checks.append(
+            {
+                "id": "claim_audit",
+                "status": "FAIL",
+                "detail": "Skipped — video missing",
             }
         )
 
