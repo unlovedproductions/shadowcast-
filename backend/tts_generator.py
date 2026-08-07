@@ -34,6 +34,11 @@ _PROVIDERS_LOCK = threading.Lock()
 _KOKORO_INSTANCE = None
 _KOKORO_LOCK = threading.Lock()
 
+# kokoro-onnx v1.0 model files (download into this dir; see install string below)
+_KOKORO_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "kokoro")
+_KOKORO_MODEL = os.path.join(_KOKORO_ASSETS_DIR, "kokoro-v1.0.onnx")
+_KOKORO_VOICES = os.path.join(_KOKORO_ASSETS_DIR, "voices-v1.0.bin")
+
 # Research default: 200–500ms breath/cut padding between segments.
 _DEFAULT_INTER_SEGMENT_PAUSE = 0.35
 _CROSSFADE_SECONDS = 0.04
@@ -150,11 +155,14 @@ def get_available_providers(force_refresh: bool = False):
         providers = {
             "kokoro": {
                 "name": "Kokoro TTS",
-                "available": _check_kokoro(),
+                "available": _check_kokoro() and os.path.isfile(_KOKORO_MODEL) and os.path.isfile(_KOKORO_VOICES),
                 "type": "local",
                 "quality": "high",
                 "cost": "free",
-                "install": "pip install kokoro-onnx",
+                "install": (
+                    "pip install kokoro-onnx soundfile; "
+                    "download kokoro-v1.0.onnx + voices-v1.0.bin into backend/assets/kokoro/"
+                ),
                 "description": "High-quality local TTS. Runs on your GPU. Best free option.",
                 "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
             },
@@ -207,7 +215,12 @@ def _get_kokoro():
     global _KOKORO_INSTANCE
     if _KOKORO_INSTANCE is None:
         import kokoro_onnx
-        _KOKORO_INSTANCE = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
+        if not os.path.isfile(_KOKORO_MODEL) or not os.path.isfile(_KOKORO_VOICES):
+            raise FileNotFoundError(
+                f"Kokoro model files missing. Expected {_KOKORO_MODEL} and {_KOKORO_VOICES}. "
+                "Download from https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0"
+            )
+        _KOKORO_INSTANCE = kokoro_onnx.Kokoro(_KOKORO_MODEL, _KOKORO_VOICES)
     return _KOKORO_INSTANCE
 
 
