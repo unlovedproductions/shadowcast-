@@ -932,7 +932,11 @@ def _prepare_products_for_generate(
         )
         field_warnings = _completeness_gate(item, item["content_style"])
         for field in field_warnings:
-            warnings.append(f"{item.get('product_name', '?')}: weak/missing {field}")
+            name = item.get("product_name", "?")
+            if field == "image_url":
+                warnings.append(f"{name}: No product image — thumbs will be text-only")
+            else:
+                warnings.append(f"{name}: weak/missing {field}")
         prepared.append(item)
     if not prepared:
         raise HTTPException(status_code=400, detail="No valid products after completeness/dedupe.")
@@ -991,6 +995,10 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     if product.get("image_url") and not product_image_path:
         job.setdefault("warnings", []).append(
             f"[{product.get('product_name', '?')}] Product image_url could not be downloaded; using procedural backgrounds."
+        )
+    elif not (product.get("image_url") or "").strip():
+        job.setdefault("warnings", []).append(
+            f"[{product.get('product_name', '?')}] No product image — thumbs will be text-only"
         )
 
     all_scripts = {}
@@ -1252,12 +1260,16 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                     product_results["hooks"][hook_type] = {}
                 product_results["hooks"][hook_type]["thumbnails"] = existing
             else:
+                yt_assets = (product_results.get("hooks", {}).get(hook_type) or {}).get("youtube_assets") or {}
+                pkg = yt_assets.get("short_form") or yt_assets.get("long_form") or {}
                 thumb_set = generate_thumbnail_set(
                     product.get('product_name', 'Product'),
                     hook_type,
                     content_style_name,
                     keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
                     product_image_path=product_image_path,
+                    thumbnail_text_primary=pkg.get("thumbnail_text_primary"),
+                    thumbnail_text_secondary=pkg.get("thumbnail_text_secondary"),
                 )
                 for variant_key, thumb_img in thumb_set.items():
                     badge_text = style_badge_text(content_style_name)
@@ -2255,8 +2267,8 @@ def publish_quality_check(req: PublishQualityRequest):
             )
             video_path = video_path or resolved.get("video_path")
             thumb_path = thumb_path or resolved.get("thumbnail_path")
-            if req.thumbnail_variant != "variant_a" and thumb_path:
-                thumb_path = str(thumb_path).replace("variant_a", req.thumbnail_variant)
+            if req.thumbnail_variant in ("variant_b", "variant_c") and thumb_path:
+                thumb_path = re.sub(r"variant_[abc]", req.thumbnail_variant, str(thumb_path))
         if not video_path:
             raise HTTPException(status_code=400, detail="video_path or job_id+hook_type required")
         return evaluate_publish_quality(
