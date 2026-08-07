@@ -72,12 +72,60 @@ _JUNK_IMAGE_HINTS = (
     "placeholder",
     "spinner",
     "digistore24.com/assets",
+    "digistore24.com/webinc/images/brand",
+    "cdn.coda.io",
+    "codaio.imgix",
+    "coda.io/",
+    "import_google",
+    "customicons",
+    "/icons/",
+    "megaphone",
+    "cc-logos",
+)
+_IMAGE_CDN_HINTS = (
+    "/image",
+    "/images/",
+    "/media/",
+    "/cdn/",
+    "cloudfront",
+    "wp-content",
+    "imgix.net",
+    "/blobs/",
+    "cloudinary",
+    "shopify",
+    "digistore",
+    "svassets.com",
+)
+_IMAGE_SCORE_BONUS = (
+    ("header-bottle", 60),
+    ("bottle", 50),
+    ("/products-", 45),
+    ("/products/", 40),
+    ("product-", 25),
+    ("/product/", 30),
+    ("hero", 25),
+    ("package", 20),
+    ("packshot", 30),
+)
+_IMAGE_SCORE_PENALTY = (
+    ("testimonial", -45),
+    ("chart", -35),
+    ("dancing", -25),
+    ("truck", -40),
+    ("guarantee", -30),
+    ("frank-", -20),
+    ("doctor", -15),
+    ("nad-chart", -35),
 )
 _IMAGE_SOURCE_PRIORITY = {
-    "sales_page": 0,
-    "offer_page": 1,
-    "order_page": 2,
+    "order_page": 0,
+    "sales_page": 1,
+    "offer_page": 2,
 }
+_JUNK_IMAGE_TITLE_RE = re.compile(
+    r"(?i)(compliance\s+guidelines|privacy\s+policy|terms\s+of\s+service|"
+    r"\bfaq\b|legal\s+notice|\bbanners\b)"
+)
 
 
 def _looks_like_product_image(url: str) -> bool:
@@ -86,11 +134,42 @@ def _looks_like_product_image(url: str) -> bool:
         return False
     if any(hint in token for hint in _JUNK_IMAGE_HINTS):
         return False
-    if not re.search(r"\.(?:jpe?g|png|webp|gif)(?:\?|$)", token):
-        # CDN paths often omit extensions — allow if clearly media-ish
-        if not any(x in token for x in ("/image", "/images/", "/media/", "/cdn/", "cloudfront", "wp-content")):
-            return False
-    return True
+    if re.search(r"\.(?:jpe?g|png|webp|gif)(?:\?|$|#)", token):
+        return True
+    # CDN paths often omit extensions (imgix blobs, Digistore mirrors)
+    if any(x in token for x in _IMAGE_CDN_HINTS):
+        return True
+    return False
+
+
+def _score_product_image(url: str) -> int:
+    token = (url or "").strip().lower()
+    if not token:
+        return -999
+    score = 0
+    for hint, pts in _IMAGE_SCORE_BONUS:
+        if hint in token:
+            score += pts
+    for hint, pts in _IMAGE_SCORE_PENALTY:
+        if hint in token:
+            score += pts
+    if re.search(r"\.(?:jpe?g|png|webp)(?:\?|$|#)", token):
+        score += 5
+    return score
+
+
+def _pick_best_product_image(urls: list[str]) -> str:
+    ranked = [u for u in urls if _looks_like_product_image(u)]
+    if not ranked:
+        return ""
+    ranked.sort(key=lambda u: (_score_product_image(u), len(u)), reverse=True)
+    best = ranked[0]
+    # Reject chrome leftovers that only barely cleared the allowlist
+    if _score_product_image(best) < 0 and not any(
+        h in best.lower() for h in ("bottle", "/products", "product-", "hero", "pack")
+    ):
+        return ""
+    return best
 
 
 def _image_urls_from_text(text: str) -> list[str]:
@@ -130,6 +209,15 @@ def _vendor_material_page_url(material: dict) -> str:
     return _clean(_pick(material, ["url", "source_url", "sourceUrl", "href", "page_url", "pageUrl"]))
 
 
+def _is_junk_image_material(material: dict) -> bool:
+    title = _clean(material.get("title"))
+    if not title:
+        return False
+    if _JUNK_VENDOR_TITLE_RE.match(title) or _JUNK_IMAGE_TITLE_RE.search(title):
+        return True
+    return False
+
+
 def _fetch_page_html(url: str, *, timeout: float = 8.0) -> str:
     """Best-effort GET of vendor sales/offer HTML. Soft-fail → empty string."""
     if not url or not re.match(r"^https?://", url, re.I):
@@ -161,6 +249,165 @@ def _fetch_page_html(url: str, *, timeout: float = 8.0) -> str:
         return ""
 
 
+def _product_offer_page_urls(product: dict, vendor_materials) -> list[str]:
+    """Sales/offer/order URLs that imply a product photo should exist somewhere."""
+    urls: list[str] = []
+    materials = [m for m in (vendor_materials or []) if isinstance(m, dict)]
+    materials_sorted = sorted(
+        materials,
+        key=lambda m: _IMAGE_SOURCE_PRIORITY.get(str(m.get("source_type") or "").lower(), 50),
+    )
+    for material in materials_sorted:
+        if _is_junk_image_material(material):
+            continue
+        page_url = _vendor_material_page_url(material)
+        if page_url and page_url not in urls:
+            urls.append(page_url)
+    for key in (
+        "product_detail_url",
+        "productDetailUrl",
+        "sales_page_url",
+        "salesPageUrl",
+        "offer_url",
+        "offerUrl",
+        "url",
+    ):
+        extra = _clean(_pick(product, [key]))
+        if extra and extra not in urls and re.match(r"^https?://", extra, re.I):
+            low = extra.lower()
+            if (
+                "digistore24.com/redir" in low
+                or "checkout-ds24.com/redir" in low
+                or "clickbank.net" in low
+            ):
+                continue
+            urls.append(extra)
+    return urls
+
+
+def diagnose_product_image_resolution(
+    product: dict,
+    vendor_materials=None,
+    shadowcast_import: dict | None = None,
+    *,
+    fetch_pages: bool = True,
+) -> dict:
+    """
+    Resolve product image_url and return miss reasons for completeness / ops.
+    status: ok | empty | filtered | fetch_failed | no_candidates | disabled
+    """
+    shadowcast_import = shadowcast_import or {}
+    explicit = _clean(
+        _pick(shadowcast_import, ["image_url", "imageUrl", "product_image", "productImage", "main_image"])
+        or _pick(product, [
+            "image_url", "imageUrl", "image", "product_image", "productImage",
+            "main_image", "mainImage", "thumbnail_url", "thumbnailUrl", "photo",
+        ])
+    )
+    if explicit:
+        if _looks_like_product_image(explicit):
+            return {
+                "image_url": explicit,
+                "status": "ok",
+                "reason": "explicit_field",
+                "pages_tried": [],
+                "pages_failed": [],
+                "rejected_samples": [],
+            }
+        return {
+            "image_url": "",
+            "status": "filtered",
+            "reason": "explicit_field_rejected_as_non_product",
+            "pages_tried": [],
+            "pages_failed": [],
+            "rejected_samples": [explicit[:200]],
+        }
+
+    materials = [m for m in (vendor_materials or []) if isinstance(m, dict)]
+    materials_sorted = sorted(
+        materials,
+        key=lambda m: _IMAGE_SOURCE_PRIORITY.get(str(m.get("source_type") or "").lower(), 50),
+    )
+    collected: list[str] = []
+    rejected: list[str] = []
+
+    for material in materials_sorted:
+        if _is_junk_image_material(material):
+            continue
+        blobs = [
+            _clean(material.get("excerpt")),
+            _clean(material.get("content_text") or material.get("contentText")),
+            json.dumps(material.get("structured_blocks") or material.get("structuredBlocks") or {}, ensure_ascii=False),
+        ]
+        for blob in blobs:
+            for match in _IMAGE_URL_RE.findall(blob or ""):
+                url = match.rstrip(").,;'\"")
+                if _looks_like_product_image(url):
+                    if url not in collected:
+                        collected.append(url)
+                elif url and url not in rejected:
+                    rejected.append(url)
+
+    pages_tried: list[str] = []
+    pages_failed: list[str] = []
+    if fetch_pages:
+        if os.getenv("SHADOWCAST_FETCH_VENDOR_IMAGES", "1").strip() in ("0", "false", "False"):
+            best = _pick_best_product_image(collected)
+            return {
+                "image_url": best,
+                "status": "ok" if best else "disabled",
+                "reason": "fetch_disabled" if not best else "embedded_material_url",
+                "pages_tried": [],
+                "pages_failed": [],
+                "rejected_samples": rejected[:8],
+            }
+        page_candidates = _product_offer_page_urls(product, materials_sorted)
+        for page_url in page_candidates:
+            pages_tried.append(page_url)
+            html = _fetch_page_html(page_url)
+            if not html:
+                pages_failed.append(page_url)
+                continue
+            for url in _image_urls_from_html(html, base_url=page_url):
+                if url not in collected:
+                    collected.append(url)
+            for match in _META_OG_IMAGE_RE.finditer(html):
+                raw = _absolute_url(page_url, match.group(1) or match.group(2) or "")
+                if raw and not _looks_like_product_image(raw) and raw not in rejected:
+                    rejected.append(raw)
+
+    best = _pick_best_product_image(collected)
+    if best:
+        return {
+            "image_url": best,
+            "status": "ok",
+            "reason": "scored_page_or_material_candidate",
+            "pages_tried": pages_tried,
+            "pages_failed": pages_failed,
+            "rejected_samples": rejected[:8],
+        }
+    if pages_tried and len(pages_failed) == len(pages_tried) and not collected:
+        status = "fetch_failed"
+        reason = "all_offer_page_fetches_failed"
+    elif rejected and not collected:
+        status = "filtered"
+        reason = "candidates_rejected_as_non_product"
+    elif not pages_tried and not collected:
+        status = "no_candidates"
+        reason = "no_offer_pages_or_embedded_image_urls"
+    else:
+        status = "empty"
+        reason = "no_usable_product_image_after_scoring"
+    return {
+        "image_url": "",
+        "status": status,
+        "reason": reason,
+        "pages_tried": pages_tried,
+        "pages_failed": pages_failed,
+        "rejected_samples": rejected[:8],
+    }
+
+
 def _resolve_product_image_url(
     product: dict,
     vendor_materials,
@@ -170,67 +417,14 @@ def _resolve_product_image_url(
 ) -> str:
     """
     Prefer explicit image fields, then image URLs embedded in vendor materials,
-    then og:image / <img> from sales/offer pages (vendor pages almost always have product photos).
+    then best og:image / <img> from sales/offer/order pages.
     """
-    explicit = _clean(
-        _pick(shadowcast_import, ["image_url", "imageUrl", "product_image", "productImage", "main_image"])
-        or _pick(product, [
-            "image_url", "imageUrl", "image", "product_image", "productImage",
-            "main_image", "mainImage", "thumbnail_url", "thumbnailUrl", "photo",
-        ])
-    )
-    if explicit and _looks_like_product_image(explicit):
-        return explicit
-
-    materials = [m for m in (vendor_materials or []) if isinstance(m, dict)]
-    materials_sorted = sorted(
-        materials,
-        key=lambda m: _IMAGE_SOURCE_PRIORITY.get(str(m.get("source_type") or "").lower(), 50),
-    )
-
-    # 1) Embedded URLs in excerpts / structured blocks / content
-    for material in materials_sorted:
-        title = _clean(material.get("title"))
-        if title and _JUNK_VENDOR_TITLE_RE.match(title):
-            continue
-        blobs = [
-            _clean(material.get("excerpt")),
-            _clean(material.get("content_text") or material.get("contentText")),
-            json.dumps(material.get("structured_blocks") or material.get("structuredBlocks") or {}, ensure_ascii=False),
-        ]
-        for blob in blobs:
-            urls = _image_urls_from_text(blob)
-            if urls:
-                return urls[0]
-
-    if not fetch_pages:
-        return ""
-
-    # 2) Fetch vendor sales/offer HTML for og:image / product <img>
-    page_candidates: list[str] = []
-    for material in materials_sorted:
-        title = _clean(material.get("title"))
-        if title and _JUNK_VENDOR_TITLE_RE.match(title):
-            continue
-        page_url = _vendor_material_page_url(material)
-        if page_url and page_url not in page_candidates:
-            page_candidates.append(page_url)
-    for key in ("product_detail_url", "productDetailUrl", "sales_page_url", "salesPageUrl", "url"):
-        extra = _clean(_pick(product, [key]))
-        if extra and extra not in page_candidates and re.match(r"^https?://", extra, re.I):
-            # Skip obvious marketplace hop trackers without a product path
-            if "digistore24.com/redir" in extra.lower() or "clickbank.net" in extra.lower():
-                continue
-            page_candidates.append(extra)
-
-    for page_url in page_candidates:
-        html = _fetch_page_html(page_url)
-        if not html:
-            continue
-        urls = _image_urls_from_html(html, base_url=page_url)
-        if urls:
-            return urls[0]
-    return ""
+    return diagnose_product_image_resolution(
+        product,
+        vendor_materials,
+        shadowcast_import,
+        fetch_pages=fetch_pages,
+    ).get("image_url") or ""
 
 
 def _clean(value):
@@ -736,7 +930,8 @@ def normalize_apf_payload(payload: dict) -> dict:
         or brief.get("priceComparison")
     )
 
-    image_url = _resolve_product_image_url(product, vendor_materials, shadowcast_import)
+    image_diag = diagnose_product_image_resolution(product, vendor_materials, shadowcast_import)
+    image_url = image_diag.get("image_url") or ""
 
     normalized = {
         "productName": product_name,
@@ -749,6 +944,12 @@ def normalize_apf_payload(payload: dict) -> dict:
         "affiliate_link": affiliate_link,
         "image_url": image_url,
         "imageUrl": image_url,
+        "_image_resolve": {
+            "status": image_diag.get("status"),
+            "reason": image_diag.get("reason"),
+            "pages_failed": image_diag.get("pages_failed") or [],
+            "rejected_samples": image_diag.get("rejected_samples") or [],
+        },
         "keywords": keywords,
         "targetAudience": target_audience,
         "target_audience": target_audience,
@@ -912,21 +1113,59 @@ def assess_product_completeness(product: dict, content_style: str | None = None)
     if style_requires_competitors(style) and _field_blank(info.get("competitors")):
         warnings.append("competitors")
 
+    image_url = str(info.get("image_url") or "").strip()
+    has_offer_signal = False
+    if affiliate.lower() not in _PLACEHOLDER_AFFILIATE:
+        has_offer_signal = True
+    if not _field_blank(info.get("amazon_url")):
+        has_offer_signal = True
+    apf_product = product.get("apfProduct") if isinstance(product.get("apfProduct"), dict) else {}
+    for src in (product, apf_product):
+        if not isinstance(src, dict):
+            continue
+        for key in (
+            "product_detail_url",
+            "productDetailUrl",
+            "sales_page_url",
+            "salesPageUrl",
+            "offer_url",
+            "offerUrl",
+        ):
+            if _clean(_pick(src, [key])):
+                has_offer_signal = True
+                break
+    image_diag = product.get("_image_resolve") if isinstance(product.get("_image_resolve"), dict) else None
+    if _field_blank(image_url) and has_offer_signal:
+        warnings.append("image_url")
+    elif image_diag and image_diag.get("status") not in (None, "", "ok") and _field_blank(image_url):
+        warnings.append("image_url")
+
     strict = os.getenv("SHADOWCAST_STRICT_PRODUCT_GATE", "").lower() in ("1", "true", "yes")
     if strict:
         promoted = []
         for field in list(warnings):
-            if field in ("common_praises_or_common_complaints", "affiliate_link"):
+            if field in ("common_praises_or_common_complaints", "affiliate_link", "image_url"):
                 warnings.remove(field)
                 promoted.append(field)
         blocking.extend(promoted)
 
-    return {
+    result = {
         "blocking": blocking,
         "warnings": warnings,
         "content_style": style,
         "product_name": name,
     }
+    if image_diag:
+        result["image_resolve"] = {
+            "status": image_diag.get("status"),
+            "reason": image_diag.get("reason"),
+        }
+    elif _field_blank(image_url) and has_offer_signal:
+        result["image_resolve"] = {
+            "status": "empty",
+            "reason": "image_url_empty_with_offer_url",
+        }
+    return result
 
 
 def dedupe_products_by_name(products: list) -> tuple[list, list[str]]:
