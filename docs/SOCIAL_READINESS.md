@@ -1,6 +1,6 @@
 # Social posting readiness
 
-Assessment date: 2026-08-06 (plan gaps closed). Target: videos good enough to start posting on YouTube and other social platforms.
+Assessment date: 2026-08-06 (audit rerun — plan gaps closed; code bar verified). Target: videos good enough to start posting on YouTube and other social platforms.
 
 ## Dual score
 
