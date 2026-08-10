@@ -85,6 +85,7 @@ backend/eval/artifacts/rag_eval.json
 .DS_Store
 .idea/
 .vscode/
+.cursor/settings.json
 *~
 
 # Local music beds (LFS verify broken on remote; drop licensed/generated WAVs locally)
