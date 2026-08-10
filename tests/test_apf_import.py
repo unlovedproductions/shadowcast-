@@ -505,6 +505,56 @@ def test_assess_completeness_warns_on_thin_trust_product():
     assert "affiliate_link" in assessment["warnings"]
 
 
+def test_claim_ledger_fills_key_features():
+    payload = {
+        "product": {
+            "name": "Advanced Mitochondrial Formula",
+            "affiliate_url": "https://example.com/hop",
+        },
+        "shadowcast_import": {
+            "claim_ledger": [
+                {
+                    "text": "1 Bottle $79.95",
+                    "kind": "price",
+                    "source_url": "https://vendor.example/order",
+                    "source_type": "order_page",
+                },
+                {
+                    "text": "Niacinamide supports NAD",
+                    "kind": "ingredient",
+                    "source_url": "https://vendor.example/order",
+                    "source_type": "order_page",
+                },
+            ]
+        },
+        "review_brief": {
+            "common_claims": ["Positioned as a Health product."],
+        },
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    joined = "\n".join(normalized["key_features"])
+    assert "79.95" in joined
+    assert "Niacinamide" in joined
+    assert "Positioned as" not in joined
+
+
+def test_assess_completeness_warns_when_claim_ledger_empty_with_offer():
+    assessment = assess_product_completeness(
+        {
+            "product_name": "No Claims Offer",
+            "content_style": "honest_review",
+            "price": "$47.00",
+            "affiliate_link": "https://www.checkout-ds24.com/redir/1/x/apf",
+            "image_url": "https://cdn.example.com/products/bottle.png",
+            "common_praises": "Good",
+            "common_complaints": "None",
+            "claim_ledger": [],
+        }
+    )
+    assert "claim_ledger" in assessment["warnings"]
+    assert assessment["blocking"] == []
+
+
 def test_dedupe_products_by_name_keeps_last():
     products, dropped = dedupe_products_by_name(
         [
