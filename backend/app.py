@@ -935,6 +935,8 @@ def _prepare_products_for_generate(
             name = item.get("product_name", "?")
             if field == "image_url":
                 warnings.append(f"{name}: No product image — thumbs will be text-only")
+            elif field == "claim_ledger":
+                warnings.append(f"{name}: No cited claims — scripts will hedge or invent")
             else:
                 warnings.append(f"{name}: weak/missing {field}")
         prepared.append(item)

@@ -709,8 +709,63 @@ def _buyer_trust_text(items) -> str:
     return "\n".join(lines)
 
 
+def _as_claim_ledger(value) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        text = _clean(item.get("text"))
+        url = _clean(item.get("source_url") or item.get("sourceUrl"))
+        if not text or not url:
+            continue
+        kind = _clean(item.get("kind") or "vendor_claim") or "vendor_claim"
+        out.append({
+            "text": text,
+            "kind": kind,
+            "source_url": url,
+            "source_type": _clean(item.get("source_type") or item.get("sourceType")),
+            "quote": _clean(item.get("quote")) or text[:180],
+        })
+    return out
+
+
+def _claim_ledger_from_payload(shadowcast_import, brief) -> list[dict]:
+    sc = shadowcast_import if isinstance(shadowcast_import, dict) else {}
+    br = brief if isinstance(brief, dict) else {}
+    return _as_claim_ledger(
+        sc.get("claim_ledger")
+        or sc.get("claimLedger")
+        or br.get("claim_ledger")
+        or br.get("claimLedger")
+    )
+
+
+def _key_features_from_claim_ledger(ledger: list[dict]) -> list[str]:
+    labels = {
+        "vendor_claim": "Vendor claim",
+        "ingredient": "Ingredient",
+        "guarantee": "Guarantee",
+        "price": "Price",
+        "testimonial": "Vendor testimonial",
+        "independent_review": "Independent review",
+    }
+    lines: list[str] = []
+    for row in ledger or []:
+        kind = row.get("kind") or "vendor_claim"
+        source_type = row.get("source_type") or "source"
+        label = labels.get(kind, "Claim")
+        lines.append(f"{label} ({source_type}): {row['text']}")
+    return lines[:8]
+
+
 def _buyer_key_features(brief, product, key_features_text: str, shadowcast_import=None) -> list:
     sc = shadowcast_import if isinstance(shadowcast_import, dict) else {}
+    ledger_lines = _key_features_from_claim_ledger(_claim_ledger_from_payload(sc, brief))
+    if ledger_lines:
+        return ledger_lines
+
     cleaned = []
 
     sc_features = sc.get("key_features") or sc.get("keyFeatures") or []
@@ -932,6 +987,7 @@ def normalize_apf_payload(payload: dict) -> dict:
 
     image_diag = diagnose_product_image_resolution(product, vendor_materials, shadowcast_import)
     image_url = image_diag.get("image_url") or ""
+    claim_ledger = _claim_ledger_from_payload(shadowcast_import, brief)
 
     normalized = {
         "productName": product_name,
@@ -950,6 +1006,8 @@ def normalize_apf_payload(payload: dict) -> dict:
             "pages_failed": image_diag.get("pages_failed") or [],
             "rejected_samples": image_diag.get("rejected_samples") or [],
         },
+        "claim_ledger": claim_ledger,
+        "_claim_ledger": claim_ledger,
         "keywords": keywords,
         "targetAudience": target_audience,
         "target_audience": target_audience,
@@ -1139,6 +1197,12 @@ def assess_product_completeness(product: dict, content_style: str | None = None)
         warnings.append("image_url")
     elif image_diag and image_diag.get("status") not in (None, "", "ok") and _field_blank(image_url):
         warnings.append("image_url")
+
+    claim_ledger = product.get("_claim_ledger") or product.get("claim_ledger")
+    if not isinstance(claim_ledger, list):
+        claim_ledger = []
+    if len(claim_ledger) == 0 and has_offer_signal:
+        warnings.append("claim_ledger")
 
     strict = os.getenv("SHADOWCAST_STRICT_PRODUCT_GATE", "").lower() in ("1", "true", "yes")
     if strict:
