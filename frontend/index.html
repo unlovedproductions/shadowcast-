@@ -233,6 +233,27 @@
         /* Hook Badge */
         .hook-badge { background: var(--pink-glow); color: var(--pink); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     </style>
+    <script>
+        window.sentryOnLoad = function () {
+            Sentry.init({
+                environment: (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+                    ? "development"
+                    : "production",
+                tracesSampleRate: 1.0,
+                tracePropagationTargets: ["localhost", /^\//],
+                replaysSessionSampleRate: 0.1,
+                replaysOnErrorSampleRate: 1.0,
+                integrations: [
+                    Sentry.browserTracingIntegration(),
+                    Sentry.replayIntegration({
+                        maskAllText: true,
+                        blockAllMedia: true,
+                    }),
+                ],
+            });
+        };
+    </script>
+    <script src="https://js.sentry-cdn.com/__SENTRY_LOADER_KEY__.min.js" crossorigin="anonymous" data-lazy="no"></script>
 </head>
 <body>
     <div id="app"></div>
