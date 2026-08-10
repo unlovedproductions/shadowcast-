@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
+import sentry_sdk
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -115,6 +116,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger("shadowcast")
 
+_SENTRY_SCRUB_HEADERS = frozenset({"authorization", "cookie", "x-service-key"})
+_SENTRY_DROP_TRACE_PATHS = frozenset({"/api/health", "/api/readiness"})
+
+
+def _sentry_frontend_loader_key() -> str:
+    dsn = (os.getenv("SENTRY_FRONTEND_DSN") or "").strip()
+    if not dsn or "@" not in dsn:
+        return ""
+    try:
+        return dsn.split("://", 1)[1].split("@", 1)[0]
+    except IndexError:
+        return ""
+
+
+def _sentry_before_send(event, hint):
+    request_data = event.get("request")
+    if isinstance(request_data, dict):
+        headers = request_data.get("headers")
+        if isinstance(headers, dict):
+            for key in list(headers):
+                if str(key).lower() in _SENTRY_SCRUB_HEADERS:
+                    headers[key] = "[Filtered]"
+    return event
+
+
+def _sentry_traces_sampler(sampling_context):
+    asgi_scope = sampling_context.get("asgi_scope") or {}
+    path = asgi_scope.get("path") or ""
+    if path in _SENTRY_DROP_TRACE_PATHS:
+        return 0.0
+    parent_sampled = sampling_context.get("parent_sampled")
+    if parent_sampled is not None:
+        return float(parent_sampled)
+    return 1.0
+
+
+if os.getenv("SENTRY_DSN", "").strip():
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+        release=os.getenv("SENTRY_RELEASE") or None,
+        send_default_pii=False,
+        traces_sampler=_sentry_traces_sampler,
+        enable_logs=True,
+        ignore_errors=["JobCancelled"],
+        before_send=_sentry_before_send,
+    )
+
 _oauth_rate_buckets: dict[str, list[float]] = defaultdict(list)
 _OAUTH_RATE_LIMIT = 60
 _OAUTH_RATE_WINDOW = 60.0
@@ -187,6 +236,8 @@ def _error_payload(status_code: int, message: str, details: list | None = None) 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code >= 500:
+        sentry_sdk.capture_exception(exc)
     message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
@@ -242,7 +293,7 @@ async def security_headers_and_rate_limit(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+        "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://js.sentry-cdn.com https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.sentry.io https://*.ingest.sentry.io; worker-src 'self' blob:",
     )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
@@ -2671,6 +2722,22 @@ app.openapi = _custom_openapi
 
 # ── Serve Frontend ────────────────────────────────────────────────────
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+_SENTRY_LOADER_PLACEHOLDER = "__SENTRY_LOADER_KEY__"
+_SENTRY_LOADER_TAG = (
+    f'    <script src="https://js.sentry-cdn.com/{_SENTRY_LOADER_PLACEHOLDER}.min.js" '
+    'crossorigin="anonymous" data-lazy="no"></script>\n'
+)
+
+
+def _serve_index_html() -> HTMLResponse:
+    html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    loader_key = _sentry_frontend_loader_key()
+    if loader_key:
+        html = html.replace(_SENTRY_LOADER_PLACEHOLDER, loader_key)
+    else:
+        html = html.replace(_SENTRY_LOADER_TAG, "")
+    return HTMLResponse(html)
+
 
 if (FRONTEND_DIR / "index.html").exists():
     assets_dir = FRONTEND_DIR / "assets"
@@ -2681,8 +2748,10 @@ if (FRONTEND_DIR / "index.html").exists():
     async def serve_frontend(full_path: str):
         file_path = FRONTEND_DIR / full_path
         if file_path.exists() and file_path.is_file():
+            if file_path.name == "index.html":
+                return _serve_index_html()
             return FileResponse(str(file_path))
-        return FileResponse(str(FRONTEND_DIR / "index.html"))
+        return _serve_index_html()
 else:
     @app.get("/")
     def root():
