@@ -36,11 +36,17 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
 
     positives = scraped.get("positive_reviews") or []
     negatives = scraped.get("negative_reviews") or []
-    if positives and _is_blank(out.get("common_praises")):
+    praise_themes = str(scraped.get("common_praise_themes") or "").strip()
+    complaint_themes = str(scraped.get("common_complaint_themes") or "").strip()
+    if praise_themes and _is_blank(out.get("common_praises")):
+        out["common_praises"] = praise_themes
+    elif positives and _is_blank(out.get("common_praises")):
         out["common_praises"] = "\n".join(
             f"- {r.get('title', 'Praise')}: {r.get('text', '')}" for r in positives[:5]
         )
-    if negatives and _is_blank(out.get("common_complaints")):
+    if complaint_themes and _is_blank(out.get("common_complaints")):
+        out["common_complaints"] = complaint_themes
+    elif negatives and _is_blank(out.get("common_complaints")):
         out["common_complaints"] = "\n".join(
             f"- {r.get('title', 'Complaint')}: {r.get('text', '')}" for r in negatives[:5]
         )
@@ -49,6 +55,8 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
         "price": scraped.get("price", ""),
         "positive_count": len(positives),
         "negative_count": len(negatives),
+        "praise_themes": praise_themes,
+        "complaint_themes": complaint_themes,
     }
     if not positives and not negatives:
         _append_warning(out, "Amazon scrape returned no review signals.")

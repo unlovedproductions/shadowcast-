@@ -142,6 +142,25 @@ def _music_beds_dir() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "music")
 
 
+def music_bed_moods() -> list[str]:
+    """Return moods that have a drop-in bed under assets/music/."""
+    base = _music_beds_dir()
+    found: list[str] = []
+    if not os.path.isdir(base):
+        return found
+    for name in sorted(os.listdir(base)):
+        lower = name.lower()
+        for ext in (".wav", ".mp3", ".flac"):
+            if lower.endswith(ext):
+                found.append(name[: -len(ext)])
+                break
+    return found
+
+
+def music_beds_present() -> bool:
+    return bool(music_bed_moods())
+
+
 def _load_music_bed(mood: str, duration_seconds: float):
     """Prefer drop-in royalty-free beds: assets/music/{mood}.wav|.mp3."""
     base = _music_beds_dir()

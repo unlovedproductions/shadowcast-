@@ -1,6 +1,5 @@
-"""Music bed prefer-path and publish gTTS gate."""
+"""Music bed prefer-path and publish gTTS / music-bed gates."""
 
-import os
 import sys
 from pathlib import Path
 
@@ -19,6 +18,16 @@ def test_music_bed_loads_when_present():
     arr = generate_background_music(2.0, mood="chill", tempo=80)
     assert len(arr) == int(2.0 * SAMPLE_RATE)
     assert np.max(np.abs(arr)) > 0
+
+
+def test_music_beds_present_helper():
+    from sound_design import music_bed_moods, music_beds_present
+
+    moods = music_bed_moods()
+    if not moods:
+        pytest.skip("no music beds on disk")
+    assert music_beds_present() is True
+    assert "chill" in moods or len(moods) >= 1
 
 
 def test_publish_blocks_gtts_without_escape(monkeypatch):
@@ -42,10 +51,32 @@ def test_publish_blocks_gtts_without_escape(monkeypatch):
         svc.publish("job", "curiosity", "short_form", "youtube", dry_run=False)
 
 
+def test_publish_blocks_missing_music_beds(monkeypatch):
+    from publish_service import PublishService
+
+    monkeypatch.delenv("ALLOW_SYNTH_MUSIC_PUBLISH", raising=False)
+    monkeypatch.setattr("tts_generator.get_best_provider", lambda: "kokoro")
+    monkeypatch.setattr("sound_design.music_beds_present", lambda: False)
+    monkeypatch.setattr(
+        "publish_service.resolve_job_assets",
+        lambda *a, **k: {
+            "video_path": "/tmp/x.mp4",
+            "thumbnail_path": None,
+            "posting_package": {"seo_title": "t", "description": "d", "tags": ["a"]},
+        },
+    )
+    monkeypatch.setattr("publish_service.build", lambda *a, **k: {"title": "t"})
+
+    svc = PublishService(jobs={})
+    with pytest.raises(RuntimeError, match="music beds"):
+        svc.publish("job", "curiosity", "short_form", "youtube", dry_run=False)
+
+
 def test_publish_allows_gtts_with_escape(monkeypatch):
     from publish_service import PublishService
 
     monkeypatch.setenv("ALLOW_GTTS_PUBLISH", "1")
+    monkeypatch.setenv("ALLOW_SYNTH_MUSIC_PUBLISH", "1")
     monkeypatch.setattr("tts_generator.get_best_provider", lambda: "gtts")
     monkeypatch.setattr(
         "publish_service.resolve_job_assets",

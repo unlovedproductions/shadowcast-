@@ -61,12 +61,42 @@ def test_evaluate_publish_quality_pass_path(tmp_path):
     ), patch(
         "publish_quality._claim_audit_check",
         return_value={"id": "claim_audit", "status": "PASS", "detail": "ok"},
+    ), patch(
+        "publish_quality.music_beds_present", return_value=True
+    ), patch(
+        "publish_quality.music_bed_moods", return_value=["chill"]
+    ), patch(
+        "publish_quality.any_broll_files", return_value=True
     ):
         result = evaluate_publish_quality(
             video_path=video,
             video_format="short_form",
+            image_url="https://example.com/product.jpg",
         )
     assert result["overall"] in ("PASS", "WARN")
     assert result["ready_for_live_publish"] is True
     assert any(c["id"] == "captions_sidecar" and c["status"] == "PASS" for c in result["checks"])
     assert any(c["id"] == "claim_audit" and c["status"] == "PASS" for c in result["checks"])
+    assert any(c["id"] == "music_bed" and c["status"] == "PASS" for c in result["checks"])
+    assert any(c["id"] == "product_image" and c["status"] == "PASS" for c in result["checks"])
+
+
+def test_evaluate_publish_quality_fails_without_music_beds(tmp_path, monkeypatch):
+    video = tmp_path / "ok_short_form.mp4"
+    video.write_bytes(b"x")
+    monkeypatch.delenv("ALLOW_SYNTH_MUSIC_PUBLISH", raising=False)
+    with patch("publish_quality.get_best_tts", return_value="kokoro"), patch(
+        "publish_quality._ffprobe_duration", return_value=30.0
+    ), patch(
+        "publish_quality._claim_audit_check",
+        return_value={"id": "claim_audit", "status": "PASS", "detail": "ok"},
+    ), patch(
+        "publish_quality.music_beds_present", return_value=False
+    ), patch(
+        "publish_quality.music_bed_moods", return_value=[]
+    ), patch(
+        "publish_quality.any_broll_files", return_value=False
+    ):
+        result = evaluate_publish_quality(video_path=video, video_format="short_form")
+    assert result["ready_for_live_publish"] is False
+    assert any(c["id"] == "music_bed" and c["status"] == "FAIL" for c in result["checks"])

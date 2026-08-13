@@ -149,6 +149,9 @@ class ReadinessChecks(BaseModel):
     tts_best: str
     tts_quality: bool
     tts_providers: Dict[str, bool]
+    music_beds: bool = False
+    music_bed_moods: List[str] = Field(default_factory=list)
+    broll_pack: bool = False
 
 
 class ReadinessResponse(BaseModel):

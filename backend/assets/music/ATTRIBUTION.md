@@ -18,7 +18,13 @@ License: [Mixkit License](https://mixkit.co/license/#musicFree) — free for com
 | dramatic | Silent Descent | 601 | https://assets.mixkit.co/music/601/601.mp3 |
 | minimal | Relax Beat | 441 | https://assets.mixkit.co/music/441/441.mp3 |
 
-Convert after download (mono 44.1 kHz WAV):
+Fetch/convert the whole pack (preferred):
+
+```bash
+./scripts/fetch_operator_media.sh
+```
+
+Manual convert (mono 44.1 kHz WAV):
 
 ```bash
 ffmpeg -y -i SOURCE.mp3 -ac 1 -ar 44100 -c:a pcm_s16le backend/assets/music/{mood}.wav
