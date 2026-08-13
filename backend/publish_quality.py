@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from broll import any_broll_files
+from sound_design import music_bed_moods, music_beds_present
 from tts_generator import get_best_provider as get_best_tts
 from video_claim_audit import audit_output
 from video_claims import FORMAT_CLAIMS, LONG_FORM, SHORT_FORM
@@ -97,6 +99,7 @@ def evaluate_publish_quality(
     thumbnail_path: str | Path | None = None,
     video_format: str = SHORT_FORM,
     use_tts_expected: bool = True,
+    image_url: str | None = None,
 ) -> dict[str, Any]:
     """
     Return checklist items with status PASS|WARN|FAIL.
@@ -244,6 +247,81 @@ def evaluate_publish_quality(
                 "id": "claim_audit",
                 "status": "FAIL",
                 "detail": "Skipped — video missing",
+            }
+        )
+
+    moods = music_bed_moods()
+    allow_synth = os.getenv("ALLOW_SYNTH_MUSIC_PUBLISH", "").strip() in ("1", "true", "True")
+    if music_beds_present():
+        checks.append(
+            {
+                "id": "music_bed",
+                "status": "PASS",
+                "detail": f"beds={','.join(moods)}",
+            }
+        )
+    elif allow_synth:
+        checks.append(
+            {
+                "id": "music_bed",
+                "status": "WARN",
+                "detail": "No royalty-free beds; synth fallback allowed (ALLOW_SYNTH_MUSIC_PUBLISH=1)",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "music_bed",
+                "status": "FAIL",
+                "detail": "No assets/music/{mood}.wav beds; run scripts/fetch_operator_media.sh or set ALLOW_SYNTH_MUSIC_PUBLISH=1",
+            }
+        )
+
+    if any_broll_files():
+        checks.append(
+            {
+                "id": "broll_pack",
+                "status": "PASS",
+                "detail": "B-roll clips present under assets/broll/",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "broll_pack",
+                "status": "WARN",
+                "detail": "No B-roll clips; long-form pads will skip (run scripts/fetch_operator_media.sh)",
+            }
+        )
+
+    image = (image_url or "").strip()
+    require_image = os.getenv("SHADOWCAST_REQUIRE_PRODUCT_IMAGE", "").strip() in (
+        "1",
+        "true",
+        "True",
+    )
+    if image:
+        checks.append(
+            {
+                "id": "product_image",
+                "status": "PASS",
+                "detail": "image_url present",
+            }
+        )
+    elif require_image:
+        checks.append(
+            {
+                "id": "product_image",
+                "status": "FAIL",
+                "detail": "image_url missing; set product image or unset SHADOWCAST_REQUIRE_PRODUCT_IMAGE",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "product_image",
+                "status": "WARN",
+                "detail": "image_url missing — thumbs/product stills will be weaker",
             }
         )
 

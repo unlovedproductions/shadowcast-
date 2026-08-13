@@ -102,12 +102,14 @@ from social_poster import SocialPoster, get_platform_status
 from analytics_tracker import AnalyticsTracker, create_tracking_link
 from youtube_analytics import YouTubeAnalyticsClient, extract_youtube_video_id
 from oauth_manager import OAuthManager
-from publish_service import PublishService, resolve_job_assets
+from publish_service import PublishService, resolve_job_assets, _slugify as job_slugify
 from publish_quality import evaluate_publish_quality
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
 from openapi_customize import customize_openapi
+from broll import any_broll_files
+from sound_design import music_bed_moods, music_beds_present
 from auth_public_routes import is_public_path
 
 logging.basicConfig(
@@ -1617,6 +1619,18 @@ def get_readiness():
             "Only basic Google TTS is available. Install Kokoro/Piper or configure OpenAI TTS for better voice quality."
         )
 
+    beds_ok = music_beds_present()
+    bed_moods = music_bed_moods()
+    broll_ok = any_broll_files()
+    if not beds_ok:
+        warnings.append(
+            "No royalty-free music beds under backend/assets/music/. Run scripts/fetch_operator_media.sh (synth fallback sounds weak)."
+        )
+    if not broll_ok:
+        warnings.append(
+            "No B-roll clips under backend/assets/broll/. Run scripts/fetch_operator_media.sh for long-form pads."
+        )
+
     return ReadinessResponse(
         ready=len(blockers) == 0,
         blockers=blockers,
@@ -1633,6 +1647,9 @@ def get_readiness():
                 key: bool(info.get("available"))
                 for key, info in providers.items()
             },
+            music_beds=beds_ok,
+            music_bed_moods=bed_moods,
+            broll_pack=broll_ok,
         ),
         default_video_preset=resolve_video_preset(None),
     )
@@ -1740,12 +1757,26 @@ async def scrape_amazon(url: str = Form(...)):
         "key_features": ", ".join(result.get("key_features", [])),
         "star_rating": result.get("star_rating", ""),
         "number_of_reviews": result.get("number_of_reviews", ""),
-        "common_praises": "\n".join(
-            [f"- {r['title']}: {r['text']}" for r in result.get("positive_reviews", [])]
-        ) if result.get("positive_reviews") else "",
-        "common_complaints": "\n".join(
-            [f"- {r['title']}: {r['text']}" for r in result.get("negative_reviews", [])]
-        ) if result.get("negative_reviews") else "",
+        "common_praises": (
+            (result.get("common_praise_themes") or "").strip()
+            or (
+                "\n".join(
+                    [f"- {r['title']}: {r['text']}" for r in result.get("positive_reviews", [])]
+                )
+                if result.get("positive_reviews")
+                else ""
+            )
+        ),
+        "common_complaints": (
+            (result.get("common_complaint_themes") or "").strip()
+            or (
+                "\n".join(
+                    [f"- {r['title']}: {r['text']}" for r in result.get("negative_reviews", [])]
+                )
+                if result.get("negative_reviews")
+                else ""
+            )
+        ),
     }
     return {"status": "ok", "data": mapped, "raw": result}
 
@@ -2310,6 +2341,7 @@ def publish_quality_check(req: PublishQualityRequest):
     try:
         video_path = req.video_path
         thumb_path = req.thumbnail_path
+        image_url = None
         if req.job_id and req.hook_type:
             resolved = resolve_job_assets(
                 req.job_id,
@@ -2322,12 +2354,23 @@ def publish_quality_check(req: PublishQualityRequest):
             thumb_path = thumb_path or resolved.get("thumbnail_path")
             if req.thumbnail_variant in ("variant_b", "variant_c") and thumb_path:
                 thumb_path = re.sub(r"variant_[abc]", req.thumbnail_variant, str(thumb_path))
+            image_url = resolved.get("image_url")
+            if not image_url and req.job_id in jobs:
+                job = jobs[req.job_id]
+                product = job.get("product_info") or {}
+                if req.product_slug and job.get("mode") == "batch":
+                    for pr in job.get("product_results") or []:
+                        if job_slugify(pr.get("product_name", "")) == req.product_slug:
+                            product = pr.get("product_info") or product
+                            break
+                image_url = (product.get("image_url") or "").strip() or None
         if not video_path:
             raise HTTPException(status_code=400, detail="video_path or job_id+hook_type required")
         return evaluate_publish_quality(
             video_path=video_path,
             thumbnail_path=thumb_path,
             video_format=req.video_format,
+            image_url=image_url,
         )
     except HTTPException:
         raise

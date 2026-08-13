@@ -210,6 +210,17 @@ class PublishService:
                     "Live publish blocked: only gTTS (or no quality TTS) is available. "
                     "Install Kokoro/Piper or configure OpenAI TTS, or set ALLOW_GTTS_PUBLISH=1."
                 )
+            allow_synth = os.getenv("ALLOW_SYNTH_MUSIC_PUBLISH", "").strip() in ("1", "true", "True")
+            try:
+                from sound_design import music_beds_present
+                beds_ok = music_beds_present()
+            except Exception:
+                beds_ok = False
+            if not beds_ok and not allow_synth:
+                raise RuntimeError(
+                    "Live publish blocked: no royalty-free music beds under backend/assets/music/. "
+                    "Run scripts/fetch_operator_media.sh or set ALLOW_SYNTH_MUSIC_PUBLISH=1."
+                )
 
         rel_video = self._relative_media_path(job_id, video_path, product_slug)
         rel_thumb = self._relative_media_path(job_id, thumb_path, product_slug) if thumb_path else None

@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import re
 import random
 import asyncio
+from collections import Counter
 from typing import Dict, List, Any
 
 USER_AGENTS = [
@@ -17,6 +18,53 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/108.0',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/108.0'
 ]
+
+_THEME_STOPWORDS = frozenset(
+    """
+    a an the and or but if to of in on for with from this that these those it its
+    is are was were be been being have has had do does did will would can could
+    should just very really much more most so not no yes my me i we you they their
+    our your product item amazon review reviews stars star rating rated bought buy
+    purchased purchase get got one two three four five good bad great nice
+    """.split()
+)
+
+
+def _extract_review_themes(reviews: List[Dict[str, Any]], *, max_themes: int = 5) -> str:
+    """Derive short theme bullets from review titles/text (local NLP, no external API)."""
+    if not reviews:
+        return ""
+    title_counts: Counter[str] = Counter()
+    token_counts: Counter[str] = Counter()
+    for review in reviews:
+        title = re.sub(r"\s+", " ", str(review.get("title") or "").strip())
+        # Drop leading "5.0 out of 5 stars" noise Amazon sometimes embeds in title hooks
+        title = re.sub(r"^\d+(?:\.\d+)?\s+out of 5 stars\s*", "", title, flags=re.I).strip()
+        if 3 <= len(title) <= 80:
+            title_counts[title] += 1
+        blob = f"{title} {review.get('text') or ''}".lower()
+        tokens = re.findall(r"[a-z][a-z0-9\-]{2,}", blob)
+        for tok in tokens:
+            if tok in _THEME_STOPWORDS:
+                continue
+            token_counts[tok] += 1
+    themes: list[str] = []
+    for title, _count in title_counts.most_common(max_themes):
+        themes.append(title)
+    if len(themes) < max_themes:
+        for tok, count in token_counts.most_common(12):
+            if count < 2:
+                continue
+            label = tok.replace("-", " ")
+            if any(label in t.lower() for t in themes):
+                continue
+            themes.append(label)
+            if len(themes) >= max_themes:
+                break
+    if not themes:
+        return ""
+    return "\n".join(f"- {t}" for t in themes[:max_themes])
+
 
 async def scrape_amazon_product(url: str) -> Dict[str, Any]:
     # Validate Amazon URL format
@@ -49,8 +97,8 @@ async def scrape_amazon_product(url: str) -> Dict[str, Any]:
         "number_of_reviews": None,
         "positive_reviews": [],
         "negative_reviews": [],
-        "common_praise_themes": "(Requires NLP on full reviews)",
-        "common_complaint_themes": "(Requires NLP on full reviews)",
+        "common_praise_themes": "",
+        "common_complaint_themes": "",
         "image_url": None,
     }
 
@@ -170,6 +218,13 @@ async def scrape_amazon_product(url: str) -> Dict[str, Any]:
             elif rating <= 2.0 and negative_count < 10:
                 product_data['negative_reviews'].append(review_entry)
                 negative_count += 1
+
+    product_data["common_praise_themes"] = _extract_review_themes(
+        product_data["positive_reviews"]
+    )
+    product_data["common_complaint_themes"] = _extract_review_themes(
+        product_data["negative_reviews"]
+    )
 
     return product_data
 

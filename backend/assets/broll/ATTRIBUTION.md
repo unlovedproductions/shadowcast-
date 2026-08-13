@@ -33,7 +33,13 @@ Clips trimmed to ~10s, audio stripped, H.264.
 | verdict.mp4 | 43527 | https://assets.mixkit.co/videos/43527/43527-1080.mp4 |
 | comparison.mp4 | 9757 | https://assets.mixkit.co/videos/9757/9757-720.mp4 |
 
-Trim example:
+Fetch/convert the whole pack (preferred):
+
+```bash
+./scripts/fetch_operator_media.sh
+```
+
+Manual trim example:
 
 ```bash
 ffmpeg -y -i SOURCE.mp4 -t 10 -an -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p backend/assets/broll/{name}.mp4

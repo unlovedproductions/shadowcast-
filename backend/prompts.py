@@ -35,9 +35,18 @@ You have NOT physically tested the product. Frame claims as:
 
 BUYER_FOCUS_RULES = """RULES:
 - Speak to shoppers considering a purchase, NOT affiliate marketers
-- NEVER mention commission rates, EPC, hop conversion, promoting, or earning as an affiliate
+- NEVER mention commission rates, EPC, hop conversion, or teaching people how to earn as affiliates
+- REQUIRED shopper disclosure (FTC): include one short plain-language affiliate disclosure in the script (early VO or end CTA) such as: "This video contains affiliate links. If you buy through them, I may earn a commission at no extra cost to you."
+- Do NOT use marketer jargon ("EPC", "hop", "promote this offer"); disclosure is for shoppers, not creators
 - Use research-based language ("reviewers say", "specs show", "data proves")
 - For honest/trust styles: include at least ONE con or limitation"""
+
+AFFILIATE_DISCLOSURE_ASSETS = """AFFILIATE DISCLOSURE (required in YouTube assets):
+- seo_description MUST start with or early-include a clear shopper disclosure, e.g. "Affiliate disclosure: This description contains affiliate links. I may earn a commission if you buy, at no extra cost to you."
+- Place the product URL as a raw https link near a "Paid link:" or "Affiliate link:" label (FTC-friendly; avoid vague "affiliate link" alone without explanation)
+- pinned_comment must also disclose the affiliate relationship once in plain language
+- Never invent that you personally tested the product; keep research framing
+"""
 
 BUYER_SEO_RULES = """BUYER-FOCUSED APPROACH:
 - Titles should help shoppers decide, not hype affiliate earnings
@@ -451,7 +460,8 @@ def youtube_assets_json_schema(affiliate_link: str) -> str:
   "series_suggestions": [string]
 }}
 Constraints: seo_title max 70 chars; tags: 30 buyer-intent tags; pinned_comment 300-600 chars; seo_description 2000-3000 chars.
-Include the product affiliate URL as a raw https URL in seo_description and pinned_comment — never markdown [label](url).
+Include a clear affiliate disclosure for shoppers in seo_description and pinned_comment (FTC).
+Include the product affiliate URL as a raw https URL labeled "Paid link:" or "Affiliate link:" — never markdown [label](url).
 Product link: {affiliate_link}"""
 
 
@@ -567,4 +577,6 @@ Buyer Signal Lines:
 - Conclusion / Verdict: {verdict_lines}
 
 {youtube_assets_json_schema(affiliate_link)}
+
+{AFFILIATE_DISCLOSURE_ASSETS}
 Include the product link naturally in the description and pinned comment as a raw https URL (never markdown [label](url))."""

@@ -33,7 +33,7 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 
 1. Product stills in key segments + thumbs when `image_url` present
 2. Default / smart TTS on when quality provider ready; soft-block gTTS-only live publish
-3. Royalty-free / drop-in music beds under `backend/assets/music/` (synth fallback)
+3. Royalty-free / drop-in music beds under `backend/assets/music/` (run `scripts/fetch_operator_media.sh`; synth fallback soft-blocked for live publish unless `ALLOW_SYNTH_MUSIC_PUBLISH=1`)
 4. Product-hero thumbnail variant + contrast WARN via `visual_quality.py`
 
 ### P1 — Retention / platform polish (shipped)
@@ -64,4 +64,4 @@ Plan P0–P2 shipped in code. Operator media library quality is the remaining ce
 6. Optional: `SHADOWCAST_WHISPERX_ALIGN=1` + install `whisperx`
 7. Pick thumbnail A/B/C in Publish card; contrast should not WARN
 8. Run **Pre-Publish QA** — overall must not be `FAIL`
-9. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`
+9. Publish dry-run first; live publish blocked if only gTTS unless `ALLOW_GTTS_PUBLISH=1`; blocked without music beds unless `ALLOW_SYNTH_MUSIC_PUBLISH=1`
