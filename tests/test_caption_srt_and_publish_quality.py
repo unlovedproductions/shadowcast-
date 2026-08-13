@@ -100,3 +100,39 @@ def test_evaluate_publish_quality_fails_without_music_beds(tmp_path, monkeypatch
         result = evaluate_publish_quality(video_path=video, video_format="short_form")
     assert result["ready_for_live_publish"] is False
     assert any(c["id"] == "music_bed" and c["status"] == "FAIL" for c in result["checks"])
+
+
+def test_evaluate_publish_quality_thumb_packaging_warns_on_dense_copy(tmp_path):
+    video = tmp_path / "ok_short_form.mp4"
+    video.write_bytes(b"x")
+    thumb = tmp_path / "ok_short_form_thumb.jpg"
+    thumb.write_bytes(b"fakejpg")
+    pkg = tmp_path / "ok_short_form_youtube_package.json"
+    pkg.write_text(
+        '{"seo_title":"Test","thumbnail_text_primary":"one two three four five six seven"}',
+        encoding="utf-8",
+    )
+    with patch("publish_quality.get_best_tts", return_value="kokoro"), patch(
+        "publish_quality._ffprobe_duration", return_value=30.0
+    ), patch(
+        "publish_quality._claim_audit_check",
+        return_value={"id": "claim_audit", "status": "PASS", "detail": "ok"},
+    ), patch(
+        "publish_quality.music_beds_present", return_value=True
+    ), patch(
+        "publish_quality.music_bed_moods", return_value=["chill"]
+    ), patch(
+        "publish_quality.any_broll_files", return_value=True
+    ), patch(
+        "publish_quality.audit_thumbnail_contrast",
+        return_value=("PASS", "ok", "ok", "ok"),
+    ):
+        result = evaluate_publish_quality(
+            video_path=video,
+            video_format="short_form",
+            thumbnail_path=thumb,
+            image_url="https://example.com/p.jpg",
+        )
+    assert any(
+        c["id"] == "thumb_packaging" and c["status"] == "WARN" for c in result["checks"]
+    )

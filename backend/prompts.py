@@ -18,6 +18,8 @@ RENDERER_CONTRACT = """RENDERER CONTRACT:
 - Set total_duration_seconds = sum of all segment durations. Intro/outro/transitions are renderer chrome.
 - Short-form segment duration: 1.0–1.5s. Long-form: 3.0–5.0s.
 - text must be TTS-safe: no emoji, pronounceable, fit duration at ~2.5–3 words/sec. On-screen punch is fine; keep speakable.
+- Short-form overlays: 4–6 words MAX (never a full sentence). Visual change every segment.
+- First short-form segment: strongest hook — text_style headline_bold|question, animation impact_scale|pop_in.
 - Layout segments: use animation "fade_in" and transition "fade" or "cut" (kinetic animations are ignored on layouts).
 - Omit visual_note (unused by renderer).
 ANIMATION MAP: hook/headline→impact_scale|pop_in; stat_number→impact_scale; cons/elimination→shake; layout→fade_in. Avoid highlight_sweep on short-form.
@@ -130,12 +132,15 @@ COMPARISON CONTEXT (use in layout segments):
         tags = yt.get("recommended_tags") or []
         titles = yt.get("recommended_titles") or []
         questions = yt.get("question_keywords") or []
-        if tags or titles or questions:
+        angles = yt.get("title_angles") or []
+        gaps = yt.get("content_gap_ideas") or []
+        if tags or titles or questions or angles or gaps:
             youtube_block = f"""
-YOUTUBE RESEARCH (use for titles/tags, not verbatim copy):
+YOUTUBE RESEARCH (use for titles/tags/hooks, not verbatim copy):
 - Recommended tags: {', '.join(tags[:15]) if tags else 'N/A'}
-- Title angles: {' | '.join(titles[:3]) if titles else 'N/A'}
+- Title angles: {' | '.join((angles or titles)[:5]) if (angles or titles) else 'N/A'}
 - Question keywords: {', '.join(questions[:8]) if questions else 'N/A'}
+- Content-gap ideas: {' | '.join(gaps[:4]) if gaps else 'N/A'}
 """
 
     retrieved_block = ""
@@ -381,7 +386,7 @@ def short_form_json_schema(hook_type: str, content_style: str) -> str:
   "cta_text": string,
   "cta_placement": "end_screen|pinned_comment|link_in_bio"
 }}
-Generate 12-20 segments. Each text: 3-8 words max, TTS-safe (no emoji). duration 1.0–1.5. total_duration_seconds MUST equal sum(duration). start_time is advisory. Omit unused layout fields when layout is null."""
+Generate 12-20 segments. Each text: 4-6 words max, TTS-safe (no emoji). duration 1.0–1.5. First segment must be the scroll-stopping hook. total_duration_seconds MUST equal sum(duration). start_time is advisory. Omit unused layout fields when layout is null."""
 
 
 def long_form_json_schema(hook_type: str, content_style: str) -> str:
@@ -460,6 +465,7 @@ def youtube_assets_json_schema(affiliate_link: str) -> str:
   "series_suggestions": [string]
 }}
 Constraints: seo_title max 70 chars; tags: 30 buyer-intent tags; pinned_comment 300-600 chars; seo_description 2000-3000 chars.
+thumbnail_text_primary: max 6 words (billboard, not brochure); thumbnail_text_secondary optional ≤4 words.
 Include a clear affiliate disclosure for shoppers in seo_description and pinned_comment (FTC).
 Include the product affiliate URL as a raw https URL labeled "Paid link:" or "Affiliate link:" — never markdown [label](url).
 Product link: {affiliate_link}"""
@@ -494,9 +500,9 @@ HOOK TYPE: {hook_type}
 {RENDERER_CONTRACT}
 
 SHORT-FORM RULES:
-- First segment: extremely compelling hook text
-- Segment duration 1.0–1.5 seconds; visual change every segment
-- Each text segment: 3-8 words MAX, TTS-safe (no emoji)
+- First segment: extremely compelling hook text (headline_bold + impact_scale)
+- Segment duration 1.0–1.5 seconds; visual change every segment (pattern interrupt)
+- Each text segment: 4-6 words MAX, TTS-safe (no emoji)
 - total_duration_seconds must equal the sum of segment durations
 - End with a helpful CTA to check price/details if the product fits their needs
 

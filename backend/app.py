@@ -427,6 +427,24 @@ def _youtube_package_ok(path: Path) -> bool:
     return bool(seo_title) and not data.get("_shadowcast_fallback", False)
 
 
+def _script_ready_for_render(script: dict) -> tuple[bool, str]:
+    """Fail-fast before MoviePy: require speakable overlay segments."""
+    if not isinstance(script, dict):
+        return False, "script is not an object"
+    segments: list = []
+    if isinstance(script.get("segments"), list):
+        segments.extend(script["segments"])
+    for chapter in script.get("chapters") or []:
+        if isinstance(chapter, dict) and isinstance(chapter.get("segments"), list):
+            segments.extend(chapter["segments"])
+    if not segments:
+        return False, "script has no segments"
+    texts = [str(s.get("text") or "").strip() for s in segments if isinstance(s, dict)]
+    if not any(texts):
+        return False, "script segments have empty text"
+    return True, ""
+
+
 def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[List[str]] = None) -> bool:
     try:
         file_ok = path.is_file() and path.stat().st_size > 0
@@ -1159,6 +1177,17 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             _save_job(job_id)
 
             try:
+                ready, ready_detail = _script_ready_for_render(scripts_data[fmt])
+                if not ready:
+                    job["errors"].append(
+                        f"[{product['product_name']}] Video ({hook_type} {fmt}): "
+                        f"fail-fast before render — {ready_detail}"
+                    )
+                    step += 1
+                    job["progress"] = int(step / total_steps * 100)
+                    _save_job(job_id)
+                    continue
+
                 render_options = {
                     "product_name": product.get("product_name", ""),
                     "price": product.get("price", ""),
