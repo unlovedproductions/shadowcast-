@@ -74,6 +74,9 @@ def _merge_youtube_research(product: dict, research: dict) -> dict:
         "recommended_tags": tags[:20],
         "recommended_titles": titles[:5],
         "question_keywords": (research.get("question_keywords") or [])[:10],
+        "title_angles": (research.get("title_angles") or [])[:8],
+        "content_gap_ideas": (research.get("content_gap_ideas") or [])[:6],
+        "data_api_titles": (research.get("data_api_titles") or [])[:5],
     }
     if not tags and not titles:
         _append_warning(out, "YouTube research returned no tags or titles.")

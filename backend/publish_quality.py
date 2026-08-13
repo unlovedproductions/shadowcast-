@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -324,6 +325,58 @@ def evaluate_publish_quality(
                 "detail": "image_url missing — thumbs/product stills will be weaker",
             }
         )
+
+    if thumbnail_path:
+        thumb = Path(thumbnail_path)
+        # Prefer auto best-contrast pick already done by resolve_job_assets; flag dense overlay text.
+        # Packaging truth: long thumb copy often means clickbait mismatch risk.
+        # (Detailed package fields are optional — only warn when sidecar JSON sits beside video.)
+        pkg_candidates = list(path.parent.glob("*_youtube_package.json")) if path.exists() else []
+        if pkg_candidates:
+            try:
+                pkg = json.loads(pkg_candidates[0].read_text(encoding="utf-8"))
+                primary = str((pkg or {}).get("thumbnail_text_primary") or "").strip()
+                primary_words = len(primary.split()) if primary else 0
+                if primary_words > 6:
+                    checks.append(
+                        {
+                            "id": "thumb_packaging",
+                            "status": "WARN",
+                            "detail": f"thumbnail_text_primary has {primary_words} words (keep ≤6 for billboard readability)",
+                        }
+                    )
+                elif primary:
+                    checks.append(
+                        {
+                            "id": "thumb_packaging",
+                            "status": "PASS",
+                            "detail": "thumbnail packaging looks concise; deliver on title promise in first seconds",
+                        }
+                    )
+                else:
+                    checks.append(
+                        {
+                            "id": "thumb_packaging",
+                            "status": "WARN",
+                            "detail": "youtube package missing thumbnail_text_primary",
+                        }
+                    )
+            except Exception:
+                checks.append(
+                    {
+                        "id": "thumb_packaging",
+                        "status": "WARN",
+                        "detail": "Could not read youtube package for thumb packaging check",
+                    }
+                )
+        elif thumb.exists():
+            checks.append(
+                {
+                    "id": "thumb_packaging",
+                    "status": "WARN",
+                    "detail": "Thumbnail file present but no youtube package for packaging check",
+                }
+            )
 
     statuses = {c["status"] for c in checks}
     if "FAIL" in statuses:

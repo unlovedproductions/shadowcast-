@@ -369,6 +369,65 @@ def _ensure_honest_review_balance(script: dict, product_info: dict) -> None:
         )
 
 
+def _clamp_overlay_text(text: str, max_words: int) -> str:
+    words = [w for w in str(text or "").split() if w.strip()]
+    if len(words) <= max_words:
+        return " ".join(words)
+    return " ".join(words[:max_words])
+
+
+def _apply_kinetic_presets(script: dict) -> None:
+    """Short-form retention presets: tight overlays, beat cadence, strong first frame."""
+    fmt = str(script.get("format") or "").strip()
+    is_short = fmt == "short_form" or ("segments" in script and "chapters" not in script)
+    max_words = 6 if is_short else 12
+    min_dur = 1.0 if is_short else 3.0
+    max_dur = 1.5 if is_short else 5.0
+
+    first = True
+    for segments in _iter_segment_lists(script):
+        for seg in segments:
+            if not isinstance(seg, dict):
+                continue
+            text = str(seg.get("text") or "").strip()
+            if text and not seg.get("layout"):
+                clamped = _clamp_overlay_text(text, max_words)
+                if clamped != text:
+                    seg["text"] = clamped
+            try:
+                dur = float(seg.get("duration") or 0)
+            except (TypeError, ValueError):
+                dur = 0.0
+            if dur > 0:
+                seg["duration"] = max(min_dur, min(max_dur, dur))
+            if first and not seg.get("layout"):
+                style = str(seg.get("text_style") or "").strip()
+                if style not in (
+                    "headline_bold",
+                    "question",
+                    "stat_number",
+                    "accent_pop",
+                    "verdict",
+                    "cta_button",
+                ):
+                    seg["text_style"] = "headline_bold"
+                anim = str(seg.get("animation") or "").strip()
+                if anim not in ("impact_scale", "pop_in", "zoom_in"):
+                    seg["animation"] = "impact_scale"
+                first = False
+
+    # Keep total_duration_seconds honest after clamps
+    total = 0.0
+    for segments in _iter_segment_lists(script):
+        for seg in segments:
+            try:
+                total += float(seg.get("duration") or 0)
+            except (TypeError, ValueError):
+                pass
+    if total > 0:
+        script["total_duration_seconds"] = round(total, 2)
+
+
 def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     """Inject layout segments and fix text_style aliases after LLM generation."""
     enriched = copy.deepcopy(script)
@@ -389,4 +448,5 @@ def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     elif style == "honest_review":
         _ensure_honest_review_balance(enriched, product_info)
 
+    _apply_kinetic_presets(enriched)
     return enriched

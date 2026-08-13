@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from script_postprocessor import enrich_script
+from script_postprocessor import _apply_kinetic_presets, enrich_script
 
 
 PRODUCT = {
@@ -103,3 +103,32 @@ def test_worth_it_or_waste_verdict_styling():
         for seg in chapter["segments"]
     ]
     assert verdict_styles[0] == "verdict"
+
+
+def test_kinetic_presets_clamp_short_form_words_and_duration():
+    verbose = {
+        "format": "short_form",
+        "segments": [
+            {
+                "segment_id": 1,
+                "text": "This is way too many words for a short overlay",
+                "text_style": "subtitle",
+                "animation": "fade_in",
+                "duration": 3.0,
+            },
+            {
+                "segment_id": 2,
+                "text": "Still fine here",
+                "text_style": "pros",
+                "duration": 0.5,
+            },
+        ],
+    }
+    _apply_kinetic_presets(verbose)
+    first, second = verbose["segments"][0], verbose["segments"][1]
+    assert len(first["text"].split()) <= 6
+    assert first["duration"] == 1.5
+    assert first["text_style"] == "headline_bold"
+    assert first["animation"] == "impact_scale"
+    assert second["duration"] == 1.0
+    assert verbose["total_duration_seconds"] == 2.5
