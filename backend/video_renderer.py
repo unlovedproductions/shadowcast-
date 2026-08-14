@@ -331,6 +331,7 @@ def _load_voiceover_array(
     voice: str | None,
     render_warnings=None,
     audio_driven: bool = True,
+    product_name: str = "",
 ):
     """Generate TTS for script segments and return a float32 numpy array, or None.
 
@@ -340,7 +341,12 @@ def _load_voiceover_array(
     try:
         vo_dir = os.path.dirname(output_path) or "."
         vo_path, _timing = generate_voiceover_for_script(
-            script, vo_dir, provider=provider, voice=voice, audio_driven=audio_driven
+            script,
+            vo_dir,
+            provider=provider,
+            voice=voice,
+            audio_driven=audio_driven,
+            product_name=product_name or "",
         )
         if not vo_path or not os.path.exists(vo_path):
             if render_warnings is not None:
@@ -382,6 +388,7 @@ def _prepare_tts_before_render(
     tts_provider: str,
     tts_voice: str | None,
     render_warnings: list | None,
+    product_name: str = "",
 ):
     """Run TTS first so segment durations drive the visual timeline."""
     if not use_tts:
@@ -393,6 +400,7 @@ def _prepare_tts_before_render(
         tts_voice,
         render_warnings,
         audio_driven=True,
+        product_name=product_name or "",
     )
     if voiceover_array is None and render_warnings is not None:
         render_warnings.append("Video rendered without TTS voiceover")
@@ -962,7 +970,13 @@ def _render_short_form_video_impl(
 
     # TTS-first: measure speech and rewrite segment durations before timeline/clips.
     voiceover_array = _prepare_tts_before_render(
-        script, output_path, use_tts, tts_provider, tts_voice, render_warnings
+        script,
+        output_path,
+        use_tts,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        product_name=product_name or "",
     )
 
     accent_color = BRAND_ACCENT
@@ -1252,7 +1266,13 @@ def _render_long_form_video_impl(
 
     # TTS-first: measure speech and rewrite segment durations before timeline/clips.
     voiceover_array = _prepare_tts_before_render(
-        script, output_path, use_tts, tts_provider, tts_voice, render_warnings
+        script,
+        output_path,
+        use_tts,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        product_name=product_name or "",
     )
 
     accent_color = BRAND_ACCENT

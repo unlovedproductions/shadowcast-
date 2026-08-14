@@ -22,6 +22,7 @@ import numpy as np
 from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
 from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
 
+from tts_pronounce import prepare_tts_text
 from video_claims import (
     LONG_CHAPTER_CARD_SECONDS,
     LONG_COMMENT_PROMPT_SECONDS,
@@ -43,6 +44,43 @@ _KOKORO_VOICES = os.path.join(_KOKORO_ASSETS_DIR, "voices-v1.0.bin")
 _DEFAULT_INTER_SEGMENT_PAUSE = 0.35
 _CROSSFADE_SECONDS = 0.04
 _MIN_SEGMENT_DURATION = 0.12
+
+
+def _crossfade_seconds() -> float:
+    raw = os.getenv("SHADOWCAST_TTS_CROSSFADE", str(_CROSSFADE_SECONDS))
+    try:
+        fade = float(raw or _CROSSFADE_SECONDS)
+    except (TypeError, ValueError):
+        fade = _CROSSFADE_SECONDS
+    return max(0.0, min(fade, 0.12))
+
+
+def _estimate_rms(clip) -> float:
+    """Cheap RMS for seam energy matching (downsample ok)."""
+    try:
+        fps = int(getattr(clip, "fps", 44100) or 44100)
+        arr = clip.to_soundarray(fps=min(fps, 22050))
+    except Exception:
+        return 0.0
+    if arr is None:
+        return 0.0
+    flat = np.asarray(arr, dtype=np.float64)
+    if flat.size == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(np.square(flat))))
+
+
+def _match_clip_rms(clip, target_rms: float):
+    """Scale clip toward target RMS for energy continuity across segments."""
+    if target_rms <= 0:
+        return clip
+    rms = _estimate_rms(clip)
+    if rms < 1e-6:
+        return clip
+    gain = min(3.0, max(0.35, target_rms / rms))
+    if abs(gain - 1.0) < 0.05:
+        return clip
+    return clip.with_volume_scaled(gain)
 
 
 def transition_gaps_for_segments(segments: list) -> list[float]:
@@ -308,16 +346,22 @@ def _inter_segment_pause() -> float:
     return max(0.0, min(pause, 1.0))
 
 
-def _with_edge_fades(clip, fade_seconds: float = _CROSSFADE_SECONDS):
+def _with_edge_fades(clip, fade_seconds: float | None = None):
     """Micro fades reduce click/seam artifacts when concatenating TTS segments."""
-    fade = max(0.0, float(fade_seconds or 0.0))
+    fade = _crossfade_seconds() if fade_seconds is None else max(0.0, float(fade_seconds or 0.0))
     if fade <= 0 or clip.duration <= fade * 2:
         return clip
     return clip.with_effects([AudioFadeIn(fade), AudioFadeOut(fade)])
 
 
-def generate_segment_audio(text: str, output_path: str,
-                           provider: str = "auto", voice: str = None) -> str:
+def generate_segment_audio(
+    text: str,
+    output_path: str,
+    provider: str = "auto",
+    voice: str = None,
+    aliases: dict | None = None,
+    product_names: list[str] | None = None,
+) -> str:
     """Generate audio for a single text segment."""
     if provider == "auto":
         provider = get_best_provider()
@@ -329,9 +373,12 @@ def generate_segment_audio(text: str, output_path: str,
     if not generator:
         raise ValueError(f"Unknown TTS provider: {provider}")
 
-    # Clean text of emoji
-    clean_text = "".join(c for c in text if ord(c) < 0x1F600 or ord(c) > 0x1F9FF)
-    clean_text = clean_text.strip()
+    clean_text = prepare_tts_text(
+        text,
+        provider=provider,
+        aliases=aliases,
+        product_names=product_names,
+    )
     if not clean_text:
         return output_path
 
@@ -426,7 +473,9 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                                      write_timing: bool = True,
                                      transition_gaps: list | None = None,
                                      chrome_gaps: list | None = None,
-                                     leading_chrome: float = 0.0) -> tuple[str, list]:
+                                     leading_chrome: float = 0.0,
+                                     aliases: dict | None = None,
+                                     product_names: list[str] | None = None) -> tuple[str, list]:
     """
     Generate a single voiceover from script segments.
 
@@ -456,6 +505,7 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
     leading_pending = leading
     gaps = transition_gaps if transition_gaps is not None else transition_gaps_for_segments(segments)
     chrome = chrome_gaps if chrome_gaps is not None else [0.0] * len(segments)
+    energy_target: float | None = None
 
     try:
         for i, seg in enumerate(segments):
@@ -469,7 +519,14 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             tmp.close()
 
             try:
-                generate_segment_audio(text, tmp.name, provider=provider, voice=voice)
+                generate_segment_audio(
+                    text,
+                    tmp.name,
+                    provider=provider,
+                    voice=voice,
+                    aliases=aliases,
+                    product_names=product_names,
+                )
                 clip = AudioFileClip(tmp.name)
             except Exception as e:
                 print(f"TTS segment {i} failed ({provider}): {e}")
@@ -479,7 +536,13 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                         fallback_tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                         temp_files.append(fallback_tmp.name)
                         fallback_tmp.close()
-                        _generate_gtts(text, fallback_tmp.name)
+                        speakable = prepare_tts_text(
+                            text,
+                            provider="gtts",
+                            aliases=aliases,
+                            product_names=product_names,
+                        )
+                        _generate_gtts(speakable or text, fallback_tmp.name)
                         clip = AudioFileClip(fallback_tmp.name)
                         print(f"  Fell back to gTTS for segment {i}")
                     except Exception as e2:
@@ -497,6 +560,11 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
 
             fps = int(getattr(clip, "fps", 44100) or 44100)
             nchannels = int(getattr(clip, "nchannels", 2) or 2)
+            rms = _estimate_rms(clip)
+            if energy_target is None and rms > 0:
+                energy_target = rms
+            elif energy_target is not None and rms > 0:
+                clip = _match_clip_rms(clip, energy_target)
             if leading_pending > 0:
                 lead_silence = _silence_clip(leading_pending, fps, nchannels=nchannels)
                 if lead_silence:
@@ -640,7 +708,10 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
 def generate_voiceover_for_script(script: dict, output_dir: str,
                                    provider: str = "auto",
                                    voice: str = None,
-                                   audio_driven: bool = True) -> tuple[str, list]:
+                                   audio_driven: bool = True,
+                                   product_name: str = "",
+                                   product_names: list[str] | None = None,
+                                   aliases: dict | None = None) -> tuple[str, list]:
     """Generate voiceover for a complete script (short or long form).
 
     Returns (audio_path, timing_rows). Mutates script segment durations when
@@ -659,6 +730,11 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
     else:
         segments = script.get("segments", [])
 
+    names = [str(n).strip() for n in (product_names or []) if str(n).strip()]
+    pname = str(product_name or "").strip()
+    if pname and pname not in names:
+        names.insert(0, pname)
+
     audio_path = os.path.join(output_dir, f"{hook_type}_{fmt}_voiceover.mp3")
     audio_path, timing_rows = generate_voiceover_for_segments(
         segments,
@@ -671,6 +747,8 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
         transition_gaps=transition_gaps_for_script(script),
         chrome_gaps=chrome_gaps_for_script(script),
         leading_chrome=leading_chrome_for_script(script),
+        aliases=aliases,
+        product_names=names or None,
     )
     if audio_driven and timing_rows:
         apply_timing_to_script(script, timing_rows)

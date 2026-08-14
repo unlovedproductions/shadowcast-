@@ -33,7 +33,7 @@ def test_audio_driven_sets_duration_from_speech_plus_pause(tmp_path, monkeypatch
 
     durations = [0.80, 1.20]
 
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(text, output_path, provider="auto", voice=None, **_kwargs):
         # Alternate fixed lengths by call order via text length heuristic
         dur = durations[0] if "first" in text else durations[1]
         _write_silence_wav(output_path, dur)
@@ -70,7 +70,7 @@ def test_audio_driven_sets_duration_from_speech_plus_pause(tmp_path, monkeypatch
 def test_legacy_mode_can_trim_to_llm_slot(tmp_path, monkeypatch):
     monkeypatch.setenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.08")
 
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(text, output_path, provider="auto", voice=None, **_kwargs):
         _write_silence_wav(output_path, 2.0)
         return output_path
 
