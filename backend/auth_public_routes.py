@@ -23,6 +23,7 @@ PUBLIC_PATHS = {
     "/api/scrape-amazon",
     "/api/youtube-research",
     "/api/readiness",
+    "/api/media-library",
     "/api/openapi.json",
 }
 

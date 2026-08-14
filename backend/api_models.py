@@ -151,7 +151,10 @@ class ReadinessChecks(BaseModel):
     tts_providers: Dict[str, bool]
     music_beds: bool = False
     music_bed_moods: List[str] = Field(default_factory=list)
+    music_beds_missing: List[str] = Field(default_factory=list)
     broll_pack: bool = False
+    broll_tags: List[str] = Field(default_factory=list)
+    broll_missing: List[str] = Field(default_factory=list)
 
 
 class ReadinessResponse(BaseModel):
@@ -160,6 +163,30 @@ class ReadinessResponse(BaseModel):
     warnings: List[str]
     checks: ReadinessChecks
     default_video_preset: str
+
+
+class MediaLibraryBucket(BaseModel):
+    expected_moods: Optional[List[str]] = None
+    expected_tags: Optional[List[str]] = None
+    present: List[str] = Field(default_factory=list)
+    missing: List[str] = Field(default_factory=list)
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class MediaLibrarySummary(BaseModel):
+    music_present_count: int = 0
+    music_missing_count: int = 0
+    broll_present_count: int = 0
+    broll_missing_count: int = 0
+    complete: bool = False
+
+
+class MediaLibraryResponse(BaseModel):
+    query: Optional[str] = None
+    fetch_script: str = "scripts/fetch_operator_media.sh"
+    music: MediaLibraryBucket
+    broll: MediaLibraryBucket
+    summary: MediaLibrarySummary
 
 
 class CurrentProviderConfig(BaseModel):

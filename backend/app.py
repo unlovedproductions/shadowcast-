@@ -58,6 +58,7 @@ from api_models import (
     LLMModelsResponse,
     LLMTestResponse,
     MetricRequest,
+    MediaLibraryResponse,
     ProductInfo,
     ProvidersResponse,
     ReadinessChecks,
@@ -109,6 +110,7 @@ from bg_generator import generate_background, get_style_for_content, apply_vigne
 from video_claim_audit import audit_output
 from openapi_customize import customize_openapi
 from broll import any_broll_files
+from media_library import media_library_snapshot
 from sound_design import music_bed_moods, music_beds_present
 from auth_public_routes import is_public_path
 
@@ -1651,13 +1653,25 @@ def get_readiness():
     beds_ok = music_beds_present()
     bed_moods = music_bed_moods()
     broll_ok = any_broll_files()
+    library = media_library_snapshot()
+    music_missing = list(library.get("music", {}).get("missing") or [])
+    broll_tags = list(library.get("broll", {}).get("present") or [])
+    broll_missing = list(library.get("broll", {}).get("missing") or [])
     if not beds_ok:
         warnings.append(
             "No royalty-free music beds under backend/assets/music/. Run scripts/fetch_operator_media.sh (synth fallback sounds weak)."
         )
+    elif music_missing:
+        warnings.append(
+            f"Music beds incomplete — missing moods: {', '.join(music_missing)}. See GET /api/media-library."
+        )
     if not broll_ok:
         warnings.append(
             "No B-roll clips under backend/assets/broll/. Run scripts/fetch_operator_media.sh for long-form pads."
+        )
+    elif broll_missing:
+        warnings.append(
+            f"B-roll pack incomplete — missing: {', '.join(broll_missing)}. See GET /api/media-library."
         )
 
     return ReadinessResponse(
@@ -1678,10 +1692,24 @@ def get_readiness():
             },
             music_beds=beds_ok,
             music_bed_moods=bed_moods,
+            music_beds_missing=music_missing,
             broll_pack=broll_ok,
+            broll_tags=broll_tags,
+            broll_missing=broll_missing,
         ),
         default_video_preset=resolve_video_preset(None),
     )
+
+
+@app.get(
+    "/api/media-library",
+    response_model=MediaLibraryResponse,
+    responses=_COMMON_ERROR_RESPONSES,
+    tags=["ops"],
+)
+def get_media_library(q: str = ""):
+    """List/tag/search operator music beds and B-roll clips (findability)."""
+    return media_library_snapshot(query=q or None)
 
 
 @app.get("/api/providers", response_model=ProvidersResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
