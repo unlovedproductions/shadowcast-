@@ -26,18 +26,26 @@ except ImportError:  # pragma: no cover
 ASSETS_CACHE = Path(__file__).resolve().parent / "assets" / "product_cache"
 
 _HERO_LAYOUTS = frozenset({"winner_reveal", "price_compare"})
-_HERO_TEXT_STYLES = frozenset({"cta_button", "headline_bold", "verdict", "accent_pop"})
+_HERO_TEXT_STYLES = frozenset(
+    {"cta_button", "headline_bold", "verdict", "accent_pop", "stat_number"}
+)
+# Show product still every Nth beat for pattern interrupt (index 0 already hooks).
+_HERO_CADENCE = 3
 
 
 def segment_wants_product_hero(seg: dict | None, *, segment_index: int = 0) -> bool:
-    """True for hook (first), CTA/verdict styles, and comparison hero layouts."""
+    """True for hook (first), CTA/verdict styles, cadence beats, and comparison hero layouts."""
     if not seg:
-        return segment_index == 0
+        return segment_index == 0 or (
+            segment_index > 0 and segment_index % _HERO_CADENCE == 0
+        )
     layout = str(seg.get("layout") or "")
     if layout in _HERO_LAYOUTS:
         return True
     style = str(seg.get("text_style") or "")
     if style in _HERO_TEXT_STYLES:
+        return True
+    if segment_index > 0 and segment_index % _HERO_CADENCE == 0:
         return True
     return segment_index == 0
 
