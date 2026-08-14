@@ -8,13 +8,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 SPEC = ROOT / "docs" / "openapi.json"
-VENV_PY = BACKEND / ".venv" / "bin" / "python"
+
+
+def _resolve_python() -> str:
+    """Prefer repo-root .venv (has full deps); fall back to backend/.venv, then sys."""
+    candidates = (
+        ROOT / ".venv" / "bin" / "python",
+        BACKEND / ".venv" / "bin" / "python",
+    )
+    for path in candidates:
+        if path.is_file() or path.is_symlink():
+            return str(path)
+    return sys.executable
 
 
 def main() -> int:
-    python = VENV_PY if VENV_PY.exists() else sys.executable
+    python = _resolve_python()
     export = subprocess.run(
-        [str(python), str(BACKEND / "export_openapi.py"), "-o", str(SPEC)],
+        [python, str(BACKEND / "export_openapi.py"), "-o", str(SPEC)],
         cwd=str(BACKEND),
         capture_output=True,
         text=True,
