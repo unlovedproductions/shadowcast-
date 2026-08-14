@@ -18,9 +18,11 @@ from product_media import (
 
 def test_segment_wants_product_hero_hook_and_layouts():
     assert segment_wants_product_hero({}, segment_index=0) is True
-    assert segment_wants_product_hero({"text_style": "subtitle"}, segment_index=3) is False
+    assert segment_wants_product_hero({"text_style": "subtitle"}, segment_index=1) is False
+    assert segment_wants_product_hero({"text_style": "subtitle"}, segment_index=3) is True
     assert segment_wants_product_hero({"layout": "winner_reveal"}, segment_index=5) is True
     assert segment_wants_product_hero({"text_style": "cta_button"}, segment_index=2) is True
+    assert segment_wants_product_hero({"text_style": "stat_number"}, segment_index=4) is True
 
 
 def test_paste_and_thumbnail_hero(tmp_path):

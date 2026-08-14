@@ -10,9 +10,11 @@ import json
 import math
 import os
 import random
+import subprocess
 import textwrap
 from contextlib import contextmanager
 from io import BytesIO
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -94,9 +96,21 @@ _VALID_VIDEO_PRESETS = {
     "ultrafast", "superfast", "veryfast", "faster", "fast",
     "medium", "slow", "slower", "veryslow",
 }
+_NVENC_PRESET_MAP = {
+    "ultrafast": "p1",
+    "superfast": "p1",
+    "veryfast": "p2",
+    "faster": "p3",
+    "fast": "p4",
+    "medium": "p4",
+    "slow": "p5",
+    "slower": "p6",
+    "veryslow": "p7",
+}
 VIDEO_RENDER_PRESET = os.getenv("SHADOWCAST_VIDEO_PRESET", "medium").strip().lower()
 if VIDEO_RENDER_PRESET not in _VALID_VIDEO_PRESETS:
     VIDEO_RENDER_PRESET = "medium"
+_nvenc_available: bool | None = None
 
 
 def resolve_video_preset(preset: str | None = None) -> str:
@@ -104,6 +118,53 @@ def resolve_video_preset(preset: str | None = None) -> str:
     if candidate not in _VALID_VIDEO_PRESETS:
         return VIDEO_RENDER_PRESET
     return candidate
+
+
+def ffmpeg_has_nvenc() -> bool:
+    """True when local ffmpeg lists h264_nvenc (cached)."""
+    global _nvenc_available
+    if _nvenc_available is not None:
+        return _nvenc_available
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        blob = f"{proc.stdout or ''}{proc.stderr or ''}"
+        _nvenc_available = "h264_nvenc" in blob
+    except Exception:
+        _nvenc_available = False
+    return _nvenc_available
+
+
+def resolve_write_videofile_kwargs(preset: str | None = None) -> dict[str, Any]:
+    """
+    MoviePy write_videofile kwargs for final encode.
+
+    SHADOWCAST_FFMPEG_CODEC=auto|libx264|h264_nvenc
+    auto uses NVENC when ffmpeg reports h264_nvenc.
+    """
+    render_preset = resolve_video_preset(preset)
+    codec_pref = os.getenv("SHADOWCAST_FFMPEG_CODEC", "auto").strip().lower()
+    force_software = codec_pref in ("libx264", "x264", "software", "cpu")
+    force_nvenc = codec_pref in ("h264_nvenc", "nvenc")
+    use_nvenc = force_nvenc or (not force_software and codec_pref in ("", "auto") and ffmpeg_has_nvenc())
+    if use_nvenc:
+        return {
+            "codec": "h264_nvenc",
+            "preset": _NVENC_PRESET_MAP.get(render_preset, "p4"),
+            "ffmpeg_params": ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-pix_fmt", "yuv420p"],
+            "threads": 4,
+        }
+    return {
+        "codec": "libx264",
+        "preset": render_preset,
+        "ffmpeg_params": ["-pix_fmt", "yuv420p"],
+        "threads": 4,
+    }
 
 FONT_BOLD = os.path.join(ASSETS_DIR, "Montserrat-Bold.ttf")
 FONT_EXTRABOLD = os.path.join(ASSETS_DIR, "Montserrat-ExtraBold.ttf")
@@ -1040,14 +1101,13 @@ def _render_short_form_video_impl(
     video_only_path = output_path.replace(".mp4", "_video_only.mp4")
 
     try:
+        encode_kwargs = resolve_write_videofile_kwargs(render_preset)
         final_with_overlays.write_videofile(
             video_only_path,
             fps=FPS,
-            codec="libx264",
             audio=False,
-            preset=render_preset,
-            threads=4,
             logger=None,
+            **encode_kwargs,
         )
 
         if not audio_enabled and not use_tts:
@@ -1382,14 +1442,13 @@ def _render_long_form_video_impl(
     video_only_path = output_path.replace(".mp4", "_video_only.mp4")
 
     try:
+        encode_kwargs = resolve_write_videofile_kwargs(render_preset)
         final_with_overlays.write_videofile(
             video_only_path,
             fps=FPS,
-            codec="libx264",
             audio=False,
-            preset=render_preset,
-            threads=4,
             logger=None,
+            **encode_kwargs,
         )
 
         if not audio_enabled and not use_tts:
