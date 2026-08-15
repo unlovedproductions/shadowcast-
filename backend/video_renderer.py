@@ -10,6 +10,7 @@ import json
 import math
 import os
 import random
+import shutil
 import subprocess
 import textwrap
 from contextlib import contextmanager
@@ -27,6 +28,7 @@ from moviepy import (
     concatenate_videoclips,
     vfx,
 )
+from moviepy import config as moviepy_config
 
 # Import new modules
 from brand_overlays import (
@@ -120,23 +122,71 @@ def resolve_video_preset(preset: str | None = None) -> str:
     return candidate
 
 
-def ffmpeg_has_nvenc() -> bool:
-    """True when local ffmpeg lists h264_nvenc (cached)."""
-    global _nvenc_available
-    if _nvenc_available is not None:
-        return _nvenc_available
+def moviepy_ffmpeg_binary() -> str:
+    """FFmpeg binary MoviePy will invoke for encode."""
+    binary = getattr(moviepy_config, "FFMPEG_BINARY", None)
+    if binary and binary not in ("unset", "ffmpeg-imageio", "auto-detect"):
+        return binary
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
+def system_ffmpeg_binary() -> str | None:
+    return shutil.which("ffmpeg")
+
+
+def ffmpeg_lists_nvenc(binary: str) -> bool:
+    """True when the given ffmpeg binary lists the h264_nvenc encoder."""
     try:
         proc = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
+            [binary, "-hide_banner", "-encoders"],
             capture_output=True,
             text=True,
             timeout=10,
             check=False,
         )
         blob = f"{proc.stdout or ''}{proc.stderr or ''}"
-        _nvenc_available = "h264_nvenc" in blob
+        return "h264_nvenc" in blob
     except Exception:
-        _nvenc_available = False
+        return False
+
+
+def bind_moviepy_ffmpeg_binary(binary: str) -> None:
+    """Point MoviePy at a specific ffmpeg (needed when imageio's build lacks NVENC)."""
+    os.environ["FFMPEG_BINARY"] = binary
+    moviepy_config.FFMPEG_BINARY = binary
+
+
+def ensure_moviepy_nvenc_ffmpeg() -> bool:
+    """
+    Ensure MoviePy's ffmpeg can do h264_nvenc.
+
+    imageio's bundled ffmpeg often lacks NVENC while system /usr/bin/ffmpeg has it.
+    Rebind MoviePy to the system binary when that mismatch would break encode.
+    """
+    current = moviepy_ffmpeg_binary()
+    if ffmpeg_lists_nvenc(current):
+        return True
+    system = system_ffmpeg_binary()
+    if not system:
+        return False
+    try:
+        same = os.path.samefile(current, system)
+    except OSError:
+        same = os.path.abspath(current) == os.path.abspath(system)
+    if same:
+        return False
+    if not ffmpeg_lists_nvenc(system):
+        return False
+    bind_moviepy_ffmpeg_binary(system)
+    return True
+
+
+def ffmpeg_has_nvenc() -> bool:
+    """True when the ffmpeg MoviePy will use lists h264_nvenc (cached)."""
+    global _nvenc_available
+    if _nvenc_available is not None:
+        return _nvenc_available
+    _nvenc_available = ensure_moviepy_nvenc_ffmpeg()
     return _nvenc_available
 
 
@@ -145,13 +195,18 @@ def resolve_write_videofile_kwargs(preset: str | None = None) -> dict[str, Any]:
     MoviePy write_videofile kwargs for final encode.
 
     SHADOWCAST_FFMPEG_CODEC=auto|libx264|h264_nvenc
-    auto uses NVENC when ffmpeg reports h264_nvenc.
+    auto uses NVENC when the MoviePy ffmpeg reports h264_nvenc
+    (rebinding to system ffmpeg when the imageio bundle lacks it).
     """
     render_preset = resolve_video_preset(preset)
     codec_pref = os.getenv("SHADOWCAST_FFMPEG_CODEC", "auto").strip().lower()
     force_software = codec_pref in ("libx264", "x264", "software", "cpu")
     force_nvenc = codec_pref in ("h264_nvenc", "nvenc")
-    use_nvenc = force_nvenc or (not force_software and codec_pref in ("", "auto") and ffmpeg_has_nvenc())
+    nvenc_ready = False if force_software else ffmpeg_has_nvenc()
+    if force_nvenc and not nvenc_ready:
+        # Best-effort rebind even when the cached probe said no.
+        ensure_moviepy_nvenc_ffmpeg()
+    use_nvenc = force_nvenc or (not force_software and codec_pref in ("", "auto") and nvenc_ready)
     if use_nvenc:
         return {
             "codec": "h264_nvenc",
