@@ -128,6 +128,30 @@ def render_spec_comparison(width, height, spec_name, value_a, value_b, winner="a
 
     return np.array(img)
 
+def normalize_scorecard_row(score_item: dict) -> tuple[str, int, int] | None:
+    """
+    Normalize a scorecard row to (category, score_a, score_b).
+
+    Accepts either numeric score_a/score_b or winner-only schema from prompts/postprocessor.
+    """
+    if not isinstance(score_item, dict):
+        return None
+    category = str(score_item.get("category") or "").strip() or "Category"
+    raw_a = score_item.get("score_a")
+    raw_b = score_item.get("score_b")
+    try:
+        if raw_a is not None and raw_b is not None:
+            return category, int(raw_a), int(raw_b)
+    except (TypeError, ValueError):
+        pass
+    winner = str(score_item.get("winner") or "").strip().lower()
+    if winner == "a":
+        return category, 9, 6
+    if winner == "b":
+        return category, 6, 9
+    return category, 7, 7
+
+
 def render_scorecard(width, height, product_a_name, product_b_name, scores, accent_color=DARK_PINK):
     img = Image.new("RGB", (width, height), NEAR_BLACK)
     draw = ImageDraw.Draw(img)
@@ -160,10 +184,11 @@ def render_scorecard(width, height, product_a_name, product_b_name, scores, acce
     total_score_b = 0
 
     # Render each score category
-    for score_item in scores:
-        category = score_item["category"]
-        score_a = score_item["score_a"]
-        score_b = score_item["score_b"]
+    for score_item in scores or []:
+        normalized = normalize_scorecard_row(score_item)
+        if normalized is None:
+            continue
+        category, score_a, score_b = normalized
 
         total_score_a += score_a
         total_score_b += score_b
