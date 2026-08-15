@@ -108,6 +108,7 @@ from publish_quality import evaluate_publish_quality
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
+from video_claims import FORMAT_CLAIMS, LONG_FORM, SHORT_FORM, sum_segment_durations
 from openapi_customize import customize_openapi
 from broll import any_broll_files
 from media_library import media_library_snapshot
@@ -444,6 +445,14 @@ def _script_ready_for_render(script: dict) -> tuple[bool, str]:
     texts = [str(s.get("text") or "").strip() for s in segments if isinstance(s, dict)]
     if not any(texts):
         return False, "script segments have empty text"
+    fmt = str(script.get("format") or "").strip()
+    if not fmt:
+        fmt = LONG_FORM if script.get("chapters") else SHORT_FORM
+    if fmt == LONG_FORM:
+        total = sum_segment_durations(script, LONG_FORM)
+        min_s = FORMAT_CLAIMS[LONG_FORM].min_duration_seconds
+        if total < min_s:
+            return False, f"long_form duration {total:.1f}s below {min_s:.0f}s floor"
     return True, ""
 
 

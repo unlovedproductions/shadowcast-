@@ -42,22 +42,17 @@ def any_broll_files() -> bool:
 
 
 def resolve_broll_path(section_type: str | None = None) -> str | None:
-    """Return best matching clip path for a chapter section, or None."""
+    """Return a section-tagged clip path, or None. Never fall through to an unrelated file."""
     root = broll_dir()
     if not root.is_dir():
         return None
-    keys: list[str] = []
-    if section_type:
-        keys.append(str(section_type).strip().lower())
-    keys.extend(["pad", "default"])
-    for key in keys:
-        for ext in _BROLL_EXTS:
-            candidate = root / f"{key}{ext}"
-            if candidate.is_file():
-                return str(candidate)
-    for path in sorted(root.iterdir()):
-        if path.is_file() and path.suffix.lower() in _BROLL_EXTS:
-            return str(path)
+    key = str(section_type or "").strip().lower()
+    if not key:
+        return None
+    for ext in _BROLL_EXTS:
+        candidate = root / f"{key}{ext}"
+        if candidate.is_file():
+            return str(candidate)
     return None
 
 

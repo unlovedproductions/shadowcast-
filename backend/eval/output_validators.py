@@ -53,13 +53,12 @@ def check_buyer_language(text: str) -> list[str]:
 
 def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     declared = script.get("total_duration_seconds")
-    if declared is None:
-        return
-    try:
-        float(declared)
-    except (TypeError, ValueError):
-        errors.append("total_duration_seconds must be a number")
-        return
+    if declared is not None:
+        try:
+            float(declared)
+        except (TypeError, ValueError):
+            errors.append("total_duration_seconds must be a number")
+            return
     segments = list(_iter_segments(script))
     if not segments:
         return
@@ -69,6 +68,8 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     # target runtime (e.g. 240) instead of sum(duration) — rewrite, don't hard-fail.
     summed = sum_segment_durations(script, fmt)
     script["total_duration_seconds"] = round(float(summed), 3)
+    if fmt == "long_form" and summed < 120:
+        errors.append("long_form segment duration must be at least 120s")
 
 
 def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:

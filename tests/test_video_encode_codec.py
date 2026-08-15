@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import video_renderer as vr  # noqa: E402
+from moviepy import config as moviepy_config  # noqa: E402
+from moviepy.video.io import ffmpeg_writer as moviepy_ffmpeg_writer  # noqa: E402
 
 
 def test_resolve_write_videofile_kwargs_software(monkeypatch):
@@ -17,7 +20,12 @@ def test_resolve_write_videofile_kwargs_software(monkeypatch):
     kw = vr.resolve_write_videofile_kwargs("slow")
     assert kw["codec"] == "libx264"
     assert kw["preset"] == "slow"
-    assert "-pix_fmt" in kw["ffmpeg_params"]
+    params = kw["ffmpeg_params"]
+    assert params[params.index("-b:v") + 1] == "8M"
+    assert params[params.index("-minrate") + 1] == "8M"
+    assert "-pix_fmt" in params
+    assert params[params.index("-profile:v") + 1] == "high"
+    assert "bt709" in params
 
 
 def test_resolve_write_videofile_kwargs_nvenc_forced(monkeypatch):
@@ -27,7 +35,11 @@ def test_resolve_write_videofile_kwargs_nvenc_forced(monkeypatch):
     kw = vr.resolve_write_videofile_kwargs("medium")
     assert kw["codec"] == "h264_nvenc"
     assert kw["preset"] == "p4"
-    assert "-cq" in kw["ffmpeg_params"]
+    params = kw["ffmpeg_params"]
+    assert params[params.index("-rc") + 1] == "cbr"
+    assert params[params.index("-b:v") + 1] == "8M"
+    assert params[params.index("-profile:v") + 1] == "high"
+    assert "bt709" in params
 
 
 def test_resolve_write_videofile_kwargs_auto_uses_nvenc(monkeypatch):
@@ -68,3 +80,22 @@ def test_auto_falls_back_to_libx264_when_no_nvenc(monkeypatch):
     assert kw["codec"] == "libx264"
     assert kw["preset"] == "medium"
     assert vr._nvenc_available is False
+
+
+def test_bind_moviepy_ffmpeg_binary_updates_config_and_writer():
+    old_config = moviepy_config.FFMPEG_BINARY
+    old_writer = moviepy_ffmpeg_writer.FFMPEG_BINARY
+    old_env = os.environ.get("FFMPEG_BINARY")
+    target = "/usr/bin/ffmpeg-test-bind"
+    try:
+        vr.bind_moviepy_ffmpeg_binary(target)
+        assert moviepy_config.FFMPEG_BINARY == target
+        assert moviepy_ffmpeg_writer.FFMPEG_BINARY == target
+        assert os.environ["FFMPEG_BINARY"] == target
+    finally:
+        moviepy_config.FFMPEG_BINARY = old_config
+        moviepy_ffmpeg_writer.FFMPEG_BINARY = old_writer
+        if old_env is None:
+            os.environ.pop("FFMPEG_BINARY", None)
+        else:
+            os.environ["FFMPEG_BINARY"] = old_env

@@ -29,6 +29,7 @@ from moviepy import (
     vfx,
 )
 from moviepy import config as moviepy_config
+from moviepy.video.io import ffmpeg_writer as moviepy_ffmpeg_writer
 
 # Import new modules
 from brand_overlays import (
@@ -46,6 +47,7 @@ from brand_overlays import (
     lower_third_event_from_timing,
     render_shorts_caption,
     shorts_word_highlight_enabled,
+    shorts_burnin_captions_enabled,
     longform_burnin_captions_enabled,
 )
 from sound_design import (
@@ -85,7 +87,6 @@ from kinetic_effects import (
     create_shake_clip,
     create_slide_up_clip,
     create_slide_left_clip,
-    create_glitch_transition,
     create_flash_transition,
     create_swipe_transition,
     create_zoom_transition,
@@ -151,9 +152,13 @@ def ffmpeg_lists_nvenc(binary: str) -> bool:
 
 
 def bind_moviepy_ffmpeg_binary(binary: str) -> None:
-    """Point MoviePy at a specific ffmpeg (needed when imageio's build lacks NVENC)."""
+    """Point MoviePy at a specific ffmpeg (needed when imageio's build lacks NVENC).
+
+    Must update ffmpeg_writer.FFMPEG_BINARY too — that module copies the path at import.
+    """
     os.environ["FFMPEG_BINARY"] = binary
     moviepy_config.FFMPEG_BINARY = binary
+    moviepy_ffmpeg_writer.FFMPEG_BINARY = binary
 
 
 def ensure_moviepy_nvenc_ffmpeg() -> bool:
@@ -165,6 +170,9 @@ def ensure_moviepy_nvenc_ffmpeg() -> bool:
     """
     current = moviepy_ffmpeg_binary()
     if ffmpeg_lists_nvenc(current):
+        # config may already be rebound while ffmpeg_writer still holds the import-time copy
+        if getattr(moviepy_ffmpeg_writer, "FFMPEG_BINARY", None) != current:
+            bind_moviepy_ffmpeg_binary(current)
         return True
     system = system_ffmpeg_binary()
     if not system:
@@ -190,6 +198,24 @@ def ffmpeg_has_nvenc() -> bool:
     return _nvenc_available
 
 
+YOUTUBE_SDR_1080P_BITRATE = ["-b:v", "8M", "-minrate", "8M", "-maxrate", "12M", "-bufsize", "16M"]
+YOUTUBE_COLOR_PARAMS = [
+    "-pix_fmt", "yuv420p",
+    "-profile:v", "high",
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
+    "-colorspace", "bt709",
+]
+
+
+def youtube_ffmpeg_params(*, nvenc: bool) -> list[str]:
+    """YouTube-recommended 1080p30 SDR encode flags (8 Mbps floor, BT.709, High profile)."""
+    if nvenc:
+        # CQ+VBR undershoots on text cards; CBR 8M matches YouTube's 1080p30 recommendation.
+        return ["-rc", "cbr", "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M", *YOUTUBE_COLOR_PARAMS]
+    return ["-b:v", "8M", "-minrate", "8M", "-maxrate", "12M", "-bufsize", "16M", *YOUTUBE_COLOR_PARAMS]
+
+
 def resolve_write_videofile_kwargs(preset: str | None = None) -> dict[str, Any]:
     """
     MoviePy write_videofile kwargs for final encode.
@@ -211,13 +237,13 @@ def resolve_write_videofile_kwargs(preset: str | None = None) -> dict[str, Any]:
         return {
             "codec": "h264_nvenc",
             "preset": _NVENC_PRESET_MAP.get(render_preset, "p4"),
-            "ffmpeg_params": ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-pix_fmt", "yuv420p"],
+            "ffmpeg_params": youtube_ffmpeg_params(nvenc=True),
             "threads": 4,
         }
     return {
         "codec": "libx264",
         "preset": render_preset,
-        "ffmpeg_params": ["-pix_fmt", "yuv420p"],
+        "ffmpeg_params": youtube_ffmpeg_params(nvenc=False),
         "threads": 4,
     }
 
@@ -359,7 +385,7 @@ def _schedule_sfx_from_timeline(timeline: dict, is_short: bool) -> list:
             sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=amp_anim), current_time))
 
         trans_time = float(event.get("transition_at", current_time + seg_dur))
-        if trans in ("glitch", "flash"):
+        if trans == "flash":
             sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=amp_trans), trans_time - 0.2))
         elif trans == "swipe":
             sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=amp_anim), max(0.0, trans_time - 0.1)))
@@ -596,6 +622,23 @@ def create_particle_overlay(width: int, height: int, color: tuple, num_particles
     return img
 
 
+def _draw_text_mark(draw, cx: int, cy: int, size: int, *, kind: str, color: tuple) -> None:
+    """Draw a check or X mark so overlay fonts never emit tofu glyphs."""
+    r = max(8, size // 2)
+    width = max(2, size // 8)
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=width)
+    pad = int(r * 0.45)
+    if kind == "check":
+        draw.line(
+            [(cx - pad, cy), (cx - pad // 3, cy + pad), (cx + pad, cy - pad)],
+            fill=color,
+            width=width,
+        )
+        return
+    draw.line([(cx - pad, cy - pad), (cx + pad, cy + pad)], fill=color, width=width)
+    draw.line([(cx + pad, cy - pad), (cx - pad, cy + pad)], fill=color, width=width)
+
+
 def render_text_frame(
     text: str,
     width: int,
@@ -724,18 +767,18 @@ def render_text_frame(
         line_y2 = y + text_h + 20
         draw.line([(width // 4, line_y2), (3 * width // 4, line_y2)], fill=(*accent_color, 150), width=3)
     
-    # Add pros/cons indicators
-    if text_style == "pros":
-        indicator_size = font_size // 2
-        draw.text((x - indicator_size - 10, y), "✓", font=font, fill=(0, 255, 100, 255))
-    elif text_style == "cons":
-        indicator_size = font_size // 2
-        draw.text((x - indicator_size - 10, y), "✗", font=font, fill=(255, 80, 80, 255))
-    elif text_style == "elimination":
-        indicator_size = font_size // 2
-        draw.text((x - indicator_size - 10, y), "✗", font=font, fill=(255, 60, 60, 255))
-        strike_y = y + text_h // 2
-        draw.line([(x - 8, strike_y), (x + text_w + 8, strike_y)], fill=(255, 60, 60, 200), width=3)
+    # Add pros/cons indicators (drawn marks — Montserrat has no ✓/✗ glyphs)
+    if text_style in ("pros", "cons", "elimination"):
+        mark_size = max(18, font_size // 2)
+        cx = x - mark_size - 14
+        cy = y + text_h // 2
+        if text_style == "pros":
+            _draw_text_mark(draw, cx, cy, mark_size, kind="check", color=(0, 220, 110, 255))
+        else:
+            _draw_text_mark(draw, cx, cy, mark_size, kind="x", color=(255, 80, 80, 255))
+            if text_style == "elimination":
+                strike_y = y + text_h // 2
+                draw.line([(x - 8, strike_y), (x + text_w + 8, strike_y)], fill=(255, 60, 60, 200), width=3)
     
     # Convert to RGB numpy array
     result = bg_img.convert("RGB")
@@ -753,6 +796,7 @@ def build_segment_clip(
     bg_seed: int | None = None,
     product_image_path: str | None = None,
     segment_index: int = 0,
+    opening_fade: bool = True,
 ):
     """Build a clip for a single segment and return (clip, terminal_frame)."""
     text = seg.get("text", "")
@@ -795,7 +839,10 @@ def build_segment_clip(
         product_b = seg.get("product_b", "Product B")
         frame = _maybe_hero(render_vs_split_screen(width, height, product_a, product_b, accent_color))
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        if opening_fade:
+            clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        else:
+            clip = clip.with_effects([vfx.FadeOut(0.2)])
         return clip, frame
     elif layout == "spec_compare":
         spec_name = seg.get("spec_name", text)
@@ -804,7 +851,10 @@ def build_segment_clip(
         winner = seg.get("winner", "a")
         frame = _maybe_hero(render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color))
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
+        if opening_fade:
+            clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
+        else:
+            clip = clip.with_effects([vfx.FadeOut(0.2)])
         return clip, frame
     elif layout == "scorecard":
         product_a = seg.get("product_a", "Product A")
@@ -812,19 +862,28 @@ def build_segment_clip(
         scores = seg.get("scores", [])
         frame = _maybe_hero(render_scorecard(width, height, product_a, product_b, scores, accent_color))
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+        if opening_fade:
+            clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+        else:
+            clip = clip.with_effects([vfx.FadeOut(0.3)])
         return clip, frame
     elif layout == "price_compare":
         products = seg.get("price_products", [])
         frame = _maybe_hero(render_price_comparison(width, height, products, accent_color))
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        if opening_fade:
+            clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
+        else:
+            clip = clip.with_effects([vfx.FadeOut(0.2)])
         return clip, frame
     elif layout == "winner_reveal":
         winner_name = seg.get("winner_name", text)
         frame = _maybe_hero(render_winner_reveal(width, height, winner_name, accent_color))
         clip = ImageClip(frame, duration=duration)
-        clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
+        if opening_fade:
+            clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
+        else:
+            clip = clip.with_effects([vfx.FadeOut(0.3)])
         return clip, frame
 
     static_frame = render_text_frame(
@@ -898,8 +957,9 @@ def build_segment_clip(
                     return np.array(img)
                 clip = clip.transform(zoom_effect)
             elif animation == "pop_in":
-                clip = clip.with_effects([vfx.FadeIn(min(0.15, duration * 0.15))])
-            else:
+                if opening_fade:
+                    clip = clip.with_effects([vfx.FadeIn(min(0.15, duration * 0.15))])
+            elif opening_fade:
                 clip = clip.with_effects([vfx.FadeIn(min(0.3, duration * 0.3))])
         
         # Add fade out
@@ -910,7 +970,7 @@ def build_segment_clip(
 def build_transition_clip(frame_a, frame_b, transition_type, accent_color):
     """Build a transition clip between two frames."""
     if transition_type == "glitch":
-        return create_glitch_transition(frame_a, frame_b, duration=0.15)
+        return None
     elif transition_type == "flash":
         return create_flash_transition(frame_a, frame_b, accent_color, duration=0.1)
     elif transition_type == "swipe":
@@ -1042,11 +1102,11 @@ def _render_short_form_video_impl(
 
     clips = []
 
-    # ── Branded Intro (2 seconds) ──
-    intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
-    intro_clip = ImageClip(intro_frame, duration=intro_seconds)
-    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-    clips.append(intro_clip)
+    if intro_seconds > 0.05:
+        intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
+        intro_clip = ImageClip(intro_frame, duration=intro_seconds)
+        intro_clip = intro_clip.with_effects([vfx.FadeOut(min(0.15, intro_seconds / 3.0))])
+        clips.append(intro_clip)
 
     # ── Content Segments (frame generated once, reused for transitions) ──
     rendered_frames = []
@@ -1058,6 +1118,7 @@ def _render_short_form_video_impl(
             bg_seed=render_seed + i + 1,
             product_image_path=product_image_path,
             segment_index=i,
+            opening_fade=i > 0,
         )
         segment_clips.append(clip)
         rendered_frames.append(frame)
@@ -1131,7 +1192,7 @@ def _render_short_form_video_impl(
 
     # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
     # Karaoke: WhisperX forced-align when SHADOWCAST_WHISPERX_ALIGN=1, else proportional.
-    if use_tts and timing_rows:
+    if use_tts and timing_rows and shorts_burnin_captions_enabled():
         chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
         caption_events = None
         if whisperx_align_enabled() and vo_hint and os.path.isfile(vo_hint):
@@ -1338,11 +1399,11 @@ def _render_long_form_video_impl(
 
     all_clips = []
 
-    # ── Branded Intro (3 seconds for long form) ──
-    intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
-    intro_clip = ImageClip(intro_frame, duration=intro_seconds)
-    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
-    all_clips.append(intro_clip)
+    if intro_seconds > 0.05:
+        intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
+        intro_clip = ImageClip(intro_frame, duration=intro_seconds)
+        intro_clip = intro_clip.with_effects([vfx.FadeOut(min(0.15, intro_seconds / 3.0))])
+        all_clips.append(intro_clip)
 
     segment_counter = 0
     engagement_inserted = False
@@ -1403,6 +1464,7 @@ def _render_long_form_video_impl(
                 bg_seed=render_seed + 2000 + segment_counter,
                 product_image_path=product_image_path,
                 segment_index=segment_counter,
+                opening_fade=segment_counter > 0,
             )
             segment_clips_ch.append(clip)
             rendered_frames.append(frame)

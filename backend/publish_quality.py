@@ -296,11 +296,8 @@ def evaluate_publish_quality(
         )
 
     image = (image_url or "").strip()
-    require_image = os.getenv("SHADOWCAST_REQUIRE_PRODUCT_IMAGE", "").strip() in (
-        "1",
-        "true",
-        "True",
-    )
+    require_raw = (os.getenv("SHADOWCAST_REQUIRE_PRODUCT_IMAGE") or "1").strip().lower()
+    require_image = require_raw not in ("0", "false", "no", "off")
     if image:
         checks.append(
             {
@@ -314,7 +311,7 @@ def evaluate_publish_quality(
             {
                 "id": "product_image",
                 "status": "FAIL",
-                "detail": "image_url missing; set product image or unset SHADOWCAST_REQUIRE_PRODUCT_IMAGE",
+                "detail": "image_url missing; set a product still or SHADOWCAST_REQUIRE_PRODUCT_IMAGE=0",
             }
         )
     else:

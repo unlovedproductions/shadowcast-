@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from script_postprocessor import _apply_kinetic_presets, enrich_script
+from script_postprocessor import _apply_kinetic_presets, _repair_truncated_text, enrich_script
 
 
 PRODUCT = {
@@ -132,3 +132,16 @@ def test_kinetic_presets_clamp_short_form_words_and_duration():
     assert first["animation"] == "impact_scale"
     assert second["duration"] == 1.0
     assert verbose["total_duration_seconds"] == 2.5
+
+
+def test_repair_truncated_drops_dangling_preposition():
+    assert _repair_truncated_text("Check the current price in") == "Check the current price."
+    assert _repair_truncated_text("Does CitrusBurn really work?") == "Does CitrusBurn really work?"
+
+
+def test_enrich_script_injects_affiliate_disclosure():
+    enriched = enrich_script(_short_script(), PRODUCT, "honest_review")
+    blob = " ".join(seg["text"] for seg in enriched["segments"])
+    styles = [seg["text_style"] for seg in enriched["segments"]]
+    assert "affiliate" in blob.lower()
+    assert "cta_button" in styles

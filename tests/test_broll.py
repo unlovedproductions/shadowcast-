@@ -24,7 +24,8 @@ def test_resolve_prefers_section_then_pad(tmp_path, monkeypatch):
     (bdir / "pros.mp4").write_bytes(b"fake")
     monkeypatch.setattr("broll.broll_dir", lambda: bdir)
     assert resolve_broll_path("pros").endswith("pros.mp4")
-    assert resolve_broll_path("unknown").endswith("pad.mp4")
+    assert resolve_broll_path("unknown") is None
+    assert resolve_broll_path("pad").endswith("pad.mp4")
 
 
 def test_broll_disabled_env(monkeypatch, tmp_path):

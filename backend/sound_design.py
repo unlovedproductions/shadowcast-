@@ -486,7 +486,10 @@ def add_audio_to_video(video_path, audio_path, output_path):
         "-i", audio_path,
         "-c:v", "copy",
         "-c:a", "aac",
-        "-strict", "experimental",
+        "-ar", "48000",
+        "-ac", "2",
+        "-b:a", "384k",
+        "-movflags", "+faststart",
         "-map", "0:v:0",
         "-map", "1:a:0",
         output_path
