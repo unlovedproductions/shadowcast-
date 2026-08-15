@@ -233,6 +233,27 @@
         /* Hook Badge */
         .hook-badge { background: var(--pink-glow); color: var(--pink); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     </style>
+    <script>
+        window.sentryOnLoad = function () {
+            Sentry.init({
+                environment: (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+                    ? "development"
+                    : "production",
+                tracesSampleRate: 1.0,
+                tracePropagationTargets: ["localhost", /^\//],
+                replaysSessionSampleRate: 0.1,
+                replaysOnErrorSampleRate: 1.0,
+                integrations: [
+                    Sentry.browserTracingIntegration(),
+                    Sentry.replayIntegration({
+                        maskAllText: true,
+                        blockAllMedia: true,
+                    }),
+                ],
+            });
+        };
+    </script>
+    <script src="https://js.sentry-cdn.com/__SENTRY_LOADER_KEY__.min.js" crossorigin="anonymous" data-lazy="no"></script>
 </head>
 <body>
     <div id="app"></div>
@@ -297,6 +318,7 @@
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
         affiliateLink: '', keywords: '', targetAudience: '',
+        affiliateLink: '', imageUrl: '', keywords: '', targetAudience: '',
         amazonUrl: '',
         productCategory: '', competitors: '', usp: '',
         discountInfo: '', couponCode: '',
@@ -314,7 +336,7 @@
         selectedFormats: ['short_form', 'long_form'],
         audioMood: 'chill',
         audioEnabled: true,
-        useTts: false,
+        useTts: true,
         useTtsUserSet: false,
         ttsProvider: 'auto',
         ttsVoice: '',
@@ -346,6 +368,8 @@
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
+        publishQuality: null, publishQualityLoading: false,
+        publishThumbVariant: 'variant_a',
         bgRecommend: '',
         trackAffiliateUrl: '', trackingLinkResult: '',
         rumbleUsername: '', rumblePassword: '',
@@ -500,6 +524,7 @@
                 <div class="form-group full"><label>Key Features <span class="req">*</span></label><input id="keyFeatures" value="${esc(state.keyFeatures)}" placeholder="Comma-separated: ANC, 50hr battery, Hi-Res Audio"><span class="hint">Separate each feature with a comma</span></div>
                 <div class="form-group"><label>Price</label><input id="price" value="${esc(state.price)}" placeholder="$79.99"></div>
                 <div class="form-group"><label>Affiliate Link <span class="req">*</span></label><input id="affiliateLink" value="${esc(state.affiliateLink)}" placeholder="https://amzn.to/your-link"></div>
+                <div class="form-group full"><label>Product Image URL</label><input id="imageUrl" value="${esc(state.imageUrl)}" placeholder="https://…/product.jpg"><span class="hint">Optional. APF imports auto-pull photos from vendor sales pages when available; this overrides.</span></div>
                 <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
                 <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
                 <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
@@ -1042,7 +1067,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, '')}
-        ${renderPublishCard(ytAssets, '')}
+        ${renderPublishCard(ytAssets, '', data)}
         ${renderYTAssets(ytAssets, '')}`;
     }
 
@@ -1072,7 +1097,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, slug + '/')}
-        ${renderPublishCard(ytAssets, slug)}
+        ${renderPublishCard(ytAssets, slug, data)}
         ${renderYTAssets(ytAssets, slug + '/')}`;
     }
 
@@ -1087,24 +1112,45 @@
         </div>`;
     }
 
-    function renderPublishCard(ytAssets, productSlug) {
+    function renderPublishCard(ytAssets, productSlug, hookData) {
         if (!state.jobId || !ytAssets || !ytAssets.seo_title) return '';
         const caption = ytAssets.pinned_comment || ytAssets.seo_description || '';
-        const hashtags = (ytAssets.hashtags || []).join(' ');
+        const thumbs = (hookData && hookData.thumbnails) || {};
+        const thumbKeys = Object.keys(thumbs);
+        const pathPrefix = productSlug ? `${productSlug}/` : '';
+        const thumbPicker = thumbKeys.length
+            ? `<div style="margin:12px 0;">
+                <h3 style="font-size:13px;color:var(--text2);margin-bottom:8px;">Thumbnail for publish (pick A/B/C)</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                    ${thumbKeys.map(k => {
+                        const selected = (state.publishThumbVariant || 'variant_a') === k;
+                        const fname = thumbs[k];
+                        return `<label style="cursor:pointer;border:2px solid ${selected?'var(--cyan)':'#2a2a2a'};border-radius:8px;padding:6px;display:block;max-width:160px;">
+                            <input type="radio" name="publishThumb" value="${esc(k)}" ${selected?'checked':''} onchange="setPublishThumbVariant('${escJs(k)}')" style="margin-bottom:6px;">
+                            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${esc(k.replace('variant_','Variant ').toUpperCase())}</div>
+                            <img src="${API}/download/${state.jobId}/${pathPrefix}${fname}" alt="${esc(k)}" style="width:140px;height:auto;display:block;border-radius:4px;">
+                        </label>`;
+                    }).join('')}
+                </div>
+              </div>`
+            : `<p style="font-size:12px;color:var(--text2);margin:8px 0;">No thumbnail variants on this hook — publish uses default.</p>`;
         return `<div class="card" style="border-color:var(--pink);">
             <h2>Publish to Social</h2>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video.</p>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video. Dry-run never uploads (safe for Rumble/YouTube checks).</p>
             <div class="result-block"><h3>Title Preview</h3><div class="content">${esc(ytAssets.seo_title)}</div></div>
             <div class="result-block"><h3>Caption Preview</h3><div class="content">${esc(caption.substring(0, 280))}${caption.length>280?'...':''}</div></div>
+            ${thumbPicker}
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
                 ${publishPlatformOptions.map(p=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
                     <input type="checkbox" ${state.publishPlatforms.includes(p.id)?'checked':''} onchange="togglePublishPlatform('${p.id}', this.checked)"> ${p.label}
                 </label>`).join('')}
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-sm" onclick="runPublishQuality('${escJs(productSlug)}')" style="background:var(--bg3);color:var(--cyan);" ${state.publishQualityLoading?'disabled':''}>${state.publishQualityLoading?'Checking...':'Pre-Publish QA'}</button>
                 <button class="btn-primary" style="width:auto;" onclick="publishFromResults(false, '${escJs(productSlug)}')" ${state.publishLoading?'disabled':''}>${state.publishLoading?'Publishing...':'Publish Now'}</button>
                 <button class="btn-sm" onclick="publishFromResults(true, '${escJs(productSlug)}')" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
             </div>
+            ${state.publishQuality?`<div style="margin-top:12px;font-size:12px;color:var(--text2);border:1px solid #2a2a2a;border-radius:8px;padding:10px;"><strong style="color:${state.publishQuality.overall==='FAIL'?'var(--pink)':state.publishQuality.overall==='WARN'?'var(--accent)':'var(--green)'};">QA ${esc(state.publishQuality.overall)}</strong><pre style="white-space:pre-wrap;margin-top:8px;">${esc(JSON.stringify(state.publishQuality.checks,null,2))}</pre></div>`:''}
             ${state.publishResults?`<div style="margin-top:12px;font-size:12px;color:var(--text2);"><pre style="white-space:pre-wrap;">${esc(JSON.stringify(state.publishResults,null,2))}</pre></div>`:''}
         </div>`;
     }
@@ -1212,6 +1258,11 @@
                     </select>
                 </div>
                 <div class="form-group full"><label>Affiliate URL (for tracking link)</label><input id="trackAffiliateUrl" value="${esc(state.trackAffiliateUrl)}" placeholder="https://amzn.to/..."></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
+                <button class="btn-sm btn-template" onclick="buildTrackingLink()">Build Tracking Link</button>
+            </div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
                 <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
@@ -1974,7 +2025,7 @@
         } catch(e) { showToast('Error: ' + e.message); }
     }
 
-    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun }) {
+    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun, thumbnailVariant }) {
         const res = await fetch(`${API}/publish/batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1985,6 +2036,7 @@
                 platforms,
                 product_slug: productSlug || null,
                 dry_run: !!dryRun,
+                thumbnail_variant: thumbnailVariant || state.publishThumbVariant || 'variant_a',
             }),
         });
         const data = await res.json().catch(() => ({}));
@@ -1996,6 +2048,11 @@
             throw new Error(msg);
         }
         return data;
+    }
+
+    function setPublishThumbVariant(v) {
+        state.publishThumbVariant = v || 'variant_a';
+        render();
     }
 
     async function publishFromResults(dryRun, productSlug) {
@@ -2011,6 +2068,7 @@
                 platforms: state.publishPlatforms,
                 productSlug: productSlug || null,
                 dryRun: !!dryRun,
+                thumbnailVariant: state.publishThumbVariant || 'variant_a',
             });
             state.publishResults = data;
             showToast(dryRun ? 'Dry run complete' : 'Publish complete');
@@ -2018,6 +2076,34 @@
             showToast('Error: ' + e.message);
         }
         state.publishLoading = false; render();
+    }
+
+    async function runPublishQuality(productSlug) {
+        if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.activeTab) { showToast('Select a hook tab first'); return; }
+        state.publishQualityLoading = true; state.publishQuality = null; render();
+        try {
+            const res = await fetch(`${API}/publish/quality`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    job_id: state.jobId,
+                    hook_type: state.activeTab,
+                    video_format: state.activeFormat || 'short_form',
+                    product_slug: productSlug || null,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const detail = data.detail || data;
+                throw new Error(typeof detail === 'string' ? detail : 'QA failed');
+            }
+            state.publishQuality = data;
+            showToast(`QA: ${data.overall}`);
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
+        state.publishQualityLoading = false; render();
     }
 
     async function loadSocialStatus() {
@@ -2107,6 +2193,23 @@
                 showToast('Post scheduled!');
                 loadPostingQueue();
                 return;
+            }
+
+            // Job-backed posts go through publish_service (same path as Results).
+            if (jobId && hookType) {
+                const data = await publishJobBatch({
+                    jobId,
+                    hookType,
+                    videoFormat,
+                    platforms: [platform],
+                    productSlug: variant?.product_slug || null,
+                    dryRun: !!dryRun,
+                });
+                state.publishResults = data;
+                showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
+                return;
+            }
+
             }
 
             // Job-backed posts go through publish_service (same path as Results).
@@ -2315,6 +2418,7 @@
                 key_features: (row.key_features||'').split(',').map(s=>s.trim()).filter(Boolean),
                 price: row.price||'$49.99',
                 affiliate_link: row.affiliate_link||'[YOUR_AFFILIATE_LINK]',
+                image_url: row.image_url||'',
                 keywords: (row.keywords||'').split(',').map(s=>s.trim()).filter(Boolean),
                 target_audience: row.target_audience||'General consumers',
                 product_category: row.product_category||row.niche||'General',
@@ -2359,6 +2463,7 @@
         state.keyFeatures=document.getElementById('keyFeatures')?.value||'';
         state.price=document.getElementById('price')?.value||'';
         state.affiliateLink=document.getElementById('affiliateLink')?.value||'';
+        state.imageUrl=document.getElementById('imageUrl')?.value||'';
         state.keywords=document.getElementById('keywords')?.value||'';
         state.targetAudience=document.getElementById('targetAudience')?.value||'';
         state.productCategory=document.getElementById('productCategory')?.value||'';
@@ -2393,6 +2498,7 @@
                 product_name:state.productName, niche:state.niche||'General',
                 key_features:state.keyFeatures.split(',').map(s=>s.trim()).filter(Boolean),
                 price:state.price||'$49.99', affiliate_link:state.affiliateLink,
+                image_url:state.imageUrl||'',
                 keywords:state.keywords?state.keywords.split(',').map(s=>s.trim()).filter(Boolean):[],
                 target_audience:state.targetAudience||'General consumers',
                 product_category:state.productCategory||state.niche||'General',
@@ -2755,6 +2861,7 @@
       key_features: featureList,
       price: clean(n.price) || "Varies",
       affiliate_link: clean(n.affiliateLink || n.affiliate_link) || "[YOUR_AFFILIATE_LINK]",
+      image_url: clean(n.imageUrl || n.image_url || n.image || n.productImage || n.mainImage),
       keywords: keywordList,
       target_audience: clean(n.targetAudience || n.target_audience) || "General consumers",
       product_category: clean(n.productCategory || n.product_category || n.niche) || "General",

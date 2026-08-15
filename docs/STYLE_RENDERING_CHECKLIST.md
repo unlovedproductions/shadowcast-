@@ -2,6 +2,8 @@
 
 Local verification matrix for all 6 content styles × 2 video formats. No full video renders required — confirm script JSON, layout segments, and thumbnail badge only.
 
+> **Automated regression:** `tests/test_style_matrix.py` covers all 6 styles × short/long layout segments and thumbnail badges; `tests/test_content_styles.py`, `tests/test_script_postprocessor.py`, `tests/test_apf_import.py`, and `tests/test_audio_options.py` cover style normalization, postprocessor injection, APF mapping, and audio mood. Manual MP4 eyeball and full APF→ShadowCast E2E still required when services are up.
+
 ## Prerequisites
 
 - ShadowCast backend running (`localhost:8000`)
@@ -12,12 +14,14 @@ Local verification matrix for all 6 content styles × 2 video formats. No full v
 
 | content_style | short_form | long_form | Has layout segments | Thumbnail badge |
 |--------------|-----------|-----------|--------------------|-----------------|
-| honest_review | [ ] pass | [ ] pass | N/A | HONEST REVIEW |
-| elimination | [ ] pass | [ ] pass | winner_reveal | ELIMINATION |
-| vs_battle | [ ] pass | [ ] pass | vs_split + scorecard | VS BATTLE |
-| budget_challenge | [ ] pass | [ ] pass | price_compare | BUDGET PICK |
-| worth_it_or_waste | [ ] pass | [ ] pass | verdict styling | WORTH IT? |
-| standard | [ ] pass | [ ] pass | N/A | none |
+| honest_review | [x] pass | [x] pass | N/A | HONEST REVIEW |
+| elimination | [x] pass | [x] pass | winner_reveal | ELIMINATION |
+| vs_battle | [x] pass | [x] pass | vs_split + scorecard + winner_reveal | VS BATTLE |
+| budget_challenge | [x] pass | [x] pass | price_compare | BUDGET PICK |
+| worth_it_or_waste | [x] pass | [x] pass | verdict styling | WORTH IT? |
+| standard | [x] pass | [x] pass | N/A | none |
+
+> Verified 2026-07-22 via `tests/test_style_matrix.py` (6×2 layout/badge matrix) + related style/APF/audio pytest suite. Manual MP4 eyeball still optional when services are up.
 
 ## Per-Style Checks
 
@@ -39,6 +43,7 @@ For each style, select it in the ShadowCast UI (or confirm APF pre-selection), t
 
 - [ ] Script includes `vs_split` opener
 - [ ] Script includes `scorecard` segment
+- [ ] Script includes `winner_reveal` before final CTA
 - [ ] Competitors populated (from APF or manual)
 - [ ] Thumbnail shows **VS BATTLE** badge
 
@@ -74,7 +79,7 @@ After generation, inspect saved script JSON under `output/`:
 
 | Style | Look for in segments |
 |-------|---------------------|
-| vs_battle | `"layout": "vs_split"`, `"layout": "scorecard"` |
+| vs_battle | `"layout": "vs_split"`, `"layout": "scorecard"`, `"layout": "winner_reveal"` |
 | elimination | `"layout": "winner_reveal"`, `"text_style": "elimination"` |
 | budget_challenge | `"layout": "price_compare"` |
 | worth_it_or_waste | `"text_style": "verdict"` |
@@ -83,7 +88,23 @@ After generation, inspect saved script JSON under `output/`:
 
 ```bash
 cd shadowcast-
-.venv/bin/python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py -q
+.venv/bin/python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py tests/test_style_matrix.py tests/test_audio_options.py -q
 ```
 
-Expected: all tests pass (12 total).
+Automated layout/badge matrix covers all 6 styles × short/long script enrichment. Manual MP4 verification still required.
+
+## Video Claim Audit
+
+Run the artifact audit to verify rendered MP4 files against code-level claims (resolution, format pairing, layout requirements, duration drift, and unsupported animation/transition tokens):
+
+```bash
+cd shadowcast-
+.venv/bin/python backend/video_claim_audit.py
+```
+
+Optional strict mode (fail on warnings too):
+
+```bash
+cd shadowcast-
+.venv/bin/python backend/video_claim_audit.py --fail-on warn --require-videos
+```

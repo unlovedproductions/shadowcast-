@@ -24,24 +24,16 @@ def get_font(font_path, size):
 
 
 def render_vs_split_screen(width, height, product_a_name, product_b_name, accent_color=DARK_PINK):
-    img = Image.new('RGB', (width, height), NEAR_BLACK)
+    mid = width // 2
+    ys = np.linspace(0.0, 1.0, height, endpoint=False, dtype=np.float32)[:, None]
+    near = np.array(NEAR_BLACK, dtype=np.float32)
+    left = np.clip(near * (1.0 - ys * 0.2), 0, 255).astype(np.uint8)
+    right = np.clip(near * (1.0 - ys * -0.1), 0, 255).astype(np.uint8)
+    canvas = np.zeros((height, width, 3), dtype=np.uint8)
+    canvas[:, :mid] = left
+    canvas[:, mid:] = right
+    img = Image.fromarray(canvas)
     draw = ImageDraw.Draw(img)
-
-    # Dark gradient backgrounds for each side
-    for y in range(height):
-        # Left side gradient (slightly darker tone)
-        r1, g1, b1 = NEAR_BLACK
-        r_grad_a = int(r1 * (1 - y / height * 0.2))
-        g_grad_a = int(g1 * (1 - y / height * 0.2))
-        b_grad_a = int(b1 * (1 - y / height * 0.2))
-        draw.line([(0, y), (width // 2 - 1, y)], fill=(r_grad_a, g_grad_a, b_grad_a))
-
-        # Right side gradient (slightly lighter tone)
-        r2, g2, b2 = NEAR_BLACK
-        r_grad_b = int(r2 * (1 - y / height * -0.1))
-        g_grad_b = int(g2 * (1 - y / height * -0.1))
-        b_grad_b = int(b2 * (1 - y / height * -0.1))
-        draw.line([(width // 2 + 1, y), (width, y)], fill=(r_grad_b, g_grad_b, b_grad_b))
 
     # Vertical divider
     divider_width = 10

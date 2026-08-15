@@ -1,0 +1,32 @@
+id,slug,title,url,type,credibility,recency,bias
+1,prompt-relay-arxiv,"Prompt Relay: Inference-Time Temporal Control for Multi-Event Video Generation",https://arxiv.org/abs/2604.10030,academic,4,5,2
+2,switchcraft-arxiv,"SwitchCraft: Training-Free Multi-Event Video Generation with Attention Controls",https://doi.org/10.48550/arxiv.2602.23956,academic,4,5,2
+3,openai-prompt-caching,"OpenAI Prompt Caching (official)",https://developers.openai.com/api/docs/guides/prompt-caching,primary,5,5,1
+4,ebu-r128,"EBU R 128 Loudness normalisation",https://tech.ebu.ch/files/live/sites/tech/files/shared/r/r128.pdf,primary,5,4,1
+5,wikipedia-ebu-r128-platforms,"EBU R 128 (Wikipedia platform targets table)",https://en.wikipedia.org/wiki/EBU_R_128,industry,3,4,2
+6,per-cut-tts-workflow,"Per-cut ElevenLabs VO sync workflow (practitioner)",https://arti-trends.com/community/workflow-generate-voiceover-and-sync-to-video-with-elevenlabs/,discussion,3,4,3
+7,scene-pad-ffmpeg-skill,"video-tutorial-maker sync rules (apad/atrim)",https://github.com/guanyang/super-publisher/blob/main/skills/video-tutorial-maker/SKILL.md,practitioner,3,4,2
+8,ffmpeg-ducking-recipes,"ffmpeg TTS production audio recipes",https://github.com/galbaz1/video-research-mcp/blob/main/skills/tts-production/references/ffmpeg-audio-recipes.md,practitioner,3,4,2
+9,lipsync-lead-silence,"Optimizing Audio for AI Voice Synthesis (lead silence)",https://infomyou.com/ai-voice-synthesis-optimization/,practitioner,2,3,3
+10,blitzcut-caption-evidence,"Word-by-Word Captions vs Full-Sentence (evidence honesty)",https://blitzcutai.com/blog/word-by-word-captions-vs-full-sentence-captions,industry,3,5,3
+11,shorts-caption-placement,"YouTube Shorts Caption Best Practices 2026 Playbook",https://picute.net/en/blog/youtube-shorts-caption-best-practices,industry,2,5,3
+12,opus-shorts-captions,"Opus Pro Shorts subtitle best practices",https://www.opus.pro/blog/youtube-shorts-caption-subtitle-best-practices,industry,3,4,3
+13,dspy-optimization,"DSPy Optimization Guide (Modaic)",https://docs.modaic.dev/dspy_guide/optimization,primary,4,4,2
+14,prompt-eng-2026-structured,"What is Prompt Engineering? Guide for 2026 (structured outputs)",https://futureagi.com/blog/what-is-prompt-engineering/,industry,3,5,2
+15,shadowcast-renderer-contract,"ShadowCast RENDERER_CONTRACT.md (local)",file:///home/unloved/shadowcast-/backend/eval/rag_corpus/RENDERER_CONTRACT.md,primary,5,5,1
+16,shadowcast-prompt-audit,"ShadowCast Prompt Baseline Audit",file:///home/unloved/shadowcast-/backend/eval/AUDIT.md,primary,5,5,1
+17,ngrok-prompt-caching,"Prompt caching: 10x cheaper LLM tokens (ngrok)",https://ngrok.com/blog/prompt-caching,industry,3,4,2
+18,mediaequipt-youtube-loudness,"YouTube Loudness Standard (MediaEquipt)",https://www.mediaequipt.com/youtube-loudness-standard/,industry,3,3,2
+19,remotion-voiceover-metadata,"Remotion voiceover skill — calculateMetadata audio-driven length",https://github.com/remotion-dev/remotion/blob/main/packages/skills/skills/remotion-markup/voiceover.md,primary,4,5,1
+20,whisperx-arxiv,"WhisperX: Time-Accurate Speech Transcription of Long-Form Audio",https://arxiv.org/abs/2303.00747,academic,5,3,1
+21,devto-ai-video-sync-pad,"Why AI Agents Can't Fix Video Sync — per-scene pad before concat",https://dev.to/wcamon/why-ai-agents-cant-fix-video-sync-issues-yet-a-surgeons-midnight-debugging-session-4j5k,practitioner,3,4,2
+22,ffmpeg-audio-ducking,"FFmpeg Cookbook — Audio Ducking",https://ffmpeg-cookbook.com/en/articles/audio-ducking/,industry,3,4,2
+23,two-pass-loudnorm,"Two-pass loudness normalization with ffmpeg loudnorm",https://dev.to/masonwritescode/two-pass-loudness-normalization-with-ffmpeg-loudnorm-the-right-way-1nm3,practitioner,3,4,2
+24,w3c-ssml,"W3C Speech Synthesis Markup Language (SSML) 1.1",https://www.w3.org/TR/2010/REC-speech-synthesis11-20100907/,primary,5,2,1
+25,av-sync-tolerance-arxiv,"Perceptual A/V sync thresholds (arxiv 2212.01686)",https://doi.org/10.48550/arxiv.2212.01686,academic,4,3,1
+26,tts-stitch-seams,"Stitching TTS segments without seams (timbre/volume caveats)",https://dev.to/elenaashford/stitching-hundreds-of-tts-segments-into-an-audiobook-without-seams-38g5,practitioner,3,4,2
+27,anthropic-prompt-caching,"Anthropic Prompt Caching (official)",https://platform.claude.com/docs/en/build-with-claude/prompt-caching,primary,5,5,1
+28,gemini-caching,"Gemini API Context Caching",https://ai.google.dev/gemini-api/docs/caching,primary,5,5,1
+29,ollama-faq-keepalive,"Ollama FAQ — keep_alive and KV cache",https://docs.ollama.com/faq,primary,5,5,1
+30,dspy-mipro-v2,"DSPy MIPROv2 Optimizer API",https://dspy.ai/api/optimizers/MIPROv2/,primary,4,4,1
+31,youtube-chapters-help,"YouTube Help — Add chapters to videos",https://support.google.com/youtube/answer/9884579,primary,5,4,1

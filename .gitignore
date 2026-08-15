@@ -4,9 +4,15 @@ __pycache__/
 .env
 backend/output/*
 
+# Downloaded product stills cache
+backend/assets/product_cache/
+
 # Local environment
 backend/.env
 backend/.env.*
+backend/.env.bak*
+*.bak
+*.bak.*
 .env
 .env.*
 
@@ -39,6 +45,10 @@ id_ed25519
 # --- Dependencies / build outputs ---
 node_modules/
 .pnpm-store/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 .next/
 dist/
 build/
@@ -58,8 +68,35 @@ downloads/
 apf_imports/
 logs/
 *.log
+
+# Local eval run outputs (never commit)
+.self-eval-scores.jsonl
+backend/eval_results.json
+backend/eval_results_*.json
+backend/eval/eval_results*.json
+
+# Regenerated locally by structural_gate / corpus RAG eval (CI recreates each run)
+backend/eval/snapshots/
+backend/eval/baselines/eval_baseline.json
+backend/eval/baselines/*.txt.analysis.json
+backend/eval/artifacts/rag_eval.json
+
 # --- OS/editor ---
 .DS_Store
 .idea/
 .vscode/
+.cursor/settings.json
 *~
+
+# Local music beds (LFS verify broken on remote; drop licensed/generated WAVs locally)
+backend/assets/music/*.wav
+
+# Local B-roll clips (large; download per machine — see ATTRIBUTION.md)
+backend/assets/broll/*.mp4
+backend/assets/broll/*.mov
+backend/assets/broll/*.webm
+backend/assets/broll/*.mkv
+
+# Local Kokoro ONNX weights (large; download per machine)
+backend/assets/kokoro/*.onnx
+backend/assets/kokoro/*.bin

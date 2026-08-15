@@ -5,12 +5,16 @@ branded overlays, progress tracking, and engagement bait moments.
 Supports both short-form (9:16) and long-form (16:9) formats.
 """
 
+import hashlib
 import json
 import math
 import os
 import random
+import subprocess
 import textwrap
+from contextlib import contextmanager
 from io import BytesIO
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -35,6 +39,12 @@ from brand_overlays import (
     render_poll_card,
     render_comment_prompt,
     render_subscribe_card,
+    caption_events_from_timing,
+    expand_caption_word_highlights,
+    lower_third_event_from_timing,
+    render_shorts_caption,
+    shorts_word_highlight_enabled,
+    longform_burnin_captions_enabled,
 )
 from sound_design import (
     generate_background_music,
@@ -44,8 +54,16 @@ from sound_design import (
     SAMPLE_RATE as AUDIO_SAMPLE_RATE,
 )
 from audio_options import MOOD_TEMPO, resolve_audio_mood
+from product_media import frame_with_product_hero, segment_wants_product_hero
 from scipy.io.wavfile import read as read_wav
-from tts_generator import generate_voiceover_for_script
+from caption_srt import write_srt_sidecar
+from broll import make_broll_clip
+from tts_generator import generate_voiceover_for_script, resolve_tts_timing
+from whisperx_align import (
+    align_words_to_audio,
+    refine_caption_events_with_word_align,
+    whisperx_align_enabled,
+)
 
 from comparison_layouts import (
     render_vs_split_screen,
@@ -55,6 +73,7 @@ from comparison_layouts import (
     render_winner_reveal,
 )
 from content_styles import normalize_content_style
+from video_claims import SHORT_FORM, LONG_FORM, build_render_timeline
 
 from kinetic_effects import (
     create_word_by_word_clip,
@@ -73,14 +92,88 @@ from kinetic_effects import (
 # ── Paths ──────────────────────────────────────────────────────────────
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+_VALID_VIDEO_PRESETS = {
+    "ultrafast", "superfast", "veryfast", "faster", "fast",
+    "medium", "slow", "slower", "veryslow",
+}
+_NVENC_PRESET_MAP = {
+    "ultrafast": "p1",
+    "superfast": "p1",
+    "veryfast": "p2",
+    "faster": "p3",
+    "fast": "p4",
+    "medium": "p4",
+    "slow": "p5",
+    "slower": "p6",
+    "veryslow": "p7",
+}
+VIDEO_RENDER_PRESET = os.getenv("SHADOWCAST_VIDEO_PRESET", "medium").strip().lower()
+if VIDEO_RENDER_PRESET not in _VALID_VIDEO_PRESETS:
+    VIDEO_RENDER_PRESET = "medium"
+_nvenc_available: bool | None = None
+
+
+def resolve_video_preset(preset: str | None = None) -> str:
+    candidate = (preset or VIDEO_RENDER_PRESET or "medium").strip().lower()
+    if candidate not in _VALID_VIDEO_PRESETS:
+        return VIDEO_RENDER_PRESET
+    return candidate
+
+
+def ffmpeg_has_nvenc() -> bool:
+    """True when local ffmpeg lists h264_nvenc (cached)."""
+    global _nvenc_available
+    if _nvenc_available is not None:
+        return _nvenc_available
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        blob = f"{proc.stdout or ''}{proc.stderr or ''}"
+        _nvenc_available = "h264_nvenc" in blob
+    except Exception:
+        _nvenc_available = False
+    return _nvenc_available
+
+
+def resolve_write_videofile_kwargs(preset: str | None = None) -> dict[str, Any]:
+    """
+    MoviePy write_videofile kwargs for final encode.
+
+    SHADOWCAST_FFMPEG_CODEC=auto|libx264|h264_nvenc
+    auto uses NVENC when ffmpeg reports h264_nvenc.
+    """
+    render_preset = resolve_video_preset(preset)
+    codec_pref = os.getenv("SHADOWCAST_FFMPEG_CODEC", "auto").strip().lower()
+    force_software = codec_pref in ("libx264", "x264", "software", "cpu")
+    force_nvenc = codec_pref in ("h264_nvenc", "nvenc")
+    use_nvenc = force_nvenc or (not force_software and codec_pref in ("", "auto") and ffmpeg_has_nvenc())
+    if use_nvenc:
+        return {
+            "codec": "h264_nvenc",
+            "preset": _NVENC_PRESET_MAP.get(render_preset, "p4"),
+            "ffmpeg_params": ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-pix_fmt", "yuv420p"],
+            "threads": 4,
+        }
+    return {
+        "codec": "libx264",
+        "preset": render_preset,
+        "ffmpeg_params": ["-pix_fmt", "yuv420p"],
+        "threads": 4,
+    }
 
 FONT_BOLD = os.path.join(ASSETS_DIR, "Montserrat-Bold.ttf")
 FONT_EXTRABOLD = os.path.join(ASSETS_DIR, "Montserrat-ExtraBold.ttf")
 FONT_BLACK = os.path.join(ASSETS_DIR, "Montserrat-Black.ttf")
 FONT_REGULAR = os.path.join(ASSETS_DIR, "Montserrat-Regular.ttf")
 
-# Fallback
+# Fallback when Montserrat assets are absent on the deploy host
 if not os.path.exists(FONT_BOLD):
+    print(f"Warning: Montserrat fonts missing under {ASSETS_DIR}; falling back to NotoSans")
     FONT_BOLD = "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
     FONT_EXTRABOLD = "/usr/share/fonts/truetype/noto/NotoSans-Black.ttf"
     FONT_BLACK = "/usr/share/fonts/truetype/noto/NotoSans-Black.ttf"
@@ -118,12 +211,146 @@ def normalize_text_style(text_style: str) -> str:
     return TEXT_STYLE_ALIASES.get(text_style, text_style)
 
 
-def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: str | None):
-    """Generate TTS for script segments and return a float32 numpy array, or None."""
+def compute_render_fingerprint(script: dict, *, fmt: str, render_options: dict | None = None) -> str:
+    """Stable hash of enriched script + render-affecting options for cache invalidation."""
+    payload = {
+        "fmt": fmt,
+        "script": script,
+        "options": render_options or {},
+    }
+    raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def fingerprint_seed(fingerprint: str) -> int:
+    return int(fingerprint[:16], 16) % (2**32 - 1)
+
+
+@contextmanager
+def _seeded_render_rng(seed: int | None):
+    """Temporarily seed module RNGs for reproducible visuals/audio."""
+    if seed is None:
+        yield
+        return
+    py_state = random.getstate()
+    np_state = np.random.get_state()
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        yield
+    finally:
+        random.setstate(py_state)
+        np.random.set_state(np_state)
+
+
+def _terminal_frame_from_clip(clip, width: int, height: int, fallback_frame: np.ndarray) -> np.ndarray:
+    """Best-effort last frame for transitions; falls back to provided static frame."""
+    try:
+        t = max(float(getattr(clip, "duration", 0.0) or 0.0) - 1e-3, 0.0)
+        frame = clip.get_frame(t)
+        if frame is None:
+            return fallback_frame
+        arr = np.asarray(frame)
+        if arr.ndim == 3 and arr.shape[0] == height and arr.shape[1] == width:
+            if arr.shape[2] == 4:
+                return arr[:, :, :3]
+            return arr
+    except Exception:
+        pass
+    return fallback_frame
+
+
+def _make_progress_animator(width: int, height: int, duration: float, accent_color: tuple):
+    """Cached progress bar: no full-HD PIL redraw per frame."""
+    bar_height = max(1, int(height * 0.01))
+    accent = np.array([*accent_color, 255], dtype=np.uint8)
+    empty = np.zeros((height, width, 4), dtype=np.uint8)
+
+    def make_frame(t):
+        progress = 0.0 if duration <= 0 else min(1.0, max(0.0, float(t) / duration))
+        filled = max(1, int(width * progress)) if progress > 0 else 0
+        frame = empty.copy()
+        if filled:
+            frame[height - bar_height :, :filled] = accent
+        return frame
+
+    return ImageClip(make_frame(0), duration=duration).transform(lambda get_frame, t: make_frame(t))
+
+
+def _schedule_sfx_from_timeline(timeline: dict, is_short: bool) -> list:
+    sfx_list = []
+    events = timeline.get("segment_events", [])
+    if not is_short:
+        for chrome in timeline.get("chrome_events", []):
+            if chrome.get("kind") == "chapter_card":
+                sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), chrome["start"]))
+
+    for event in events:
+        seg = event["segment"]
+        current_time = float(event["start"])
+        seg_dur = float(event["duration"])
+        anim = seg.get("animation", "fade_in")
+        trans = event.get("transition") or seg.get("transition_to_next", "fade")
+        amp_anim = 0.4 if is_short else 0.3
+        amp_trans = 0.5 if is_short else 0.4
+
+        if anim in ("word_by_word", "typewriter"):
+            sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=amp_anim), current_time + 0.1))
+        elif anim in ("impact_scale", "shake"):
+            sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=amp_anim + 0.1), current_time))
+        elif anim in ("slide_up", "slide_left"):
+            sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=amp_anim), current_time))
+        elif anim == "highlight_sweep" and not is_short:
+            sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=amp_anim), current_time))
+
+        trans_time = float(event.get("transition_at", current_time + seg_dur))
+        if trans in ("glitch", "flash"):
+            sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=amp_trans), trans_time - 0.2))
+        elif trans == "swipe":
+            sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=amp_anim), max(0.0, trans_time - 0.1)))
+        elif trans == "zoom" and not is_short:
+            sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=amp_anim), max(0.0, trans_time - 0.1)))
+    return sfx_list
+
+
+def _finalize_muxed_output(video_only_path: str, audio_path: str, output_path: str) -> None:
+    """Mux audio, validate final MP4, then remove intermediates."""
+    add_audio_to_video(video_only_path, audio_path, output_path)
+    if not os.path.exists(output_path) or os.path.getsize(output_path) <= 0:
+        raise RuntimeError(f"Final MP4 missing after mux: {output_path}")
+    if os.path.exists(video_only_path):
+        os.remove(video_only_path)
+    if os.path.exists(audio_path):
+        os.remove(audio_path)
+
+
+def _load_voiceover_array(
+    script: dict,
+    output_path: str,
+    provider: str,
+    voice: str | None,
+    render_warnings=None,
+    audio_driven: bool = True,
+    product_name: str = "",
+):
+    """Generate TTS for script segments and return a float32 numpy array, or None.
+
+    When audio_driven=True, mutates script segment durations to measured TTS + pause
+    so the visual timeline can share the same clock.
+    """
     try:
         vo_dir = os.path.dirname(output_path) or "."
-        vo_path = generate_voiceover_for_script(script, vo_dir, provider=provider, voice=voice)
+        vo_path, _timing = generate_voiceover_for_script(
+            script,
+            vo_dir,
+            provider=provider,
+            voice=voice,
+            audio_driven=audio_driven,
+            product_name=product_name or "",
+        )
         if not vo_path or not os.path.exists(vo_path):
+            if render_warnings is not None:
+                render_warnings.append("TTS voiceover file was not produced")
             return None
         rate, data = read_wav(vo_path) if vo_path.endswith(".wav") else (None, None)
         if data is None:
@@ -149,7 +376,35 @@ def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: 
         return arr
     except Exception as e:
         print(f"Warning: TTS voiceover failed ({e})")
+        if render_warnings is not None:
+            render_warnings.append(f"TTS voiceover failed: {e}")
         return None
+
+
+def _prepare_tts_before_render(
+    script: dict,
+    output_path: str,
+    use_tts: bool,
+    tts_provider: str,
+    tts_voice: str | None,
+    render_warnings: list | None,
+    product_name: str = "",
+):
+    """Run TTS first so segment durations drive the visual timeline."""
+    if not use_tts:
+        return None
+    voiceover_array = _load_voiceover_array(
+        script,
+        output_path,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        audio_driven=True,
+        product_name=product_name or "",
+    )
+    if voiceover_array is None and render_warnings is not None:
+        render_warnings.append("Video rendered without TTS voiceover")
+    return voiceover_array
 
 
 # Animation types that use kinetic effects instead of simple fades
@@ -164,7 +419,6 @@ REAL_TRANSITIONS = {"glitch", "flash", "swipe", "zoom", "cut"}
 
 
 # BEGIN UNLOVED_LONG_FORM_FONT_SCALE_HELPER
-from contextlib import contextmanager
 import os as _unloved_os
 
 @contextmanager
@@ -267,16 +521,17 @@ def create_radial_gradient_bg(width: int, height: int, center_color: tuple, edge
     return arr
 
 
-def create_particle_overlay(width: int, height: int, color: tuple, num_particles: int = 15) -> Image.Image:
+def create_particle_overlay(width: int, height: int, color: tuple, num_particles: int = 15, rng: random.Random | None = None) -> Image.Image:
     """Create a subtle particle/bokeh overlay."""
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    
+    rnd = rng or random
+
     for _ in range(num_particles):
-        x = random.randint(0, width)
-        y = random.randint(0, height)
-        size = random.randint(2, 15)
-        alpha = random.randint(15, 60)
+        x = rnd.randint(0, width)
+        y = rnd.randint(0, height)
+        size = rnd.randint(2, 15)
+        alpha = rnd.randint(15, 60)
         draw.ellipse(
             [x - size, y - size, x + size, y + size],
             fill=(*color, alpha),
@@ -297,6 +552,7 @@ def render_text_frame(
     accent_color: tuple = None,
     add_glow: bool = True,
     content_style: str = "honest_review",
+    bg_seed: int | None = None,
 ):
     """Render a single text frame with professional styling using PIL."""
     text_style = normalize_text_style(text_style)
@@ -311,7 +567,9 @@ def render_text_frame(
     try:
         from bg_generator import generate_background, apply_vignette, get_style_for_content
         bg_style = get_style_for_content(normalize_content_style(content_style), hook_type="")
-        bg_img = generate_background(width, height, style=bg_style, accent_color=accent_color)
+        bg_img = generate_background(
+            width, height, style=bg_style, accent_color=accent_color, seed=bg_seed
+        )
         # Bug 2 fix: enforce dark theme — if generated background is too bright, fall back to near-black
         bg_arr_check = np.array(bg_img)
         avg_luminance = float(np.mean(bg_arr_check))
@@ -321,7 +579,8 @@ def render_text_frame(
         bg_img = bg_img.convert("RGBA")
     except Exception:
         # Fallback to original gradient
-        bg_variant = random.choice(["vertical", "radial"])
+        rnd = random.Random(bg_seed) if bg_seed is not None else random
+        bg_variant = rnd.choice(["vertical", "radial"])
         darker = tuple(max(0, c - 10) for c in bg_color)
         if bg_variant == "vertical":
             bg_arr = create_gradient_bg(width, height, bg_color, darker)
@@ -331,7 +590,10 @@ def render_text_frame(
         bg_img = Image.fromarray(bg_arr, "RGB").convert("RGBA")
     
     # Add particle overlay
-    particles = create_particle_overlay(width, height, accent_color, num_particles=12)
+    particle_rng = random.Random((bg_seed or 0) + 17) if bg_seed is not None else None
+    particles = create_particle_overlay(
+        width, height, accent_color, num_particles=12, rng=particle_rng
+    )
     bg_img = Image.alpha_composite(bg_img, particles)
     
     # Get font info
@@ -425,14 +687,35 @@ def render_text_frame(
     return np.array(result)
 
 
-def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg, content_style="honest_review"):
-    """Build a clip for a single segment, using kinetic effects when appropriate."""
+def build_segment_clip(
+    seg,
+    width,
+    height,
+    is_short_form,
+    accent_color,
+    base_bg,
+    content_style="honest_review",
+    bg_seed: int | None = None,
+    product_image_path: str | None = None,
+    segment_index: int = 0,
+):
+    """Build a clip for a single segment and return (clip, terminal_frame)."""
     text = seg.get("text", "")
     duration = seg.get("duration", 2.5 if is_short_form else 4.0)
     text_style = normalize_text_style(seg.get("text_style", "headline_bold"))
     animation = seg.get("animation", "fade_in")
     is_interrupt = seg.get("is_pattern_interrupt", False)
-    
+    use_hero = bool(product_image_path) and segment_wants_product_hero(
+        seg, segment_index=segment_index
+    )
+
+    def _maybe_hero(frame):
+        if not use_hero:
+            return frame
+        return frame_with_product_hero(
+            frame, product_image_path, is_short_form=is_short_form
+        )
+
     # Parse colors
     try:
         text_color = hex_to_rgb(seg.get("text_color", "#FFFFFF"))
@@ -455,74 +738,86 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg,
     if layout == "vs_split":
         product_a = seg.get("product_a", "Product A")
         product_b = seg.get("product_b", "Product B")
-        frame = render_vs_split_screen(width, height, product_a, product_b, accent_color)
+        frame = _maybe_hero(render_vs_split_screen(width, height, product_a, product_b, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
-        return clip
+        return clip, frame
     elif layout == "spec_compare":
         spec_name = seg.get("spec_name", text)
         value_a = seg.get("value_a", "")
         value_b = seg.get("value_b", "")
         winner = seg.get("winner", "a")
-        frame = render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color)
+        frame = _maybe_hero(render_spec_comparison(width, height, spec_name, value_a, value_b, winner, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
-        return clip
+        return clip, frame
     elif layout == "scorecard":
         product_a = seg.get("product_a", "Product A")
         product_b = seg.get("product_b", "Product B")
         scores = seg.get("scores", [])
-        frame = render_scorecard(width, height, product_a, product_b, scores, accent_color)
+        frame = _maybe_hero(render_scorecard(width, height, product_a, product_b, scores, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-        return clip
+        return clip, frame
     elif layout == "price_compare":
         products = seg.get("price_products", [])
-        frame = render_price_comparison(width, height, products, accent_color)
+        frame = _maybe_hero(render_price_comparison(width, height, products, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.2)])
-        return clip
+        return clip, frame
     elif layout == "winner_reveal":
         winner_name = seg.get("winner_name", text)
-        frame = render_winner_reveal(width, height, winner_name, accent_color)
+        frame = _maybe_hero(render_winner_reveal(width, height, winner_name, accent_color))
         clip = ImageClip(frame, duration=duration)
         clip = clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.3)])
-        return clip
+        return clip, frame
+
+    static_frame = render_text_frame(
+        text=text, width=width, height=height,
+        text_color=text_color, bg_color=bg_color,
+        text_style=text_style, is_short_form=is_short_form,
+        accent_color=accent_color, add_glow=is_interrupt,
+        content_style=content_style,
+        bg_seed=bg_seed,
+    )
+    static_frame = _maybe_hero(static_frame)
+
+    # Hero stills use the static path so the product image stays visible.
+    if use_hero:
+        animation = "fade_in"
     
     # ── Kinetic typography path ──
     if animation == "word_by_word":
-        return create_word_by_word_clip(
+        clip = create_word_by_word_clip(
             text, width, height, duration, text_color, bg_color,
             accent_color, FONT_BOLD, is_short_form
         )
+        return clip, _terminal_frame_from_clip(clip, width, height, static_frame)
     
     elif animation == "typewriter":
-        return create_typewriter_clip(
+        clip = create_typewriter_clip(
             text, width, height, duration, text_color, bg_color,
             accent_color, FONT_BOLD, is_short_form
         )
+        return clip, _terminal_frame_from_clip(clip, width, height, static_frame)
     
     elif animation == "impact_scale" or (text_style in ("stat_number", "accent_pop") and animation in ("pop_in", "zoom_in")):
-        return create_impact_scale_clip(
+        clip = create_impact_scale_clip(
             text, width, height, duration, text_color, bg_color,
             accent_color, FONT_BOLD, is_short_form
         )
+        return clip, _terminal_frame_from_clip(clip, width, height, static_frame)
     
     elif animation == "highlight_sweep":
-        return create_highlight_sweep_clip(
+        clip = create_highlight_sweep_clip(
             text, width, height, duration, text_color, bg_color,
             accent_color, FONT_BOLD, is_short_form
         )
+        return clip, _terminal_frame_from_clip(clip, width, height, static_frame)
     
     else:
         # ── Standard frame path (with improved animations) ──
-        frame = render_text_frame(
-            text=text, width=width, height=height,
-            text_color=text_color, bg_color=bg_color,
-            text_style=text_style, is_short_form=is_short_form,
-            accent_color=accent_color, add_glow=is_interrupt,
-            content_style=content_style,
-        )
+        frame = static_frame
         
         if animation == "shake":
             clip = create_shake_clip(frame, duration, intensity=5)
@@ -554,7 +849,7 @@ def build_segment_clip(seg, width, height, is_short_form, accent_color, base_bg,
         
         # Add fade out
         clip = clip.with_effects([vfx.FadeOut(min(0.15, duration * 0.15))])
-        return clip
+        return clip, frame
 
 
 def build_transition_clip(frame_a, frame_b, transition_type, accent_color):
@@ -599,61 +894,123 @@ def render_short_form_video(
     audio_mood: str | None = None,
     tts_provider: str = "auto",
     tts_voice: str | None = None,
+    video_preset: str | None = None,
+    render_warnings: list | None = None,
+    render_seed: int | None = None,
+    product_image_path: str | None = None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
     if competitors is None:
         competitors = []
     content_style = normalize_content_style(content_style)
-    
+    render_preset = resolve_video_preset(video_preset)
+    if render_seed is None:
+        fp = compute_render_fingerprint(
+            script,
+            fmt=SHORT_FORM,
+            render_options={
+                "content_style": content_style,
+                "audio_enabled": audio_enabled,
+                "audio_mood": audio_mood,
+                "use_tts": use_tts,
+                "tts_provider": tts_provider,
+                "tts_voice": tts_voice,
+                "video_preset": render_preset,
+                "product_name": product_name,
+                "price": price,
+                "series_name": series_name,
+            },
+        )
+        render_seed = fingerprint_seed(fp)
+
+    with _seeded_render_rng(render_seed):
+        return _render_short_form_video_impl(
+            script=script,
+            output_path=output_path,
+            use_tts=use_tts,
+            product_name=product_name,
+            price=price,
+            series_name=series_name,
+            content_style=content_style,
+            audio_enabled=audio_enabled,
+            audio_mood=audio_mood,
+            tts_provider=tts_provider,
+            tts_voice=tts_voice,
+            render_preset=render_preset,
+            render_warnings=render_warnings,
+            render_seed=render_seed,
+            product_image_path=product_image_path,
+        )
+
+
+def _render_short_form_video_impl(
+    *,
+    script: dict,
+    output_path: str,
+    use_tts: bool,
+    product_name: str,
+    price: str,
+    series_name: str,
+    content_style: str,
+    audio_enabled: bool,
+    audio_mood: str | None,
+    tts_provider: str,
+    tts_voice: str | None,
+    render_preset: str,
+    render_warnings: list | None,
+    render_seed: int,
+    product_image_path: str | None = None,
+) -> str:
     WIDTH, HEIGHT = 1080, 1920  # 9:16 vertical
     FPS = 30
-    
+
     segments = script.get("segments", [])
     if not segments:
         raise ValueError("No segments found in script")
-    
+
+    # TTS-first: measure speech and rewrite segment durations before timeline/clips.
+    voiceover_array = _prepare_tts_before_render(
+        script,
+        output_path,
+        use_tts,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        product_name=product_name or "",
+    )
+
     accent_color = BRAND_ACCENT
     base_bg = BRAND_BG
-    
-    total_duration = script.get("total_duration_seconds", 45)
+    timeline = build_render_timeline(script, SHORT_FORM)
+    intro_seconds = float(timeline["intro_seconds"])
     total_segments = len(segments)
-    
+
     clips = []
-    
+
     # ── Branded Intro (2 seconds) ──
     intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
-    intro_clip = ImageClip(intro_frame, duration=2.0)
+    intro_clip = ImageClip(intro_frame, duration=intro_seconds)
     intro_clip = intro_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
     clips.append(intro_clip)
-    
-    # ── Content Segments ──
-    rendered_frames = []  # Store frames for transitions
-    segment_clips = []
-    
-    for i, seg in enumerate(segments):
-        clip = build_segment_clip(seg, WIDTH, HEIGHT, True, accent_color, base_bg, content_style)
-        segment_clips.append(clip)
 
-        frame = render_text_frame(
-            text=seg.get("text", ""),
-            width=WIDTH, height=HEIGHT,
-            text_color=ensure_readable_color(
-                hex_to_rgb(seg.get("text_color", "#FFFFFF")) if seg.get("text_color") else (255, 255, 255),
-                base_bg
-            ),
-            bg_color=base_bg,
-            text_style=normalize_text_style(seg.get("text_style", "headline_bold")),
-            is_short_form=True,
-            accent_color=accent_color,
-            content_style=content_style,
+    # ── Content Segments (frame generated once, reused for transitions) ──
+    rendered_frames = []
+    segment_clips = []
+
+    for i, seg in enumerate(segments):
+        clip, frame = build_segment_clip(
+            seg, WIDTH, HEIGHT, True, accent_color, base_bg, content_style,
+            bg_seed=render_seed + i + 1,
+            product_image_path=product_image_path,
+            segment_index=i,
         )
+        segment_clips.append(clip)
         rendered_frames.append(frame)
-    
+
     # Interleave segments with transitions
     for i, seg_clip in enumerate(segment_clips):
         clips.append(seg_clip)
-        
-        # Add transition between segments
+
         if i < len(segment_clips) - 1:
             transition_type = segments[i].get("transition_to_next", "fade")
             if transition_type in REAL_TRANSITIONS and transition_type != "cut":
@@ -663,118 +1020,148 @@ def render_short_form_video(
                 )
                 if trans_clip is not None:
                     clips.append(trans_clip)
-    
+
     # ── Engagement: Subscribe card before outro (short form) ──
     if total_segments > 5:
-        # Insert a subscribe reminder 2/3 through
         sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
         sub_clip = ImageClip(sub_frame, duration=2.0)
         sub_clip = sub_clip.with_effects([vfx.FadeIn(0.2), vfx.FadeOut(0.2)])
         clips.append(sub_clip)
-    
+
     # ── Branded Outro (2 seconds) ──
     outro_frame = render_branded_outro(WIDTH, HEIGHT)
     outro_clip = ImageClip(outro_frame, duration=2.0)
     outro_clip = outro_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
     clips.append(outro_clip)
-    
+
     # Concatenate all clips
     final = concatenate_videoclips(clips, method="compose")
-    
-    # ── Persistent overlays: watermark + lower third ──
+
+    # ── Overlays: watermark + entity-timed lower third + Shorts captions ──
     overlay_layers = [final]
-    
-    # Watermark
+
     watermark = render_watermark_overlay(WIDTH, HEIGHT)
     watermark_arr = np.array(watermark.convert("RGBA"))
     watermark_clip = ImageClip(watermark_arr, duration=final.duration)
     overlay_layers.append(watermark_clip)
-    
-    # Lower third (if product name provided)
+
+    timing_rows: list = []
+    vo_hint = ""
+    if use_tts:
+        vo_hint = os.path.join(
+            os.path.dirname(output_path) or ".",
+            f"{script.get('hook_type', 'unknown')}_short_form_voiceover.mp3",
+        )
+        timing_rows = resolve_tts_timing(script, vo_hint)
+
+    # Entity lower-third: first product mention on shared TTS clock (4–7s hold).
+    # Shorts bar sits above bottom UI; captions stay mid-upper — no Y overlap.
     if product_name:
         lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=True)
         lt_arr = np.array(lower_third.convert("RGBA"))
-        lt_clip = ImageClip(lt_arr, duration=final.duration)
-        overlay_layers.append(lt_clip)
-    
+        lt_ev = lower_third_event_from_timing(
+            timing_rows,
+            product_name,
+            intro_offset=intro_seconds,
+            video_duration=float(final.duration),
+        )
+        if lt_ev:
+            lt_start = float(lt_ev["start"])
+            lt_dur = float(lt_ev["duration"])
+            lt_clip = ImageClip(lt_arr, duration=lt_dur).with_start(lt_start)
+            if lt_dur >= 0.4:
+                fade = min(0.25, lt_dur / 4.0)
+                lt_clip = lt_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(lt_clip)
+
+    # Burn-in Shorts captions synced to shared TTS timing clock (speech window).
+    # Karaoke: WhisperX forced-align when SHADOWCAST_WHISPERX_ALIGN=1, else proportional.
+    if use_tts and timing_rows:
+        chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
+        caption_events = None
+        if whisperx_align_enabled() and vo_hint and os.path.isfile(vo_hint):
+            transcript = " ".join(
+                str(r.get("text") or "").strip() for r in timing_rows if r.get("text")
+            )
+            word_timings = align_words_to_audio(vo_hint, transcript)
+            if word_timings:
+                # VO file is speech-only; add intro chrome so highlights match muxed timeline.
+                caption_events = refine_caption_events_with_word_align(
+                    chunk_events,
+                    word_timings,
+                    intro_offset=intro_seconds,
+                )
+        if caption_events is None:
+            caption_events = expand_caption_word_highlights(
+                chunk_events, enabled=shorts_word_highlight_enabled()
+            )
+        for ev in caption_events:
+            start = float(ev["start"])
+            if start >= float(final.duration):
+                continue
+            dur = min(float(ev["duration"]), max(0.1, float(final.duration) - start))
+            cap_img = render_shorts_caption(
+                WIDTH, HEIGHT, ev["text"], highlight_index=ev.get("highlight_index")
+            )
+            cap_clip = ImageClip(np.array(cap_img.convert("RGBA")), duration=dur).with_start(start)
+            if dur >= 0.25:
+                fade = min(0.08, dur / 3.0)
+                cap_clip = cap_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(cap_clip)
+
     final_with_overlays = CompositeVideoClip(overlay_layers)
-    
-    # Write video (without audio first)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     video_only_path = output_path.replace(".mp4", "_video_only.mp4")
-    final_with_overlays.write_videofile(
-        video_only_path,
-        fps=FPS,
-        codec="libx264",
-        audio=False,
-        preset="ultrafast",
-        threads=4,
-        logger=None,
-    )
-    
-    # ── Generate and add audio ──
-    if not audio_enabled and not use_tts:
-        if os.path.exists(video_only_path):
-            os.rename(video_only_path, output_path)
-    else:
-        try:
-            video_duration = final.duration
 
-            mood = resolve_audio_mood(audio_mood, content_style, "short_form")
-            tempo = MOOD_TEMPO.get(mood, 100)
+    try:
+        encode_kwargs = resolve_write_videofile_kwargs(render_preset)
+        final_with_overlays.write_videofile(
+            video_only_path,
+            fps=FPS,
+            audio=False,
+            logger=None,
+            **encode_kwargs,
+        )
 
-            bg_music = None
-            sfx_list = []
-            if audio_enabled:
-                bg_music = generate_background_music(
-                    video_duration,
-                    mood=mood,
-                    tempo=tempo,
-                )
-
-                current_time = 2.0  # After intro
-                for seg in segments:
-                    seg_dur = seg.get("duration", 2.5)
-                    anim = seg.get("animation", "fade_in")
-                    trans = seg.get("transition_to_next", "fade")
-
-                    if anim in ("word_by_word", "typewriter"):
-                        sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.4), current_time + 0.1))
-                    elif anim in ("impact_scale", "shake"):
-                        sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.5), current_time))
-                    elif anim in ("slide_up", "slide_left"):
-                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), current_time))
-
-                    trans_time = current_time + seg_dur
-                    if trans in ("glitch", "flash"):
-                        sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.5), trans_time - 0.2))
-                    elif trans == "swipe":
-                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), trans_time - 0.1))
-
-                    current_time += seg_dur
-            else:
-                bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
-
-            voiceover_array = None
-            if use_tts:
-                voiceover_array = _load_voiceover_array(
-                    script, output_path, tts_provider, tts_voice
-                )
-
-            audio_path = output_path.replace(".mp4", "_audio.wav")
-            mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
-
-            add_audio_to_video(video_only_path, audio_path, output_path)
-
-            if os.path.exists(video_only_path):
-                os.remove(video_only_path)
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-        except Exception as e:
-            print(f"Warning: Audio generation failed ({e}), using video without audio")
+        if not audio_enabled and not use_tts:
             if os.path.exists(video_only_path):
                 os.rename(video_only_path, output_path)
-    
+        else:
+            try:
+                video_duration = final.duration
+                mood = resolve_audio_mood(audio_mood, content_style, "short_form")
+                tempo = MOOD_TEMPO.get(mood, 100)
+
+                if audio_enabled:
+                    bg_music = generate_background_music(
+                        video_duration,
+                        mood=mood,
+                        tempo=tempo,
+                    )
+                    sfx_list = _schedule_sfx_from_timeline(timeline, is_short=True)
+                else:
+                    bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
+                    sfx_list = []
+
+                audio_path = output_path.replace(".mp4", "_audio.wav")
+                mix_audio(
+                    bg_music,
+                    sfx_list,
+                    voiceover_array=voiceover_array,
+                    output_path=audio_path,
+                    voiceover_start_seconds=intro_seconds,
+                )
+                _finalize_muxed_output(video_only_path, audio_path, output_path)
+            except Exception as e:
+                print(f"Warning: Audio generation failed ({e}), preserving video-only output")
+                if render_warnings is not None:
+                    render_warnings.append(f"Audio generation failed, using silent video: {e}")
+                if os.path.exists(video_only_path) and not os.path.exists(output_path):
+                    os.rename(video_only_path, output_path)
+    finally:
+        pass
+
     # Cleanup
     final_with_overlays.close()
     final.close()
@@ -783,7 +1170,10 @@ def render_short_form_video(
             c.close()
         except Exception:
             pass
-    
+
+    if use_tts and timing_rows and os.path.exists(output_path):
+        write_srt_sidecar(output_path, timing_rows, intro_offset=intro_seconds)
+
     return output_path
 
 
@@ -800,268 +1190,337 @@ def render_long_form_video(
     audio_mood: str | None = None,
     tts_provider: str = "auto",
     tts_voice: str | None = None,
+    video_preset: str | None = None,
+    render_warnings: list | None = None,
+    render_seed: int | None = None,
+    product_image_path: str | None = None,
 ) -> str:
     if competitors is None:
         competitors = []
     content_style = normalize_content_style(content_style)
-    # UNLOVED_LONG_FORM_FONT_SCALE_WRAP
-    with _unloved_scaled_long_form_fonts():
-        """Render a long-form (YouTube) video from script JSON."""
+    render_preset = resolve_video_preset(video_preset)
+    if render_seed is None:
+        fp = compute_render_fingerprint(
+            script,
+            fmt=LONG_FORM,
+            render_options={
+                "content_style": content_style,
+                "audio_enabled": audio_enabled,
+                "audio_mood": audio_mood,
+                "use_tts": use_tts,
+                "tts_provider": tts_provider,
+                "tts_voice": tts_voice,
+                "video_preset": render_preset,
+                "product_name": product_name,
+                "price": price,
+                "series_name": series_name,
+            },
+        )
+        render_seed = fingerprint_seed(fp)
 
-        WIDTH, HEIGHT = 1920, 1080  # 16:9 landscape
-        FPS = 30
-
-        chapters = script.get("chapters", [])
-        if not chapters:
-            raise ValueError("No chapters found in script")
-
-        accent_color = BRAND_ACCENT
-        base_bg = BRAND_BG
-
-        total_chapters = len(chapters)
-        total_segments = sum(len(ch.get("segments", [])) for ch in chapters)
-
-        all_clips = []
-
-        # ── Branded Intro (3 seconds for long form) ──
-        intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
-        intro_clip = ImageClip(intro_frame, duration=3.0)
-        intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
-        all_clips.append(intro_clip)
-
-        segment_counter = 0
-        engagement_inserted = False
-
-        for ch_idx, chapter in enumerate(chapters):
-            chapter_name = chapter.get("chapter_name", "")
-            segments = chapter.get("segments", [])
-
-            # ── Section header overlay for chapter ──
-            # Detect section type from chapter name
-            section_type = None
-            ch_lower = chapter_name.lower()
-            if any(w in ch_lower for w in ["pro", "good", "strength", "advantage"]):
-                section_type = "pros"
-            elif any(w in ch_lower for w in ["con", "bad", "weakness", "drawback"]):
-                section_type = "cons"
-            elif any(w in ch_lower for w in ["verdict", "final", "conclusion", "rating"]):
-                section_type = "verdict"
-            elif any(w in ch_lower for w in ["vs", "compar", "battle", "versus"]):
-                section_type = "comparison"
-
-            # Chapter title card with section header
-            chapter_frame = render_text_frame(
-                text=chapter_name.upper(),
-                width=WIDTH, height=HEIGHT,
-                text_color=accent_color,
-                bg_color=base_bg,
-                text_style="headline_bold",
-                is_short_form=False,
-                accent_color=accent_color,
+    with _seeded_render_rng(render_seed):
+        with _unloved_scaled_long_form_fonts():
+            return _render_long_form_video_impl(
+                script=script,
+                output_path=output_path,
+                use_tts=use_tts,
+                product_name=product_name,
+                price=price,
+                series_name=series_name,
                 content_style=content_style,
+                audio_enabled=audio_enabled,
+                audio_mood=audio_mood,
+                tts_provider=tts_provider,
+                tts_voice=tts_voice,
+                render_preset=render_preset,
+                render_warnings=render_warnings,
+                render_seed=render_seed,
+                product_image_path=product_image_path,
             )
 
-            # Composite section header onto chapter card if applicable
-            if section_type:
-                header_overlay = render_section_header(WIDTH, HEIGHT, section_type, accent_color)
-                chapter_pil = Image.fromarray(chapter_frame).convert("RGBA")
-                chapter_pil = Image.alpha_composite(chapter_pil, header_overlay)
-                chapter_frame = np.array(chapter_pil.convert("RGB"))
 
-            chapter_clip = ImageClip(chapter_frame, duration=2.5)
-            chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
-            all_clips.append(chapter_clip)
+def _render_long_form_video_impl(
+    *,
+    script: dict,
+    output_path: str,
+    use_tts: bool,
+    product_name: str,
+    price: str,
+    series_name: str,
+    content_style: str,
+    audio_enabled: bool,
+    audio_mood: str | None,
+    tts_provider: str,
+    tts_voice: str | None,
+    render_preset: str,
+    render_warnings: list | None,
+    render_seed: int,
+    product_image_path: str | None = None,
+) -> str:
+    WIDTH, HEIGHT = 1920, 1080  # 16:9 landscape
+    FPS = 30
 
-            # ── Render chapter segments ──
-            rendered_frames = []
-            segment_clips_ch = []
+    chapters = script.get("chapters", [])
+    if not chapters:
+        raise ValueError("No chapters found in script")
 
-            for seg in segments:
-                clip = build_segment_clip(seg, WIDTH, HEIGHT, False, accent_color, base_bg, content_style)
-                segment_clips_ch.append(clip)
+    # TTS-first: measure speech and rewrite segment durations before timeline/clips.
+    voiceover_array = _prepare_tts_before_render(
+        script,
+        output_path,
+        use_tts,
+        tts_provider,
+        tts_voice,
+        render_warnings,
+        product_name=product_name or "",
+    )
 
-                frame = render_text_frame(
-                    text=seg.get("text", ""),
-                    width=WIDTH, height=HEIGHT,
-                    text_color=ensure_readable_color(
-                        hex_to_rgb(seg.get("text_color", "#FFFFFF")) if seg.get("text_color") else (255, 255, 255),
-                        base_bg
-                    ),
-                    bg_color=base_bg,
-                    text_style=normalize_text_style(seg.get("text_style", "subtitle")),
-                    is_short_form=False,
-                    accent_color=accent_color,
-                    content_style=content_style,
-                )
-                rendered_frames.append(frame)
-                segment_counter += 1
+    accent_color = BRAND_ACCENT
+    base_bg = BRAND_BG
+    timeline = build_render_timeline(script, LONG_FORM)
+    intro_seconds = float(timeline["intro_seconds"])
+    total_chapters = len(chapters)
 
-            # Interleave segments with transitions
-            for i, seg_clip in enumerate(segment_clips_ch):
-                all_clips.append(seg_clip)
+    all_clips = []
 
-                if i < len(segment_clips_ch) - 1:
-                    transition_type = segments[i].get("transition_to_next", "fade")
-                    if transition_type in REAL_TRANSITIONS and transition_type != "cut":
-                        trans_clip = build_transition_clip(
-                            rendered_frames[i], rendered_frames[i + 1],
-                            transition_type, accent_color
-                        )
-                        if trans_clip is not None:
-                            all_clips.append(trans_clip)
+    # ── Branded Intro (3 seconds for long form) ──
+    intro_frame = render_branded_intro(WIDTH, HEIGHT, series_name, product_name)
+    intro_clip = ImageClip(intro_frame, duration=intro_seconds)
+    intro_clip = intro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+    all_clips.append(intro_clip)
 
-            # ── Engagement bait: insert poll/comment prompt mid-video ──
-            if not engagement_inserted and ch_idx >= total_chapters // 2:
-                # Insert a comment prompt card
-                comment_frame = render_comment_prompt(
-                    WIDTH, HEIGHT,
-                    "What do you think? Drop your opinion below!",
-                    accent_color
-                )
-                comment_clip = ImageClip(comment_frame, duration=3.0)
-                comment_clip = comment_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-                all_clips.append(comment_clip)
-                engagement_inserted = True
+    segment_counter = 0
+    engagement_inserted = False
 
-        # ── Subscribe card before outro ──
-        sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
-        sub_clip = ImageClip(sub_frame, duration=3.0)
-        sub_clip = sub_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
-        all_clips.append(sub_clip)
+    for ch_idx, chapter in enumerate(chapters):
+        chapter_name = chapter.get("chapter_name", "")
+        segments = chapter.get("segments", [])
 
-        # ── Branded Outro (3 seconds) ──
-        outro_frame = render_branded_outro(WIDTH, HEIGHT)
-        outro_clip = ImageClip(outro_frame, duration=3.0)
-        outro_clip = outro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
-        all_clips.append(outro_clip)
+        section_type = None
+        ch_lower = chapter_name.lower()
+        if any(w in ch_lower for w in ["pro", "good", "strength", "advantage"]):
+            section_type = "pros"
+        elif any(w in ch_lower for w in ["con", "bad", "weakness", "drawback"]):
+            section_type = "cons"
+        elif any(w in ch_lower for w in ["verdict", "final", "conclusion", "rating"]):
+            section_type = "verdict"
+        elif any(w in ch_lower for w in ["vs", "compar", "battle", "versus"]):
+            section_type = "comparison"
 
-        # Concatenate all clips
-        final = concatenate_videoclips(all_clips, method="compose")
+        chapter_frame = render_text_frame(
+            text=chapter_name.upper(),
+            width=WIDTH, height=HEIGHT,
+            text_color=accent_color,
+            bg_color=base_bg,
+            text_style="headline_bold",
+            is_short_form=False,
+            accent_color=accent_color,
+            content_style=content_style,
+            bg_seed=render_seed + 1000 + ch_idx,
+        )
 
-        # ── Persistent overlays: watermark + lower third + progress bar ──
-        overlay_layers = [final]
+        if section_type:
+            header_overlay = render_section_header(WIDTH, HEIGHT, section_type, accent_color)
+            chapter_pil = Image.fromarray(chapter_frame).convert("RGBA")
+            chapter_pil = Image.alpha_composite(chapter_pil, header_overlay)
+            chapter_frame = np.array(chapter_pil.convert("RGB"))
 
-        # Watermark
-        watermark = render_watermark_overlay(WIDTH, HEIGHT)
-        watermark_arr = np.array(watermark.convert("RGBA"))
-        watermark_clip = ImageClip(watermark_arr, duration=final.duration)
-        overlay_layers.append(watermark_clip)
+        chapter_clip = ImageClip(chapter_frame, duration=2.5)
+        chapter_clip = chapter_clip.with_effects([vfx.FadeIn(0.4), vfx.FadeOut(0.4)])
+        all_clips.append(chapter_clip)
 
-        # Lower third (if product name provided)
-        if product_name:
-            lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=False)
-            lt_arr = np.array(lower_third.convert("RGBA"))
-            lt_clip = ImageClip(lt_arr, duration=final.duration)
+        # Optional stock B-roll pad between chapter title and first segment.
+        broll_clip = make_broll_clip(
+            section_type,
+            duration=2.0,
+            width=WIDTH,
+            height=HEIGHT,
+        )
+        if broll_clip is not None:
+            all_clips.append(broll_clip)
+
+        rendered_frames = []
+        segment_clips_ch = []
+
+        for seg in segments:
+            clip, frame = build_segment_clip(
+                seg, WIDTH, HEIGHT, False, accent_color, base_bg, content_style,
+                bg_seed=render_seed + 2000 + segment_counter,
+                product_image_path=product_image_path,
+                segment_index=segment_counter,
+            )
+            segment_clips_ch.append(clip)
+            rendered_frames.append(frame)
+            segment_counter += 1
+
+        for i, seg_clip in enumerate(segment_clips_ch):
+            all_clips.append(seg_clip)
+
+            if i < len(segment_clips_ch) - 1:
+                transition_type = segments[i].get("transition_to_next", "fade")
+                if transition_type in REAL_TRANSITIONS and transition_type != "cut":
+                    trans_clip = build_transition_clip(
+                        rendered_frames[i], rendered_frames[i + 1],
+                        transition_type, accent_color
+                    )
+                    if trans_clip is not None:
+                        all_clips.append(trans_clip)
+
+        if not engagement_inserted and ch_idx >= total_chapters // 2:
+            comment_frame = render_comment_prompt(
+                WIDTH, HEIGHT,
+                "What do you think? Drop your opinion below!",
+                accent_color
+            )
+            comment_clip = ImageClip(comment_frame, duration=3.0)
+            comment_clip = comment_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+            all_clips.append(comment_clip)
+            engagement_inserted = True
+
+    # ── Subscribe card before outro ──
+    sub_frame = render_subscribe_card(WIDTH, HEIGHT, accent_color)
+    sub_clip = ImageClip(sub_frame, duration=3.0)
+    sub_clip = sub_clip.with_effects([vfx.FadeIn(0.3), vfx.FadeOut(0.3)])
+    all_clips.append(sub_clip)
+
+    # ── Branded Outro (3 seconds) ──
+    outro_frame = render_branded_outro(WIDTH, HEIGHT)
+    outro_clip = ImageClip(outro_frame, duration=3.0)
+    outro_clip = outro_clip.with_effects([vfx.FadeIn(0.5), vfx.FadeOut(0.5)])
+    all_clips.append(outro_clip)
+
+    final = concatenate_videoclips(all_clips, method="compose")
+
+    overlay_layers = [final]
+
+    watermark = render_watermark_overlay(WIDTH, HEIGHT)
+    watermark_arr = np.array(watermark.convert("RGBA"))
+    watermark_clip = ImageClip(watermark_arr, duration=final.duration)
+    overlay_layers.append(watermark_clip)
+
+    timing_rows: list = []
+    if use_tts:
+        vo_hint = os.path.join(
+            os.path.dirname(output_path) or ".",
+            f"{script.get('hook_type', 'unknown')}_long_form_voiceover.mp3",
+        )
+        timing_rows = resolve_tts_timing(script, vo_hint)
+
+    # Entity lower-third: first product mention on shared TTS clock (4–7s hold).
+    if product_name:
+        lower_third = render_lower_third(WIDTH, HEIGHT, product_name, price, is_short_form=False)
+        lt_arr = np.array(lower_third.convert("RGBA"))
+        lt_ev = lower_third_event_from_timing(
+            timing_rows,
+            product_name,
+            intro_offset=intro_seconds,
+            video_duration=float(final.duration),
+        )
+        if lt_ev:
+            lt_start = float(lt_ev["start"])
+            lt_dur = float(lt_ev["duration"])
+            lt_clip = ImageClip(lt_arr, duration=lt_dur).with_start(lt_start)
+            if lt_dur >= 0.4:
+                fade = min(0.25, lt_dur / 4.0)
+                lt_clip = lt_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
             overlay_layers.append(lt_clip)
 
-        # Progress bar overlay (animated)
-        def make_progress_frame(t):
-            progress = t / max(final.duration, 1)
-            overlay = render_progress_overlay(WIDTH, HEIGHT, progress, accent_color=accent_color)
-            return np.array(overlay.convert("RGBA"))
+    # Burn-in long-form captions on shared TTS clock (lower band; SRT still written).
+    if use_tts and timing_rows and longform_burnin_captions_enabled():
+        chunk_events = caption_events_from_timing(timing_rows, intro_offset=intro_seconds)
+        caption_events = expand_caption_word_highlights(
+            chunk_events, enabled=shorts_word_highlight_enabled()
+        )
+        for ev in caption_events:
+            start = float(ev["start"])
+            if start >= float(final.duration):
+                continue
+            dur = min(float(ev["duration"]), max(0.1, float(final.duration) - start))
+            cap_img = render_shorts_caption(
+                WIDTH,
+                HEIGHT,
+                ev["text"],
+                highlight_index=ev.get("highlight_index"),
+                y_frac=0.72,
+                max_width_frac=0.82,
+                font_size_frac=0.032,
+            )
+            cap_clip = ImageClip(np.array(cap_img.convert("RGBA")), duration=dur).with_start(start)
+            if dur >= 0.25:
+                fade = min(0.08, dur / 3.0)
+                cap_clip = cap_clip.with_effects([vfx.FadeIn(fade), vfx.FadeOut(fade)])
+            overlay_layers.append(cap_clip)
 
-        progress_base = ImageClip(
-            make_progress_frame(0), duration=final.duration
-        ).transform(lambda get_frame, t: make_progress_frame(t))
-        overlay_layers.append(progress_base)
+    # Progress bar overlay (numpy slice animator — no PIL per frame)
+    overlay_layers.append(
+        _make_progress_animator(WIDTH, HEIGHT, final.duration, accent_color)
+    )
 
-        final_with_overlays = CompositeVideoClip(overlay_layers)
+    final_with_overlays = CompositeVideoClip(overlay_layers)
 
-        # Write video (without audio first)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        video_only_path = output_path.replace(".mp4", "_video_only.mp4")
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    video_only_path = output_path.replace(".mp4", "_video_only.mp4")
+
+    try:
+        encode_kwargs = resolve_write_videofile_kwargs(render_preset)
         final_with_overlays.write_videofile(
             video_only_path,
             fps=FPS,
-            codec="libx264",
             audio=False,
-            preset="ultrafast",
-            threads=4,
             logger=None,
+            **encode_kwargs,
         )
 
-        # ── Generate and add audio ──
         if not audio_enabled and not use_tts:
             if os.path.exists(video_only_path):
                 os.rename(video_only_path, output_path)
         else:
             try:
                 video_duration = final.duration
-
                 mood = resolve_audio_mood(audio_mood, content_style, "long_form")
                 tempo = MOOD_TEMPO.get(mood, 100)
 
-                bg_music = None
-                sfx_list = []
                 if audio_enabled:
                     bg_music = generate_background_music(
                         video_duration,
                         mood=mood,
                         tempo=tempo,
                     )
-
-                    current_time = 3.0  # After intro
-
-                    for ch_idx, chapter in enumerate(chapters):
-                        sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
-                        current_time += 2.5  # Chapter title card duration
-
-                        for seg in chapter.get("segments", []):
-                            seg_dur = seg.get("duration", 4.0)
-                            anim = seg.get("animation", "fade_in")
-                            trans = seg.get("transition_to_next", "fade")
-
-                            if anim in ("word_by_word", "typewriter"):
-                                sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
-                            elif anim in ("impact_scale", "shake"):
-                                sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
-                            elif anim in ("slide_up", "slide_left"):
-                                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
-                            elif anim == "highlight_sweep":
-                                sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
-
-                            trans_time = current_time + seg_dur
-                            if trans in ("glitch", "flash"):
-                                sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
-                            elif trans == "swipe":
-                                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
-                            elif trans == "zoom":
-                                sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
-
-                            current_time += seg_dur
+                    sfx_list = _schedule_sfx_from_timeline(timeline, is_short=False)
                 else:
                     bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
-
-                voiceover_array = None
-                if use_tts:
-                    voiceover_array = _load_voiceover_array(
-                        script, output_path, tts_provider, tts_voice
-                    )
+                    sfx_list = []
 
                 audio_path = output_path.replace(".mp4", "_audio.wav")
-                mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
-
-                add_audio_to_video(video_only_path, audio_path, output_path)
-
-                if os.path.exists(video_only_path):
-                    os.remove(video_only_path)
-                if os.path.exists(audio_path):
-                    os.remove(audio_path)
+                mix_audio(
+                    bg_music,
+                    sfx_list,
+                    voiceover_array=voiceover_array,
+                    output_path=audio_path,
+                    voiceover_start_seconds=intro_seconds,
+                )
+                _finalize_muxed_output(video_only_path, audio_path, output_path)
             except Exception as e:
-                print(f"Warning: Audio generation failed ({e}), using video without audio")
-                if os.path.exists(video_only_path):
+                print(f"Warning: Audio generation failed ({e}), preserving video-only output")
+                if render_warnings is not None:
+                    render_warnings.append(f"Audio generation failed, using silent video: {e}")
+                if os.path.exists(video_only_path) and not os.path.exists(output_path):
                     os.rename(video_only_path, output_path)
+    finally:
+        pass
 
-        # Cleanup
-        final_with_overlays.close()
-        final.close()
-        for c in all_clips:
-            try:
-                c.close()
-            except Exception:
-                pass
+    final_with_overlays.close()
+    final.close()
+    for c in all_clips:
+        try:
+            c.close()
+        except Exception:
+            pass
 
-        return output_path
+    if use_tts and timing_rows and os.path.exists(output_path):
+        write_srt_sidecar(output_path, timing_rows, intro_offset=intro_seconds)
+
+    return output_path
 
 
 def render_from_script_file(script_path: str, output_dir: str = None) -> dict:

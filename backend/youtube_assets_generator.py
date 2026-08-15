@@ -4,110 +4,126 @@ Generates complete YouTube posting packages optimized for trust,
 engagement, and affiliate conversions.
 """
 
-import json
-import os
-from llm_config import get_config, parse_llm_json
+import re
+
+from eval.output_validators import validate_youtube_assets
+from llm_client import chat_completion_json
+from prompts import YOUTUBE_ASSETS_SYSTEM_PROMPT, build_youtube_assets_user_prompt
+
+
+def _iter_script_segments(script: dict):
+    if "chapters" in script:
+        for chapter in script.get("chapters", []):
+            for seg in chapter.get("segments", []):
+                if isinstance(seg, dict):
+                    yield seg
+    else:
+        for seg in script.get("segments", []):
+            if isinstance(seg, dict):
+                yield seg
+
+
+def _collect_script_context(script: dict) -> str:
+    parts = []
+    if "chapters" in script:
+        for chapter in script.get("chapters", []):
+            chapter_name = str(chapter.get("chapter_name", "")).strip()
+            if chapter_name:
+                parts.append(f"[{chapter_name}]")
+            for seg in chapter.get("segments", []):
+                text = str(seg.get("text", "")).strip()
+                if text:
+                    parts.append(text)
+    else:
+        for seg in script.get("segments", []):
+            text = str(seg.get("text", "")).strip()
+            if text:
+                parts.append(text)
+    return " | ".join(parts)
+
+
+def _fit_script_context(context: str, max_chars: int = 3600) -> str:
+    if len(context) <= max_chars:
+        return context
+    head = max_chars // 2
+    tail = max_chars - head
+    return f"{context[:head]} | ... | {context[-tail:]}"
+
+
+def _extract_signal_lines(script: dict, max_each: int = 4) -> dict:
+    cons = []
+    ctas = []
+    verdicts = []
+    con_re = re.compile(r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for|avoid)\b", re.I)
+    cta_re = re.compile(r"\b(link|description|check (the )?(price|details)|availability|fit for you|if this sounds)\b", re.I)
+    verdict_re = re.compile(r"\b(verdict|worth it|waste|bottom line|winner)\b", re.I)
+
+    for seg in _iter_script_segments(script):
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        style = str(seg.get("text_style", "")).strip().lower()
+        lowered = text.lower()
+
+        if style in {"cons", "con_point", "elimination"} or con_re.search(lowered):
+            cons.append(text)
+        if cta_re.search(lowered):
+            ctas.append(text)
+        if style in {"verdict", "scorecard"} or verdict_re.search(lowered):
+            verdicts.append(text)
+
+    def _dedupe_limit(lines):
+        seen = set()
+        out = []
+        for line in lines:
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(line)
+            if len(out) >= max_each:
+                break
+        return out
+
+    return {
+        "cons": _dedupe_limit(cons),
+        "ctas": _dedupe_limit(ctas),
+        "verdicts": _dedupe_limit(verdicts),
+    }
 
 
 def generate_youtube_assets(product_info: dict, script: dict, video_format: str) -> dict:
-    cfg = get_config()
-    client = cfg.get_client()
-
-    hook_type = script.get("hook_type", "curiosity")
-    content_style = script.get("content_style", "honest_review")
     title_suggestion = script.get("title_suggestion", "")
 
-    if "chapters" in script:
-        all_text = " | ".join(
-            seg.get("text", "") for ch in script.get("chapters", []) for seg in ch.get("segments", [])[:5]
-        )
-    else:
-        all_text = " | ".join(seg.get("text", "") for seg in script.get("segments", [])[:8])
+    all_text = _fit_script_context(_collect_script_context(script))
+    signals = _extract_signal_lines(script)
+    cons_lines = _fit_script_context(" | ".join(signals["cons"]), max_chars=900) if signals["cons"] else "N/A"
+    cta_lines = _fit_script_context(" | ".join(signals["ctas"]), max_chars=900) if signals["ctas"] else "N/A"
+    verdict_lines = _fit_script_context(" | ".join(signals["verdicts"]), max_chars=900) if signals["verdicts"] else "N/A"
 
-    format_label = "YouTube Shorts (vertical, short-form)" if video_format == "short_form" else "YouTube (landscape, long-form)"
-    affiliate_link = product_info.get('affiliate_link', '[AFFILIATE_LINK]')
-    series_name = product_info.get('series_name', '')
-
-    prompt = f"""You are an expert YouTube SEO specialist creating buyer-focused posting packages for people researching whether to buy a product. Generate a COMPLETE YouTube posting package that helps shoppers decide with honest pros, cons, fit, and practical purchase guidance.
-
-PRODUCT INFORMATION:
-- Product Name: {product_info['product_name']}
-- Niche: {product_info.get('niche', product_info.get('product_category', 'General'))}
-- Keywords: {', '.join(product_info.get('keywords', product_info.get('key_features', [])))}
-- Product Link: {affiliate_link}
-- Price: {product_info.get('price', 'N/A')}
-- Target Audience: {product_info.get('target_audience', 'General consumers')}
-- Competitor Products: {', '.join(product_info.get('competitors', ['N/A']))}
-- Unique Selling Point: {product_info.get('unique_selling_point', '')}
-- Discount: {product_info.get('discount_info', '')}
-- Coupon Code: {product_info.get('coupon_code', '')}
-- Common Complaints: {product_info.get('common_complaints', 'N/A')}
-- Common Praises: {product_info.get('common_praises', 'N/A')}
-- Series Name: {series_name}
-
-VIDEO: {format_label} | Hook: {hook_type} | Style: {content_style} | Title: {title_suggestion}
-Script Preview: {all_text[:400]}
-
-BUYER-FOCUSED APPROACH:
-- Titles should help shoppers decide, not hype affiliate earnings
-- Description must include HONEST framing — mention that you cover pros AND cons
-- NEVER mention commission rates, EPC, hop conversion, or promoting the product
-- Pinned comment must answer buyer objections and include the product link once, naturally
-- Tags should target buyer-intent keywords (people ready to research or purchase)
-- CTAs should feel like helpful purchase guidance, not pushy sales copy
-
-PINNED COMMENT STRATEGY (CRITICAL):
-The pinned comment is prime real estate. Use this structure:
-1. Personal take with honest framing for shoppers
-2. Product link with a benefit statement for buyers
-3. Quick FAQ answering 2-3 common objections from reviews
-4. Engagement question to drive replies
-
-Return JSON:
-{{
-    "seo_title": "<max 70 chars, buyer-intent keyword, curiosity gap — NOT clickbait>",
-    "seo_title_alternatives": ["<alt1 - negative framing test>", "<alt2 - question format>", "<alt3 - number/data format>"],
-    "seo_description": "<2000-3000 chars structured as: Hook paragraph mentioning honest review → Product overview → Key Pros (3-4) → Key Cons (2-3) → Product link with soft CTA → More details → Timestamps → One brief disclaimer if needed: 'As an affiliate, I may earn a commission at no extra cost to you.'>",
-    "tags": ["<30 tags: mix buyer-intent keywords like 'best X 2026', 'X review honest', 'X vs Y', 'should I buy X', 'X pros and cons'>"],
-    "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
-    "pinned_comment": "<300-600 chars: Personal honest take for shoppers → Product link with benefit → Quick FAQ (2-3 common objections answered) → Question for replies>",
-    "pinned_comment_alternatives": ["<alt1 - comparison angle>", "<alt2 - value/savings angle>"],
-    "thumbnail_text_primary": "<2-4 words, test negative framing like 'DON'T BUY' or 'HONEST TRUTH'>",
-    "thumbnail_text_secondary": "<supporting text>",
-    "thumbnail_color_scheme": "<description — suggest signature color consistency>",
-    "thumbnail_tips": "<specific tips for A/B testing: test negative vs positive framing>",
-    "end_screen_strategy": "<strategy linking to related content in same series/niche>",
-    "cards_strategy": "<strategy — link to comparison or follow-up video>",
-    "community_post_template": "<poll or question format to drive engagement before/after video>",
-    "best_posting_time": "<recommendation based on niche and audience>",
-    "posting_frequency_tip": "<quality over quantity advice>",
-    "engagement_boosters": ["<tip1>", "<tip2>", "<tip3>", "<tip4>", "<tip5>"],
-    "cross_promotion_ideas": ["<idea1 - Shorts teaser>", "<idea2 - Reddit/forum>", "<idea3 - other platform>"],
-    "reply_templates": {{
-        "positive_comment": "<grateful + helpful purchase guidance>",
-        "question_about_product": "<helpful answer + product link naturally>",
-        "comparison_question": "<honest comparison + link to comparison video if applicable>",
-        "negative_comment": "<acknowledge concern + provide balanced perspective>",
-        "where_to_buy": "<direct product link + mention any active deals>"
-    }},
-    "series_suggestions": ["<next video idea in same series>", "<related comparison video>", "<follow-up content idea>"]
-}}
-
-Product link: {affiliate_link}
-Include the product link naturally in the description and pinned comment for shoppers who want to check details.
-Return ONLY valid JSON."""
-
-    response = client.chat.completions.create(
-        model=cfg.model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        response_format={"type": "json_object"},
+    user_prompt = build_youtube_assets_user_prompt(
+        product_info,
+        script,
+        video_format,
+        script_context=all_text,
+        cons_lines=cons_lines,
+        cta_lines=cta_lines,
+        verdict_lines=verdict_lines,
     )
 
-    content = getattr(response.choices[0].message, "content", "")
-    parsed = parse_llm_json(content)
+    try:
+        parsed = chat_completion_json(
+            YOUTUBE_ASSETS_SYSTEM_PROMPT,
+            user_prompt,
+            required_keys=["seo_title"],
+            validate_fn=lambda payload: validate_youtube_assets(
+                payload, str(product_info.get("affiliate_link", "")), product_info
+            ),
+            call_label="youtube_assets_generator",
+        )
+    except RuntimeError:
+        parsed = {}
 
-    # If parsed output doesn't look like the expected package, create a safe fallback
     if not isinstance(parsed, dict) or "seo_title" not in parsed:
         fallback = {
             "seo_title": title_suggestion or f"{product_info['product_name']} - Honest Review",
@@ -117,12 +133,13 @@ Return ONLY valid JSON."""
             "hashtags": [],
             "pinned_comment": "",
             "thumbnail_text_primary": product_info['product_name'],
+            "_shadowcast_fallback": True,
         }
-        # Merge any fields found in parsed dict
         if isinstance(parsed, dict):
             fallback.update(parsed)
         return fallback
 
+    parsed["_shadowcast_fallback"] = False
     return parsed
 
 

@@ -7,20 +7,156 @@ Supports multiple TTS providers:
   4. OpenAI TTS — paid, highest quality (requires API key)
 
 Provider selection is automatic based on what's installed, or can be forced.
+
+When audio_driven=True (default), segment visuals follow measured speech length
+plus an intentional pause — speech is never trimmed to fit LLM duration guesses.
 """
 
 import json
 import os
 import tempfile
 import subprocess
+import threading
 
-from moviepy import AudioFileClip, VideoFileClip, CompositeAudioClip, concatenate_audioclips
+import numpy as np
+from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
+from moviepy.audio.fx import AudioFadeIn, AudioFadeOut
+
+from tts_pronounce import prepare_tts_text
+from video_claims import (
+    LONG_CHAPTER_CARD_SECONDS,
+    LONG_COMMENT_PROMPT_SECONDS,
+    _transition_duration,
+)
+
+
+_PROVIDERS_CACHE = None
+_PROVIDERS_LOCK = threading.Lock()
+_KOKORO_INSTANCE = None
+_KOKORO_LOCK = threading.Lock()
+
+# kokoro-onnx v1.0 model files (download into this dir; see install string below)
+_KOKORO_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "kokoro")
+_KOKORO_MODEL = os.path.join(_KOKORO_ASSETS_DIR, "kokoro-v1.0.onnx")
+_KOKORO_VOICES = os.path.join(_KOKORO_ASSETS_DIR, "voices-v1.0.bin")
+
+# Research default: 200–500ms breath/cut padding between segments.
+_DEFAULT_INTER_SEGMENT_PAUSE = 0.35
+_CROSSFADE_SECONDS = 0.04
+_MIN_SEGMENT_DURATION = 0.12
+
+
+def _crossfade_seconds() -> float:
+    raw = os.getenv("SHADOWCAST_TTS_CROSSFADE", str(_CROSSFADE_SECONDS))
+    try:
+        fade = float(raw or _CROSSFADE_SECONDS)
+    except (TypeError, ValueError):
+        fade = _CROSSFADE_SECONDS
+    return max(0.0, min(fade, 0.12))
+
+
+def _estimate_rms(clip) -> float:
+    """Cheap RMS for seam energy matching (downsample ok)."""
+    try:
+        fps = int(getattr(clip, "fps", 44100) or 44100)
+        arr = clip.to_soundarray(fps=min(fps, 22050))
+    except Exception:
+        return 0.0
+    if arr is None:
+        return 0.0
+    flat = np.asarray(arr, dtype=np.float64)
+    if flat.size == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(np.square(flat))))
+
+
+def _match_clip_rms(clip, target_rms: float):
+    """Scale clip toward target RMS for energy continuity across segments."""
+    if target_rms <= 0:
+        return clip
+    rms = _estimate_rms(clip)
+    if rms < 1e-6:
+        return clip
+    gain = min(3.0, max(0.35, target_rms / rms))
+    if abs(gain - 1.0) < 0.05:
+        return clip
+    return clip.with_volume_scaled(gain)
+
+
+def transition_gaps_for_segments(segments: list) -> list[float]:
+    """Real transition durations inserted after each segment (0 after last)."""
+    gaps: list[float] = []
+    for idx, seg in enumerate(segments):
+        if idx < len(segments) - 1:
+            gaps.append(float(_transition_duration(seg)))
+        else:
+            gaps.append(0.0)
+    return gaps
+
+
+def transition_gaps_for_script(script: dict) -> list[float]:
+    """
+    Per-segment transition gaps matching build_render_timeline.
+
+    Chapter-local: no transition pad between chapters (visual uses chapter cards).
+    """
+    if "chapters" in script:
+        gaps: list[float] = []
+        for chapter in script.get("chapters", []):
+            gaps.extend(transition_gaps_for_segments(chapter.get("segments", [])))
+        return gaps
+    return transition_gaps_for_segments(script.get("segments", []))
+
+
+def leading_chrome_for_script(script: dict) -> float:
+    """Chapter-card silence before first long-form speech (intro is separate)."""
+    if script.get("chapters"):
+        return float(LONG_CHAPTER_CARD_SECONDS)
+    return 0.0
+
+
+def chrome_gaps_for_script(script: dict) -> list[float]:
+    """
+    Per-segment chrome silence after each flat segment matching build_render_timeline.
+
+    Mid-video comment prompt and the next chapter card land after a chapter's
+    last segment — same insertion points as build_render_timeline for LONG_FORM.
+    """
+    chapters = script.get("chapters")
+    if not chapters:
+        return [0.0] * len(script.get("segments", []))
+
+    gaps: list[float] = []
+    engagement_inserted = False
+    n_chapters = len(chapters)
+    for ch_idx, chapter in enumerate(chapters):
+        segs = list(chapter.get("segments", []))
+        for idx in range(len(segs)):
+            after = 0.0
+            if idx == len(segs) - 1:
+                if not engagement_inserted and ch_idx >= n_chapters // 2:
+                    after += float(LONG_COMMENT_PROMPT_SECONDS)
+                    engagement_inserted = True
+                if ch_idx < n_chapters - 1:
+                    after += float(LONG_CHAPTER_CARD_SECONDS)
+            gaps.append(after)
+    return gaps
+
+
+def _timing_clock_total(timing_rows: list) -> float:
+    """Speech slots + transition/chrome pads — length of the shared VO/caption clock."""
+    total = 0.0
+    for row in timing_rows:
+        total += float(row.get("duration", 0.0) or 0.0)
+        total += float(row.get("transition_duration", 0.0) or 0.0)
+        total += float(row.get("chrome_duration", 0.0) or 0.0)
+    return total
 
 
 # ── Provider Detection ───────────────────────────────────────────────
 def _check_kokoro():
     try:
-        import kokoro_onnx
+        import kokoro_onnx  # noqa: F401
         return True
     except ImportError:
         return False
@@ -34,7 +170,7 @@ def _check_piper():
 
 def _check_openai_tts():
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: F401
         key = os.environ.get("OPENAI_API_KEY", "")
         return bool(key)
     except ImportError:
@@ -42,66 +178,88 @@ def _check_openai_tts():
 
 def _check_gtts():
     try:
-        from gtts import gTTS
+        from gtts import gTTS  # noqa: F401
         return True
     except ImportError:
         return False
 
 
-def get_available_providers():
-    """Return list of available TTS providers with status."""
-    providers = {
-        "kokoro": {
-            "name": "Kokoro TTS",
-            "available": _check_kokoro(),
-            "type": "local",
-            "quality": "high",
-            "cost": "free",
-            "install": "pip install kokoro-onnx",
-            "description": "High-quality local TTS. Runs on your GPU. Best free option.",
-            "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
-        },
-        "piper": {
-            "name": "Piper TTS",
-            "available": _check_piper(),
-            "type": "local",
-            "quality": "medium",
-            "cost": "free",
-            "install": "pip install piper-tts",
-            "description": "Fast local TTS. Lower quality but very fast inference.",
-            "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
-        },
-        "openai": {
-            "name": "OpenAI TTS",
-            "available": _check_openai_tts(),
-            "type": "cloud",
-            "quality": "highest",
-            "cost": "paid (~$0.015/1K chars)",
-            "install": "pip install openai (+ API key)",
-            "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
-            "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-        },
-        "gtts": {
-            "name": "Google TTS",
-            "available": _check_gtts(),
-            "type": "cloud",
-            "quality": "basic",
-            "cost": "free",
-            "install": "pip install gtts",
-            "description": "Free online TTS. Basic quality but always works.",
-            "voices": ["en"],
-        },
-    }
-    return providers
+def get_available_providers(force_refresh: bool = False):
+    """Return list of available TTS providers with status (cached per process)."""
+    global _PROVIDERS_CACHE
+    with _PROVIDERS_LOCK:
+        if _PROVIDERS_CACHE is not None and not force_refresh:
+            return _PROVIDERS_CACHE
+        providers = {
+            "kokoro": {
+                "name": "Kokoro TTS",
+                "available": _check_kokoro() and os.path.isfile(_KOKORO_MODEL) and os.path.isfile(_KOKORO_VOICES),
+                "type": "local",
+                "quality": "high",
+                "cost": "free",
+                "install": (
+                    "pip install kokoro-onnx soundfile; "
+                    "download kokoro-v1.0.onnx + voices-v1.0.bin into backend/assets/kokoro/"
+                ),
+                "description": "High-quality local TTS. Runs on your GPU. Best free option.",
+                "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
+            },
+            "piper": {
+                "name": "Piper TTS",
+                "available": _check_piper(),
+                "type": "local",
+                "quality": "medium",
+                "cost": "free",
+                "install": "pip install piper-tts",
+                "description": "Fast local TTS. Lower quality but very fast inference.",
+                "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
+            },
+            "openai": {
+                "name": "OpenAI TTS",
+                "available": _check_openai_tts(),
+                "type": "cloud",
+                "quality": "highest",
+                "cost": "paid (~$0.015/1K chars)",
+                "install": "pip install openai (+ API key)",
+                "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
+                "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            },
+            "gtts": {
+                "name": "Google TTS",
+                "available": _check_gtts(),
+                "type": "cloud",
+                "quality": "basic",
+                "cost": "free",
+                "install": "pip install gtts",
+                "description": "Free online TTS. Basic quality but always works.",
+                "voices": ["en"],
+            },
+        }
+        _PROVIDERS_CACHE = providers
+        return providers
 
 
 def get_best_provider():
     """Return the best available provider in quality order."""
+    providers = get_available_providers()
     for provider in ["kokoro", "openai", "piper", "gtts"]:
-        providers = get_available_providers()
         if providers[provider]["available"]:
             return provider
     return "gtts"  # fallback
+
+
+def _get_kokoro():
+    """Lazily load and reuse a single Kokoro model instance. Caller must hold _KOKORO_LOCK."""
+    global _KOKORO_INSTANCE
+    if _KOKORO_INSTANCE is None:
+        import kokoro_onnx
+        if not os.path.isfile(_KOKORO_MODEL) or not os.path.isfile(_KOKORO_VOICES):
+            raise FileNotFoundError(
+                f"Kokoro model files missing. Expected {_KOKORO_MODEL} and {_KOKORO_VOICES}. "
+                "Download from https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0"
+            )
+        _KOKORO_INSTANCE = kokoro_onnx.Kokoro(_KOKORO_MODEL, _KOKORO_VOICES)
+    return _KOKORO_INSTANCE
 
 
 # ── TTS Generation by Provider ──────────────────────────────────────
@@ -115,11 +273,11 @@ def _generate_gtts(text: str, output_path: str, voice: str = "en"):
 
 def _generate_kokoro(text: str, output_path: str, voice: str = "af_bella"):
     """Generate audio using Kokoro TTS (local, GPU-accelerated)."""
-    import kokoro_onnx
     import soundfile as sf
 
-    kokoro = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
-    samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
+    with _KOKORO_LOCK:
+        kokoro = _get_kokoro()
+        samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
     sf.write(output_path, samples, sample_rate)
 
 
@@ -164,8 +322,46 @@ DEFAULT_VOICES = {
 }
 
 
-def generate_segment_audio(text: str, output_path: str,
-                           provider: str = "auto", voice: str = None) -> str:
+def _silence_clip(duration: float, fps: int = 44100, nchannels: int = 2):
+    """Stereo-safe silence for concatenate_audioclips (MoviePy expects (n, channels))."""
+    duration = max(float(duration or 0.0), 0.0)
+    if duration <= 0:
+        return None
+    channels = max(1, int(nchannels or 2))
+
+    def make_frame(t):
+        if np.isscalar(t):
+            return np.zeros(channels, dtype=np.float64)
+        return np.zeros((len(t), channels), dtype=np.float64)
+
+    return AudioClip(make_frame, duration=duration, fps=fps)
+
+
+def _inter_segment_pause() -> float:
+    raw = os.getenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", str(_DEFAULT_INTER_SEGMENT_PAUSE))
+    try:
+        pause = float(raw or _DEFAULT_INTER_SEGMENT_PAUSE)
+    except (TypeError, ValueError):
+        pause = _DEFAULT_INTER_SEGMENT_PAUSE
+    return max(0.0, min(pause, 1.0))
+
+
+def _with_edge_fades(clip, fade_seconds: float | None = None):
+    """Micro fades reduce click/seam artifacts when concatenating TTS segments."""
+    fade = _crossfade_seconds() if fade_seconds is None else max(0.0, float(fade_seconds or 0.0))
+    if fade <= 0 or clip.duration <= fade * 2:
+        return clip
+    return clip.with_effects([AudioFadeIn(fade), AudioFadeOut(fade)])
+
+
+def generate_segment_audio(
+    text: str,
+    output_path: str,
+    provider: str = "auto",
+    voice: str = None,
+    aliases: dict | None = None,
+    product_names: list[str] | None = None,
+) -> str:
     """Generate audio for a single text segment."""
     if provider == "auto":
         provider = get_best_provider()
@@ -177,9 +373,12 @@ def generate_segment_audio(text: str, output_path: str,
     if not generator:
         raise ValueError(f"Unknown TTS provider: {provider}")
 
-    # Clean text of emoji
-    clean_text = "".join(c for c in text if ord(c) < 0x1F600 or ord(c) > 0x1F9FF)
-    clean_text = clean_text.strip()
+    clean_text = prepare_tts_text(
+        text,
+        provider=provider,
+        aliases=aliases,
+        product_names=product_names,
+    )
     if not clean_text:
         return output_path
 
@@ -187,13 +386,107 @@ def generate_segment_audio(text: str, output_path: str,
     return output_path
 
 
+def apply_timing_to_segments(segments: list, timing_rows: list) -> float:
+    """Write measured TTS durations onto segment dicts. Returns total duration."""
+    total = 0.0
+    for row in timing_rows:
+        idx = int(row["index"])
+        if idx < 0 or idx >= len(segments):
+            continue
+        seg = segments[idx]
+        dur = float(row["duration"])
+        seg["duration"] = round(dur, 3)
+        seg["tts_duration"] = round(float(row["tts_duration"]), 3)
+        seg["tts_pause"] = round(float(row.get("pause", 0.0)), 3)
+        total += dur
+    return total
+
+
+def apply_timing_to_script(script: dict, timing_rows: list) -> dict:
+    """
+    Apply a shared TTS timing clock to the script in place.
+
+    timing_rows are ordered across short-form segments or flattened chapter segments.
+    """
+    if "chapters" in script:
+        flat = []
+        for chapter in script.get("chapters", []):
+            flat.extend(chapter.get("segments", []))
+        apply_timing_to_segments(flat, timing_rows)
+    else:
+        apply_timing_to_segments(script.get("segments", []), timing_rows)
+
+    # Segment visual slots only (transitions are separate overhead on the shared clock).
+    total = sum(float(r["duration"]) for r in timing_rows)
+    script["total_duration_seconds"] = round(total, 3)
+    script["tts_timing"] = timing_rows
+    return script
+
+
+def resolve_tts_timing(script: dict, voiceover_path: str | None = None) -> list:
+    """Return timing rows from script.tts_timing or voiceover_timing sidecar."""
+    rows = script.get("tts_timing")
+    if isinstance(rows, list) and rows:
+        return rows
+    candidates = []
+    if voiceover_path:
+        candidates.append(os.path.splitext(voiceover_path)[0] + "_timing.json")
+    hook = script.get("hook_type", "unknown")
+    fmt = script.get("format", "short_form")
+    if voiceover_path:
+        base_dir = os.path.dirname(voiceover_path) or "."
+        candidates.append(os.path.join(base_dir, f"{hook}_{fmt}_voiceover_timing.json"))
+    for path in candidates:
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            loaded = data.get("segments") if isinstance(data, dict) else None
+            if isinstance(loaded, list) and loaded:
+                script["tts_timing"] = loaded
+                return loaded
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+    return []
+
+
+def _write_timing_sidecar(output_path: str, timing_rows: list) -> str:
+    sidecar = os.path.splitext(output_path)[0] + "_timing.json"
+    payload = {
+        "segments": timing_rows,
+        "total_duration_seconds": round(_timing_clock_total(timing_rows), 3),
+    }
+    with open(sidecar, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
+    return sidecar
+
+
 # ── Main Functions ───────────────────────────────────────────────────
 
 def generate_voiceover_for_segments(segments: list, output_path: str,
                                      provider: str = "auto",
                                      voice: str = None,
-                                     lang: str = "en") -> str:
-    """Generate a single voiceover audio file from script segments."""
+                                     lang: str = "en",
+                                     audio_driven: bool = True,
+                                     apply_durations: bool = True,
+                                     write_timing: bool = True,
+                                     transition_gaps: list | None = None,
+                                     chrome_gaps: list | None = None,
+                                     leading_chrome: float = 0.0,
+                                     aliases: dict | None = None,
+                                     product_names: list[str] | None = None) -> tuple[str, list]:
+    """
+    Generate a single voiceover from script segments.
+
+    audio_driven=True (default): never trim speech to LLM duration guesses.
+    Scene length becomes measured TTS duration + inter-segment pause.
+    Real transition durations (glitch/flash/swipe/zoom) and long-form chrome
+    (chapter cards / comment prompt) are padded as silence so VO/caption starts
+    match build_render_timeline. Intro remains voiceover_start_seconds.
+    Returns (output_path, timing_rows) where timing_rows form the shared clock
+    for captions / overlays.
+    """
     if provider == "auto":
         provider = get_best_provider()
 
@@ -203,6 +496,16 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
 
     temp_files = []
     audio_clips = []
+    timing_rows = []
+    # MoviePy: closing a source clip invalidates subclipped copies that share its reader.
+    source_clips_to_close = []
+    target_pause = _inter_segment_pause()
+    leading = max(0.0, float(leading_chrome or 0.0))
+    cumulative = leading
+    leading_pending = leading
+    gaps = transition_gaps if transition_gaps is not None else transition_gaps_for_segments(segments)
+    chrome = chrome_gaps if chrome_gaps is not None else [0.0] * len(segments)
+    energy_target: float | None = None
 
     try:
         for i, seg in enumerate(segments):
@@ -216,9 +519,15 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             tmp.close()
 
             try:
-                generate_segment_audio(text, tmp.name, provider=provider, voice=voice)
+                generate_segment_audio(
+                    text,
+                    tmp.name,
+                    provider=provider,
+                    voice=voice,
+                    aliases=aliases,
+                    product_names=product_names,
+                )
                 clip = AudioFileClip(tmp.name)
-                audio_clips.append(clip)
             except Exception as e:
                 print(f"TTS segment {i} failed ({provider}): {e}")
                 # Try fallback to gtts
@@ -227,12 +536,105 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                         fallback_tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                         temp_files.append(fallback_tmp.name)
                         fallback_tmp.close()
-                        _generate_gtts(text, fallback_tmp.name)
+                        speakable = prepare_tts_text(
+                            text,
+                            provider="gtts",
+                            aliases=aliases,
+                            product_names=product_names,
+                        )
+                        _generate_gtts(speakable or text, fallback_tmp.name)
                         clip = AudioFileClip(fallback_tmp.name)
-                        audio_clips.append(clip)
                         print(f"  Fell back to gTTS for segment {i}")
                     except Exception as e2:
                         print(f"  gTTS fallback also failed: {e2}")
+                        continue
+                else:
+                    continue
+
+            tts_duration = float(clip.duration or 0.0)
+            llm_duration = 0.0
+            try:
+                llm_duration = float(seg.get("duration", 0) or 0)
+            except (TypeError, ValueError):
+                llm_duration = 0.0
+
+            fps = int(getattr(clip, "fps", 44100) or 44100)
+            nchannels = int(getattr(clip, "nchannels", 2) or 2)
+            rms = _estimate_rms(clip)
+            if energy_target is None and rms > 0:
+                energy_target = rms
+            elif energy_target is not None and rms > 0:
+                clip = _match_clip_rms(clip, energy_target)
+            if leading_pending > 0:
+                lead_silence = _silence_clip(leading_pending, fps, nchannels=nchannels)
+                if lead_silence:
+                    audio_clips.append(lead_silence)
+                leading_pending = 0.0
+            if audio_driven:
+                pause = target_pause
+                segment_duration = max(tts_duration + pause, _MIN_SEGMENT_DURATION)
+                # Never trim speech — only pad trailing silence to the segment slot.
+                clip = _with_edge_fades(clip)
+                audio_clips.append(clip)
+                remaining = max(segment_duration - tts_duration, 0.0)
+                silence = _silence_clip(remaining, fps, nchannels=nchannels)
+                if silence:
+                    audio_clips.append(silence)
+            else:
+                # Legacy: force speech into LLM slot (can cut words).
+                segment_duration = llm_duration if llm_duration > 0 else max(tts_duration + target_pause, _MIN_SEGMENT_DURATION)
+                max_voice_duration = max(segment_duration - target_pause, _MIN_SEGMENT_DURATION)
+                if clip.duration > max_voice_duration:
+                    # Keep source open until after write — subclipped shares the reader.
+                    source_clips_to_close.append(clip)
+                    clip = clip.subclipped(0, max_voice_duration)
+                    tts_duration = float(clip.duration or 0.0)
+                clip = _with_edge_fades(clip)
+                audio_clips.append(clip)
+                remaining = max(segment_duration - clip.duration, target_pause)
+                silence = _silence_clip(remaining, fps, nchannels=nchannels)
+                if silence:
+                    audio_clips.append(silence)
+
+            # Visual timeline inserts real transition clips AFTER the segment slot.
+            # Pad VO and advance the shared clock; do not fold into segment duration
+            # (that would double-count once the renderer also appends the transition).
+            try:
+                trans_dur = float(gaps[i]) if i < len(gaps) else 0.0
+            except (TypeError, ValueError, IndexError):
+                trans_dur = 0.0
+            trans_dur = max(0.0, trans_dur)
+            if trans_dur > 0:
+                trans_silence = _silence_clip(trans_dur, fps, nchannels=nchannels)
+                if trans_silence:
+                    audio_clips.append(trans_silence)
+
+            try:
+                chrome_dur = float(chrome[i]) if i < len(chrome) else 0.0
+            except (TypeError, ValueError, IndexError):
+                chrome_dur = 0.0
+            chrome_dur = max(0.0, chrome_dur)
+            if chrome_dur > 0:
+                chrome_silence = _silence_clip(chrome_dur, fps, nchannels=nchannels)
+                if chrome_silence:
+                    audio_clips.append(chrome_silence)
+
+            row = {
+                "index": i,
+                "text": text,
+                "start": round(cumulative, 3),
+                "tts_duration": round(tts_duration, 3),
+                "pause": round(max(segment_duration - tts_duration, 0.0), 3),
+                "duration": round(segment_duration, 3),
+                "transition_duration": round(trans_dur, 3),
+                "chrome_duration": round(chrome_dur, 3),
+                "llm_duration": round(llm_duration, 3) if llm_duration else None,
+            }
+            timing_rows.append(row)
+            cumulative += segment_duration + trans_dur + chrome_dur
+
+        if apply_durations and timing_rows:
+            apply_timing_to_segments(segments, timing_rows)
 
         if audio_clips:
             final_audio = concatenate_audioclips(audio_clips)
@@ -240,7 +642,18 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             final_audio.close()
 
         for clip in audio_clips:
-            clip.close()
+            try:
+                clip.close()
+            except Exception:
+                pass
+        for clip in source_clips_to_close:
+            try:
+                clip.close()
+            except Exception:
+                pass
+
+        if write_timing and timing_rows:
+            _write_timing_sidecar(output_path, timing_rows)
 
     finally:
         for f in temp_files:
@@ -249,7 +662,7 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             except Exception:
                 pass
 
-    return output_path
+    return output_path, timing_rows
 
 
 def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -> str:
@@ -257,9 +670,19 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
     video = VideoFileClip(video_path)
     audio = AudioFileClip(audio_path)
 
-    # Trim audio to match video duration
+    clip_refs = [audio]
+
+    # Trim or pad audio to match video duration.
     if audio.duration > video.duration:
         audio = audio.subclipped(0, video.duration)
+        clip_refs.append(audio)
+    elif audio.duration < video.duration:
+        silence = _silence_clip(video.duration - audio.duration, int(getattr(audio, "fps", 44100) or 44100))
+        if silence:
+            clip_refs.append(silence)
+            padded = concatenate_audioclips([audio, silence])
+            clip_refs.append(padded)
+            audio = padded
 
     video_with_audio = video.with_audio(audio)
     video_with_audio.write_videofile(
@@ -272,7 +695,11 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
     )
 
     video.close()
-    audio.close()
+    for ref in reversed(clip_refs):
+        try:
+            ref.close()
+        except Exception:
+            pass
     video_with_audio.close()
 
     return output_path
@@ -280,14 +707,22 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
 
 def generate_voiceover_for_script(script: dict, output_dir: str,
                                    provider: str = "auto",
-                                   voice: str = None) -> str:
-    """Generate voiceover for a complete script (short or long form)."""
+                                   voice: str = None,
+                                   audio_driven: bool = True,
+                                   product_name: str = "",
+                                   product_names: list[str] | None = None,
+                                   aliases: dict | None = None) -> tuple[str, list]:
+    """Generate voiceover for a complete script (short or long form).
+
+    Returns (audio_path, timing_rows). Mutates script segment durations when
+    audio_driven is True so the renderer can build visuals to the same clock.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     hook_type = script.get("hook_type", "unknown")
     fmt = script.get("format", "short_form")
 
-    # Collect all segments
+    # Collect all segments (flat list shares objects with script for in-place updates)
     if "chapters" in script:
         segments = []
         for chapter in script["chapters"]:
@@ -295,10 +730,30 @@ def generate_voiceover_for_script(script: dict, output_dir: str,
     else:
         segments = script.get("segments", [])
 
-    audio_path = os.path.join(output_dir, f"{hook_type}_{fmt}_voiceover.mp3")
-    generate_voiceover_for_segments(segments, audio_path, provider=provider, voice=voice)
+    names = [str(n).strip() for n in (product_names or []) if str(n).strip()]
+    pname = str(product_name or "").strip()
+    if pname and pname not in names:
+        names.insert(0, pname)
 
-    return audio_path
+    audio_path = os.path.join(output_dir, f"{hook_type}_{fmt}_voiceover.mp3")
+    audio_path, timing_rows = generate_voiceover_for_segments(
+        segments,
+        audio_path,
+        provider=provider,
+        voice=voice,
+        audio_driven=audio_driven,
+        apply_durations=audio_driven,
+        write_timing=True,
+        transition_gaps=transition_gaps_for_script(script),
+        chrome_gaps=chrome_gaps_for_script(script),
+        leading_chrome=leading_chrome_for_script(script),
+        aliases=aliases,
+        product_names=names or None,
+    )
+    if audio_driven and timing_rows:
+        apply_timing_to_script(script, timing_rows)
+
+    return audio_path, timing_rows
 
 
 if __name__ == "__main__":
@@ -314,14 +769,16 @@ if __name__ == "__main__":
 
     # Quick test with best provider
     test_segments = [
-        {"text": "This changes everything"},
-        {"text": "The number one gadget of 2025"},
-        {"text": "Check the link in description"},
+        {"text": "This changes everything", "duration": 1.0},
+        {"text": "The number one gadget of 2025", "duration": 1.0},
+        {"text": "Check the link in description", "duration": 1.0},
     ]
 
     out = os.path.join(os.path.dirname(__file__), "output", "test_voiceover.mp3")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     provider = get_best_provider()
     print(f"\nGenerating test voiceover with {provider}...")
-    generate_voiceover_for_segments(test_segments, out, provider=provider)
-    print(f"✓ Test voiceover saved to {out}")
+    path, timing = generate_voiceover_for_segments(test_segments, out, provider=provider)
+    print(f"✓ Test voiceover saved to {path}")
+    print(f"  Timing: {timing}")
+    print(f"  Updated durations: {[s.get('duration') for s in test_segments]}")
