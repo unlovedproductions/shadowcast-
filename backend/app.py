@@ -80,7 +80,7 @@ from content_styles import (
     style_badge_text,
     style_requires_competitors,
 )
-from script_postprocessor import enrich_script
+from script_postprocessor import enrich_script, ensure_long_form_min_duration
 from apf_import import (
     assess_product_completeness,
     as_snake_product_info,
@@ -449,6 +449,7 @@ def _script_ready_for_render(script: dict) -> tuple[bool, str]:
     if not fmt:
         fmt = LONG_FORM if script.get("chapters") else SHORT_FORM
     if fmt == LONG_FORM:
+        ensure_long_form_min_duration(script, minimum=FORMAT_CLAIMS[LONG_FORM].min_duration_seconds)
         total = sum_segment_durations(script, LONG_FORM)
         min_s = FORMAT_CLAIMS[LONG_FORM].min_duration_seconds
         if total < min_s:

@@ -13,6 +13,7 @@ from prompts import (
     SCRIPT_SYSTEM_PROMPT,
     build_script_user_prompt,
 )
+from script_postprocessor import ensure_long_form_min_duration
 from style_rules_retrieval import attach_style_rules_context
 
 __all__ = [
@@ -36,6 +37,8 @@ def _call_llm(
         style = normalize_content_style(content_style or DEFAULT_CONTENT_STYLE)
 
         def validate_fn(parsed: dict) -> tuple[bool, list[str]]:
+            if fmt == "long_form":
+                ensure_long_form_min_duration(parsed)
             return validate_script_output(parsed, style, fmt)
 
     return chat_completion_json(

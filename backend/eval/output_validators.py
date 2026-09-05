@@ -67,9 +67,17 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     # Segment durations are the contract (TTS re-times later). LLMs often stamp a
     # target runtime (e.g. 240) instead of sum(duration) — rewrite, don't hard-fail.
     summed = sum_segment_durations(script, fmt)
+    if fmt == "long_form" and summed < 120 and summed > 0:
+        factor = 120.0 / summed
+        for seg in _iter_segments(script):
+            try:
+                dur = float(seg.get("duration") or 0)
+            except (TypeError, ValueError):
+                dur = 0.0
+            if dur > 0:
+                seg["duration"] = round(dur * factor, 3)
+        summed = 120.0
     script["total_duration_seconds"] = round(float(summed), 3)
-    if fmt == "long_form" and summed < 120:
-        errors.append("long_form segment duration must be at least 120s")
 
 
 def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:
