@@ -48,6 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Shorts chrome, caption stack, and YouTube encode so renders are postable (`4a2866c`).
+- NVENC encode path: align MoviePy with system ffmpeg (`294ebdc`).
+- Scorecard accepts winner-only rows so VS layouts still render (`17b5164`).
 - Pre-publish QA WARNs: high-contrast thumbs, TTS-aware claim timing, strip markdown affiliate links.
 - Digistore CDN product-image resolve false negatives on APF import.
 - Script `total_duration` normalized to segment sum instead of failing the job.

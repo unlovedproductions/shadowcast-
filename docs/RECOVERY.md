@@ -80,4 +80,4 @@ ShadowCast is mostly stateless code + generated artifacts. If generated output i
 
 ## 11) Last Verified
 - Date: 2026-08-15
-- Commit: `41ec621`
+- Commit: `17b5164`
