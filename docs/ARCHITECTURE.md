@@ -56,11 +56,12 @@ flowchart LR
 
 | Variable | Effect |
 |----------|--------|
-| `HOST` / `PORT` | Bind address (default `127.0.0.1:8000`) |
+| `HOST` / `PORT` | Bind address (default `127.0.0.1:8000`). Non-loopback requires `INTERNAL_SERVICE_SECRET`. |
 | `STYLE_RULES_RAG` | `0` disables style corpus injection |
 | `SHADOWCAST_BATCH_WORKERS` | Parallel batch product workers |
-| `CORS_ORIGINS` / `CORS_ALLOW_ALL` | CORS |
-| `INTERNAL_SERVICE_SECRET` | Mission Control / APF machine auth |
+| `CORS_ORIGINS` / `CORS_ALLOW_ALL` | CORS; `CORS_ALLOW_ALL` is **ignored** (forbidden with credentials) |
+| `INTERNAL_SERVICE_SECRET` | Required when `HOST` is non-loopback; M2M auth with Mission Control/APF; gates mutate routes when exposed |
+| `SHADOWCAST_REQUIRE_SERVICE_KEY` | `1` forces service-key on generate/publish/social even on localhost |
 | `ALLOW_GTTS_PUBLISH` | `1` allows live publish with gTTS-only voice |
 | `ALLOW_SYNTH_MUSIC_PUBLISH` | `1` allows live publish without royalty-free music beds |
 | `SHADOWCAST_REQUIRE_PRODUCT_IMAGE` | `1` fails pre-publish QA when `image_url` missing |

@@ -11,7 +11,10 @@ ShadowCast generates faceless affiliate videos from structured product inputs an
 ## 3) Dependencies
 - Python 3.10+
 - Virtual environment at `.venv/` (preferred; `venv/` acceptable as legacy alias)
-- Install lock for CI parity: `backend/requirements.lock` (symlink `poetry.lock` at repo root)
+- Install lock for CI parity: `backend/requirements.lock` (full `pip freeze` pinfile).
+  Root `poetry.lock` is only a **symlink** to that file for tooling that looks for Poetry —
+  this project does **not** use Poetry/`pyproject.toml`. Regenerate with:
+  `pip install -r backend/requirements.txt && pip freeze > backend/requirements.lock`
 - FFmpeg + ffprobe (optional `h264_nvenc` for faster encode)
 - FastAPI runtime (`backend/app.py`)
 - Optional: Ollama/OpenAI/custom providers depending on local settings

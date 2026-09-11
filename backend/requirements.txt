@@ -1,4 +1,6 @@
-# Direct deps — regenerate backend/requirements.lock via: pip install -r requirements.txt && pip freeze > requirements.lock
+# Direct deps — regenerate backend/requirements.lock via:
+#   pip install -r requirements.txt && pip freeze > requirements.lock
+# Root poetry.lock is a symlink to requirements.lock (not Poetry).
 fastapi
 uvicorn
 python-multipart

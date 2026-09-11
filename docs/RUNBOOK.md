@@ -12,7 +12,8 @@
 2. (Recommended) fetch operator media once per machine:
    - `./scripts/fetch_operator_media.sh`
 3. Start server:
-   - `python3 backend/app.py`
+   - `python3 backend/app.py` (default `HOST=127.0.0.1`)
+   - Desktop launcher also binds **127.0.0.1** only. For LAN access set `HOST=0.0.0.0` **and** `INTERNAL_SERVICE_SECRET` in `backend/.env`, then use `python3 backend/app.py` (not the 0.0.0.0 launcher override).
 4. Open:
    - `http://127.0.0.1:8000`
 
