@@ -834,6 +834,16 @@ def render_shorts_caption(
     y_hi = int(height * min(0.92, y_use + 0.08)) - text_h
     y = max(y_lo, min(y, max(y_lo, y_hi)))
 
+    # Compact dark plate under captions — cheap local contrast vs bright hero stills.
+    pad_x, pad_y = 18, 12
+    plate = [
+        max(0, x - pad_x),
+        max(0, y - pad_y),
+        min(width, x + text_w + pad_x),
+        min(height, y + text_h + pad_y),
+    ]
+    draw.rounded_rectangle(plate, radius=14, fill=(0, 0, 0, 150))
+
     if highlight_index is None:
         for dx, dy in _CAPTION_STROKE_OFFSETS:
             draw.multiline_text(

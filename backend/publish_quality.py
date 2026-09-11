@@ -12,7 +12,7 @@ from sound_design import music_bed_moods, music_beds_present
 from tts_generator import get_best_provider as get_best_tts
 from video_claim_audit import audit_output
 from video_claims import FORMAT_CLAIMS, LONG_FORM, SHORT_FORM
-from visual_quality import audit_thumbnail_contrast
+from visual_quality import audit_product_sharpness, audit_thumbnail_contrast
 
 
 def _ffprobe_duration(path: Path) -> float | None:
@@ -306,6 +306,27 @@ def evaluate_publish_quality(
                 "detail": "image_url present",
             }
         )
+        try:
+            from product_media import resolve_product_image
+
+            cached = resolve_product_image(image)
+            if cached is not None:
+                sev, expected, actual, detail = audit_product_sharpness(cached)
+                checks.append(
+                    {
+                        "id": "product_sharpness",
+                        "status": sev,
+                        "detail": f"{detail} ({actual}, expect {expected})",
+                    }
+                )
+        except Exception as exc:
+            checks.append(
+                {
+                    "id": "product_sharpness",
+                    "status": "WARN",
+                    "detail": f"Product sharpness check skipped: {exc}",
+                }
+            )
     elif require_image:
         checks.append(
             {
