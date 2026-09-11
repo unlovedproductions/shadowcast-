@@ -5,7 +5,7 @@ never need to physically buy or test products.
 """
 
 from content_styles import DEFAULT_CONTENT_STYLE, normalize_content_style
-from eval.output_validators import validate_script_output
+from eval.output_validators import LONG_FORM_LENGTH_ERROR_PREFIX, validate_script_output
 from llm_client import chat_completion_json
 from prompts import (
     HOOK_TYPES,
@@ -13,7 +13,6 @@ from prompts import (
     SCRIPT_SYSTEM_PROMPT,
     build_script_user_prompt,
 )
-from script_postprocessor import ensure_long_form_min_duration
 from style_rules_retrieval import attach_style_rules_context
 
 __all__ = [
@@ -31,15 +30,20 @@ def _call_llm(
     *,
     content_style: str = "",
     fmt: str = "",
+    enforce_length: bool = True,
 ) -> dict:
     validate_fn = None
     if fmt:
         style = normalize_content_style(content_style or DEFAULT_CONTENT_STYLE)
 
         def validate_fn(parsed: dict) -> tuple[bool, list[str]]:
-            if fmt == "long_form":
-                ensure_long_form_min_duration(parsed)
-            return validate_script_output(parsed, style, fmt)
+            ok, errors = validate_script_output(parsed, style, fmt)
+            if ok or enforce_length:
+                return ok, errors
+            remaining = [
+                e for e in errors if not str(e).startswith(LONG_FORM_LENGTH_ERROR_PREFIX)
+            ]
+            return (True, errors) if not remaining else (ok, errors)
 
     return chat_completion_json(
         SCRIPT_SYSTEM_PROMPT,
@@ -74,12 +78,25 @@ def generate_long_form_script(product_info: dict, hook_type: str, content_style:
         {**product_info}, content_style, "long_form", hook_type
     )
     user_prompt = build_script_user_prompt(product_info, hook_type, content_style, "long_form")
-    return _call_llm(
-        user_prompt,
-        required_keys=["chapters"],
-        content_style=content_style,
-        fmt="long_form",
-    )
+    try:
+        return _call_llm(
+            user_prompt,
+            required_keys=["chapters"],
+            content_style=content_style,
+            fmt="long_form",
+        )
+    except RuntimeError as exc:
+        if LONG_FORM_LENGTH_ERROR_PREFIX not in str(exc):
+            raise
+        # Model could not reach the word floor. A short long-form still renders and
+        # only warns at QA, whereas raising here loses both videos for the product.
+        return _call_llm(
+            user_prompt,
+            required_keys=["chapters"],
+            content_style=content_style,
+            fmt="long_form",
+            enforce_length=False,
+        )
 
 
 def generate_selected_scripts(product_info: dict, hook_type: str,

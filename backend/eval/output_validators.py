@@ -4,9 +4,11 @@ import re
 from typing import Any
 
 from video_claims import (
+    MIN_LONG_FORM_SPOKEN_WORDS,
     REQUIRED_LAYOUTS_BY_STYLE,
     SUPPORTED_ANIMATION_TOKENS,
     SUPPORTED_TRANSITION_TOKENS,
+    count_spoken_words,
     sum_segment_durations,
 )
 
@@ -15,6 +17,8 @@ AFFILIATE_BANNED = re.compile(
     r"promoting\s+as\s+an\s+affiliate|earn\s+as\s+an\s+affiliate)\b",
     re.I,
 )
+
+LONG_FORM_LENGTH_ERROR_PREFIX = "long_form runtime:"
 
 CON_SIGNAL = re.compile(
     r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for|avoid)\b",
@@ -67,17 +71,15 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     # Segment durations are the contract (TTS re-times later). LLMs often stamp a
     # target runtime (e.g. 240) instead of sum(duration) — rewrite, don't hard-fail.
     summed = sum_segment_durations(script, fmt)
-    if fmt == "long_form" and summed < 120 and summed > 0:
-        factor = 120.0 / summed
-        for seg in _iter_segments(script):
-            try:
-                dur = float(seg.get("duration") or 0)
-            except (TypeError, ValueError):
-                dur = 0.0
-            if dur > 0:
-                seg["duration"] = round(dur * factor, 3)
-        summed = 120.0
     script["total_duration_seconds"] = round(float(summed), 3)
+    # Scaling durations cannot lengthen a TTS render; only more narration can.
+    if fmt == "long_form":
+        words = count_spoken_words(script, fmt)
+        if words < MIN_LONG_FORM_SPOKEN_WORDS:
+            errors.append(
+                f"{LONG_FORM_LENGTH_ERROR_PREFIX} needs at least "
+                f"{MIN_LONG_FORM_SPOKEN_WORDS} spoken words to clear the 120s floor (got {words})"
+            )
 
 
 def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:

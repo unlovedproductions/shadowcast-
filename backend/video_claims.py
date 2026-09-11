@@ -146,6 +146,16 @@ def sum_segment_durations(script: dict, fmt: str) -> float:
     return sum(_segment_duration(seg, default) for seg in _iter_segments(script, fmt))
 
 
+# With TTS enabled the renderer discards LLM `duration` values and re-times every
+# segment to measured speech, so spoken word count is what sets final runtime.
+# Fitted against rendered long-form jobs: runtime ≈ 0.52 * words + 26s.
+MIN_LONG_FORM_SPOKEN_WORDS = 200
+
+
+def count_spoken_words(script: dict, fmt: str) -> int:
+    return sum(len(str(seg.get("text") or "").split()) for seg in _iter_segments(script, fmt))
+
+
 def expected_transition_overhead(script: dict, fmt: str) -> float:
     total = 0.0
     for segment_list in _iter_segment_lists(script, fmt):

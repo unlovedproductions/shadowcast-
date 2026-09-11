@@ -28,9 +28,9 @@ FORMATS = ["short_form", "long_form"]
 
 # Web-verified product stills (official/vendor pages; used when APF export has none).
 IMAGE_URLS: dict[str, str] = {
-    "1": "https://uswaterrevolution.com/wp-content/uploads/image065.webp",
+    "1": "https://uswaterrevolution.com/wp-content/uploads/image065.webp",  # vendor hero, not the op-builder sound icon
     "2": "https://assets.advancedbionutritionals.com/Images/Products-2020/Advanced-Amino-Formula/1bottle.png",
-    "3": "https://ingeniuswave.com/DSvsl/imagesx/order-now-60mb-btn.png",
+    "3": "https://geniuswave.org/images/prd-img-mini.webp",
     "4": "https://medicinal-garden-kit.com/assets/img/medicinal-garden-kit-ten-herbs-collage.webp",
     "5": "https://www.askaprepper.com/wp-content/uploads/2020/12/Self-Sufficient-Backyard-LOGO-250.jpg",
     "6": "https://www.your-creatory.com/wp-content/plugins/wp-youtube-lyte/lyteCache.php?origThumbUrl=https%3A%2F%2Fi.ytimg.com%2Fvi%2FDEi-PVAmTKY%2Fhqdefault.jpg",

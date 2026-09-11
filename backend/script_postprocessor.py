@@ -504,44 +504,6 @@ def _ensure_affiliate_disclosure(script: dict) -> None:
         script["total_duration_seconds"] = round(total, 2)
 
 
-def ensure_long_form_min_duration(script: dict, minimum: float = 120.0) -> None:
-    """Scale segment durations so long_form meets minimum runtime before validation/render."""
-    total = 0.0
-    for segments in _iter_segment_lists(script):
-        for seg in segments:
-            try:
-                total += float(seg.get("duration") or 0)
-            except (TypeError, ValueError):
-                pass
-    if total <= 0:
-        return
-    if total < minimum:
-        factor = minimum / total
-        for segments in _iter_segment_lists(script):
-            for seg in segments:
-                try:
-                    dur = float(seg.get("duration") or 0)
-                except (TypeError, ValueError):
-                    dur = 0.0
-                if dur > 0:
-                    seg["duration"] = round(dur * factor, 3)
-    actual = 0.0
-    last_seg = None
-    for segments in _iter_segment_lists(script):
-        for seg in segments:
-            try:
-                dur = float(seg.get("duration") or 0)
-            except (TypeError, ValueError):
-                dur = 0.0
-            if dur > 0:
-                actual += dur
-                last_seg = seg
-    drift = round(minimum - actual, 3)
-    if last_seg is not None and drift > 0.001:
-        last_seg["duration"] = round(float(last_seg["duration"]) + drift, 3)
-    script["total_duration_seconds"] = round(max(actual + max(drift, 0), minimum), 3)
-
-
 def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     """Inject layout segments and fix text_style aliases after LLM generation."""
     enriched = copy.deepcopy(script)

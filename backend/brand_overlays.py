@@ -443,11 +443,13 @@ def render_section_header(width, height, section_type, accent_color=ACCENT_COLOR
     text_font = load_font(MONTSERRAT_BOLD, NOTO_SANS_BOLD, text_font_size)
     padding_x = int(width * 0.03)
 
+    # ASCII-only labels: Montserrat-Bold has no glyphs for check/cross/star/arrow
+    # and renders them as tofu boxes in the banner.
     text_map = {
-        "pros": ("✓ THE GOOD", (0, 150, 0)),  # Green
-        "cons": ("✗ THE BAD", (150, 0, 0)),  # Red
-        "verdict": ("★ VERDICT", accent_color), # Accent
-        "comparison": ("↔ COMPARISON", (0, 100, 150)) # Blue-ish
+        "pros": ("THE GOOD", (0, 150, 0)),  # Green
+        "cons": ("THE BAD", (150, 0, 0)),  # Red
+        "verdict": ("VERDICT", accent_color), # Accent
+        "comparison": ("COMPARISON", (0, 100, 150)) # Blue-ish
     }
 
     display_text, section_color = text_map.get(section_type.lower(), ("SECTION", (100, 100, 100)))
