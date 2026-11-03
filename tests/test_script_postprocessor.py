@@ -132,3 +132,33 @@ def test_kinetic_presets_clamp_short_form_words_and_duration():
     assert first["animation"] == "impact_scale"
     assert second["duration"] == 1.0
     assert verbose["total_duration_seconds"] == 2.5
+
+
+def test_kinetic_presets_do_not_truncate_long_form_spoken_text():
+    long_line = (
+        "This product is worth it for daily commuters who need strong ANC "
+        "and all-day battery without paying flagship prices every year"
+    )
+    script = {
+        "format": "long_form",
+        "chapters": [
+            {
+                "chapter_name": "Review",
+                "segments": [
+                    {
+                        "segment_id": 1,
+                        "text": long_line,
+                        "text_style": "subtitle",
+                        "animation": "fade_in",
+                        "duration": 8.0,
+                    }
+                ],
+            }
+        ],
+    }
+    _apply_kinetic_presets(script)
+    seg = script["chapters"][0]["segments"][0]
+    assert seg["text"] == long_line
+    assert len(seg["text"].split()) > 12
+    assert seg["duration"] == 5.0
+    assert seg["text_style"] == "headline_bold"
