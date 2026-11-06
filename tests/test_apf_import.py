@@ -365,6 +365,57 @@ def test_digistore_recovers_name_and_sanitizes_price_from_vendor_materials():
     assert "Dashboard Marketplace" not in normalized["keyFeatures"]
     assert all("don't bid" not in f.lower() for f in normalized["key_features"])
     assert normalized["competitors"] == []
+    # Marketplace portal URLs must never ship as buyer affiliate CTAs.
+    aff = (normalized.get("affiliate_link") or normalized.get("affiliateLink") or "").lower()
+    assert "digistore24-app.com" not in aff
+    assert "/affiliate/account/" not in aff
+
+
+def test_rejects_digistore_marketplace_affiliate_url():
+    payload = {
+        "product": {
+            "name": "Joseph's Well",
+            "affiliate_url": (
+                "https://www.digistore24-app.com/app/en/affiliate/account/"
+                "marketplace/all/detail/54669"
+            ),
+        },
+        "review_brief": {},
+        "shadowcast_import": {
+            "affiliate_link": (
+                "https://www.digistore24-app.com/app/en/affiliate/account/"
+                "marketplace/all/detail/54669"
+            ),
+        },
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    aff = normalized.get("affiliate_link") or normalized.get("affiliateLink") or ""
+    assert aff == ""
+
+    assessment = assess_product_completeness(
+        {
+            "product_name": "Joseph's Well",
+            "affiliate_link": (
+                "https://www.digistore24-app.com/app/en/affiliate/account/"
+                "marketplace/all/detail/54669"
+            ),
+            "price": "$79.95",
+            "content_style": "honest_review",
+        }
+    )
+    assert "affiliate_link" in assessment["warnings"]
+
+
+def test_keeps_real_digistore_buyer_affiliate_url():
+    hop = "https://www.checkout-ds24.com/redir/1/example/apf"
+    normalized = normalize_apf_payload(
+        {
+            "product": {"name": "CircO2", "affiliate_url": hop},
+            "review_brief": {},
+        }
+    )["normalized"]
+    aff = normalized.get("affiliate_link") or normalized.get("affiliateLink")
+    assert aff == hop
 
 
 def test_digistore_commission_title_in_vendor_materials():
