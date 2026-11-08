@@ -308,11 +308,11 @@ async def security_headers_and_rate_limit(request: Request, call_next):
 from path_safety import OUTPUT_BASE, _PROTECTED_OUTPUT_NAMES, _safe_job_file
 from job_store import (
     JobCancelled,
-    _active_job_threads,
     _add_job_warning,
     _job_heartbeats,
     _job_path,
     _job_state_lock,
+    _job_thread_is_alive,
     _job_thread_lock,
     _load_job,
     _output_max_age_days,
@@ -2134,13 +2134,11 @@ def retry_missing_outputs(job_id: str):
     job = _load_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.get("status") == "running":
-        if job_id in _active_job_threads and not _job_thread_is_stale(job_id):
-            raise HTTPException(
-                status_code=409,
-                detail="Job is already running with an active worker thread",
-            )
-        _active_job_threads.discard(job_id)
+    if job.get("status") == "running" and _job_thread_is_alive(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Job is already running with an active worker thread",
+        )
 
     summary = _summarize_job_output(job)
     if job.get("status") in ("complete", "partial") and not summary.get("is_partial"):
@@ -2183,7 +2181,7 @@ def cancel_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     status = str(job.get("status") or "")
-    active = job_id in _active_job_threads and not _job_thread_is_stale(job_id)
+    active = _job_thread_is_alive(job_id)
     if status in ("complete", "cancelled", "error") and not active:
         return {
             "job_id": job_id,

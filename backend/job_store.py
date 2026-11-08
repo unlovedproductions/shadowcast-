@@ -17,6 +17,7 @@ from path_safety import OUTPUT_BASE, _PROTECTED_OUTPUT_NAMES
 
 jobs: dict = {}
 _active_job_threads: set = set()
+_job_threads: dict[str, threading.Thread] = {}
 _job_thread_lock = threading.Lock()
 _job_state_lock = threading.RLock()
 _job_heartbeats: dict[str, float] = {}
@@ -73,38 +74,52 @@ def _load_job(job_id: str) -> Optional[dict]:
     return job
 
 
+def _job_thread_is_alive(job_id: str) -> bool:
+    """True when a worker thread for this job is still running."""
+    with _job_thread_lock:
+        thread = _job_threads.get(job_id)
+        return thread is not None and thread.is_alive()
+
+
 def _job_thread_is_stale(job_id: str) -> bool:
-    last = _job_heartbeats.get(job_id)
-    if last is None:
-        return True
-    return (time.time() - last) > _JOB_HEARTBEAT_STALE_SECONDS
+    """True when no live worker owns this job.
+
+    Liveness is based on the Thread object, not heartbeat age. Heartbeat gaps
+    during long render/TTS previously marked live workers stale and spawned a
+    second writer on the same job directory.
+    """
+    return not _job_thread_is_alive(job_id)
 
 
 def _start_job_thread(job_id: str, target) -> bool:
     with _job_thread_lock:
-        if job_id in _active_job_threads:
-            if not _job_thread_is_stale(job_id):
-                return False
-            _active_job_threads.discard(job_id)
+        existing = _job_threads.get(job_id)
+        if existing is not None and existing.is_alive():
+            return False
+        _active_job_threads.discard(job_id)
+        _job_threads.pop(job_id, None)
+
+        def _runner():
+            with sentry_sdk.isolation_scope() as scope:
+                scope.set_tag("job_id", job_id)
+                try:
+                    target(job_id)
+                except JobCancelled:
+                    pass
+                except Exception:
+                    sentry_sdk.capture_exception()
+                finally:
+                    with _job_thread_lock:
+                        _active_job_threads.discard(job_id)
+                        if _job_threads.get(job_id) is threading.current_thread():
+                            _job_threads.pop(job_id, None)
+
+        thread = threading.Thread(target=_runner, daemon=True)
         _active_job_threads.add(job_id)
-
-    _job_heartbeats[job_id] = time.time()
-
-    def _runner():
-        with sentry_sdk.isolation_scope() as scope:
-            scope.set_tag("job_id", job_id)
-            try:
-                target(job_id)
-            except JobCancelled:
-                pass
-            except Exception:
-                sentry_sdk.capture_exception()
-            finally:
-                with _job_thread_lock:
-                    _active_job_threads.discard(job_id)
-
-    threading.Thread(target=_runner, daemon=True).start()
-    return True
+        _job_threads[job_id] = thread
+        _job_heartbeats[job_id] = time.time()
+        thread.start()
+        return True
 
 
 def _output_max_age_days() -> Optional[float]:
