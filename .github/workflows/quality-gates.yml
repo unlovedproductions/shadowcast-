@@ -5,6 +5,13 @@ on:
   push:
     branches: [main, master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -14,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,8 +35,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.lock
+          pip install pip-audit
+
+      - name: Dependency audit (pip-audit)
+        run: pip-audit -r requirements.lock --progress-spinner off
 
       - name: Export and verify OpenAPI
+        env:
+          SHADOWCAST_ALLOW_DEV_CREDENTIALS: "1"
         run: |
           python export_openapi.py -o ../docs/openapi.json
           git diff --exit-code ../docs/openapi.json
@@ -54,7 +69,7 @@ jobs:
         run: python eval/run_corpus_rag_eval.py --min-precision 0.80
 
       - name: Pytest (unit + API routes)
-        run: pytest ../tests/test_api_routes.py ../tests/ -q -m "not llm"
+        run: pytest ../tests/ -q -m "not llm"
 
       - name: Video claim audit (strict when fixtures exist)
         run: |
@@ -66,19 +81,32 @@ jobs:
 
       - name: Ship gate (app code)
         run: |
-          python ../scripts/quality/ship_gate_scanner.py .. --json --no-interactive
+          mkdir -p eval/artifacts
+          set -o pipefail
+          python ../scripts/quality/ship_gate_scanner.py .. --json --no-interactive | tee eval/artifacts/ci_ship_gate.json
 
       - name: Commit message lint (PR only)
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
           git log origin/${{ github.base_ref }}..HEAD --pretty=format:'%s' > /tmp/commits.txt
-          python ../scripts/quality/commit_linter.py --input /tmp/commits.txt --strict --format text || true
+          python ../scripts/quality/commit_linter.py --input /tmp/commits.txt --strict --format text
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-artifacts
+          path: |
+            backend/eval/artifacts/ci_*.json
+          if-no-files-found: ignore
 
   e2e-mocked:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -109,3 +137,4 @@ jobs:
         env:
           CI: "true"
           INTERNAL_SERVICE_SECRET: ""
+          SHADOWCAST_ALLOW_DEV_CREDENTIALS: "1"

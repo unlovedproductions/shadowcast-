@@ -4,9 +4,11 @@ import re
 from typing import Any
 
 from video_claims import (
+    MIN_LONG_FORM_SPOKEN_WORDS,
     REQUIRED_LAYOUTS_BY_STYLE,
     SUPPORTED_ANIMATION_TOKENS,
     SUPPORTED_TRANSITION_TOKENS,
+    count_spoken_words,
     sum_segment_durations,
 )
 
@@ -15,6 +17,8 @@ AFFILIATE_BANNED = re.compile(
     r"promoting\s+as\s+an\s+affiliate|earn\s+as\s+an\s+affiliate)\b",
     re.I,
 )
+
+LONG_FORM_LENGTH_ERROR_PREFIX = "long_form runtime:"
 
 CON_SIGNAL = re.compile(
     r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for|avoid)\b",
@@ -53,13 +57,12 @@ def check_buyer_language(text: str) -> list[str]:
 
 def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     declared = script.get("total_duration_seconds")
-    if declared is None:
-        return
-    try:
-        float(declared)
-    except (TypeError, ValueError):
-        errors.append("total_duration_seconds must be a number")
-        return
+    if declared is not None:
+        try:
+            float(declared)
+        except (TypeError, ValueError):
+            errors.append("total_duration_seconds must be a number")
+            return
     segments = list(_iter_segments(script))
     if not segments:
         return
@@ -69,6 +72,14 @@ def _check_duration_contract(script: dict, fmt: str, errors: list[str]) -> None:
     # target runtime (e.g. 240) instead of sum(duration) — rewrite, don't hard-fail.
     summed = sum_segment_durations(script, fmt)
     script["total_duration_seconds"] = round(float(summed), 3)
+    # Scaling durations cannot lengthen a TTS render; only more narration can.
+    if fmt == "long_form":
+        words = count_spoken_words(script, fmt)
+        if words < MIN_LONG_FORM_SPOKEN_WORDS:
+            errors.append(
+                f"{LONG_FORM_LENGTH_ERROR_PREFIX} needs at least "
+                f"{MIN_LONG_FORM_SPOKEN_WORDS} spoken words to clear the 120s floor (got {words})"
+            )
 
 
 def _check_animation_transition_tokens(script: dict, errors: list[str]) -> None:

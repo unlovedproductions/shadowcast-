@@ -903,10 +903,14 @@ def normalize_apf_payload(payload: dict) -> dict:
         or _clean(_pick(product, ["niche", "product_category", "productCategory", "category"]))
     )
     affiliate_link = _first_buyer_affiliate(
-        _pick(shadowcast_import, ["affiliate_link", "affiliateLink"]),
-        _pick(product, ["affiliate_url", "affiliateLink", "affiliate_link", "hoplink"]),
-        # product_url / url are last-resort only when they are real buyer hops
-        _pick(product, ["product_url", "url"]),
+        _pick(shadowcast_import, ["affiliate_link"]),
+        _pick(shadowcast_import, ["affiliateLink"]),
+        _pick(product, ["affiliate_url"]),
+        _pick(product, ["affiliateLink"]),
+        _pick(product, ["affiliate_link"]),
+        _pick(product, ["hoplink"]),
+        _pick(product, ["product_url"]),
+        _pick(product, ["url"]),
     )
 
     positives = (

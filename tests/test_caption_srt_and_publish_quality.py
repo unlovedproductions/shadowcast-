@@ -102,6 +102,27 @@ def test_evaluate_publish_quality_fails_without_music_beds(tmp_path, monkeypatch
     assert any(c["id"] == "music_bed" and c["status"] == "FAIL" for c in result["checks"])
 
 
+def test_evaluate_publish_quality_fails_without_product_image(tmp_path, monkeypatch):
+    video = tmp_path / "ok_short_form.mp4"
+    video.write_bytes(b"x")
+    monkeypatch.delenv("SHADOWCAST_REQUIRE_PRODUCT_IMAGE", raising=False)
+    with patch("publish_quality.get_best_tts", return_value="kokoro"), patch(
+        "publish_quality._ffprobe_duration", return_value=30.0
+    ), patch(
+        "publish_quality._claim_audit_check",
+        return_value={"id": "claim_audit", "status": "PASS", "detail": "ok"},
+    ), patch(
+        "publish_quality.music_beds_present", return_value=True
+    ), patch(
+        "publish_quality.music_bed_moods", return_value=["chill"]
+    ), patch(
+        "publish_quality.any_broll_files", return_value=True
+    ):
+        result = evaluate_publish_quality(video_path=video, video_format="short_form")
+    assert result["ready_for_live_publish"] is False
+    assert any(c["id"] == "product_image" and c["status"] == "FAIL" for c in result["checks"])
+
+
 def test_evaluate_publish_quality_thumb_packaging_warns_on_dense_copy(tmp_path):
     video = tmp_path / "ok_short_form.mp4"
     video.write_bytes(b"x")

@@ -418,6 +418,19 @@ def test_keeps_real_digistore_buyer_affiliate_url():
     assert aff == hop
 
 
+def test_digistore_portal_url_falls_through_to_hoplink():
+    hoplink = "https://www.checkout-ds24.com/redir/1/example/apf"
+    result = normalize_apf_payload({
+        "product": {
+            "name": "CircO2",
+            "affiliate_url": "https://www.digistore24-app.com/app/en/affiliate/account/marketplace/all/detail/1",
+            "hoplink": hoplink,
+        },
+        "review_brief": {},
+    })
+    assert result["normalized"]["affiliate_link"] == hoplink
+
+
 def test_digistore_commission_title_in_vendor_materials():
     payload = {
         "product": {
