@@ -5,7 +5,7 @@ fastapi
 uvicorn
 python-multipart
 openai
-moviepy>=2.0
+moviepy>=2.2.1
 Pillow
 numpy
 gtts
