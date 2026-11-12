@@ -1,3 +1,4 @@
+# Direct deps — regenerate backend/requirements.lock via: pip install -r requirements.txt && pip freeze > requirements.lock
 fastapi
 uvicorn
 python-multipart
@@ -7,6 +8,13 @@ Pillow
 numpy
 gtts
 python-dotenv
+sentry-sdk
 httpx
 beautifulsoup4
 scipy
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+cryptography
+playwright
+pytest>=8.0

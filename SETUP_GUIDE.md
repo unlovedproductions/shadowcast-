@@ -8,7 +8,24 @@
 
 ---
 
+## Operational docs
+
+- `README.md` — product overview and quickstart
+- `docs/RECOVERY.md` — disaster-recovery playbook
+- `docs/RUNBOOK.md` — startup/shutdown and operator checks
+- `docs/ARCHITECTURE.md` — system structure and integration points
+- `docs/RAG_DESIGN.md` — product + style-rules RAG
+- `docs/STYLE_RENDERING_CHECKLIST.md` / `docs/STYLE_MATRIX_RUNBOOK.md` — style × format verification
+- `backend/eval/rag_corpus/RENDERER_CONTRACT.md` — LLM ↔ renderer contract
+- `docs/SOCIAL_READINESS.md` — posting-quality readiness score
+
+TTS-first timing (segment duration follows measured speech), Shorts burn-in captions, music ducking, and two-pass loudnorm (~−14 LUFS) are part of the assemble pipeline when TTS/audio are enabled.
+
+---
+
 ## Your Machine Specs (Razer Blade 15 Advanced)
+
+> Personal reference for the primary Unloved Productions workstation — not a hard requirement for ShadowCast.
 
 | Component | Spec | LLM Capability |
 |-----------|------|----------------|
@@ -266,7 +283,7 @@ systemctl --user stop shadowcast.service
 
 ### Step 1: Install Prerequisites
 
-**Python 3.8+:**
+**Python 3.10+:**
 
 Download from [python.org/downloads](https://python.org/downloads). **Check "Add Python to PATH"** during installation. This is critical.
 
@@ -602,11 +619,12 @@ output/
 | Video rendering slow | Long-form videos take 2-5 min. Short-form is much faster. This is normal for CPU-based rendering |
 | JSON parse errors from LLM | Use Qwen2.5 models — they're best at structured JSON output. Avoid smaller quantizations (Q2, Q3) |
 | Model loading slow first time | Normal — first inference loads model into VRAM. Subsequent requests are fast |
-| Port 8000 in use | Edit last line of `backend/app.py`: change `port=8000` to `port=8001` |
+| Port 8000 in use | Run with `PORT=8001 python3 backend/app.py` (bind via `HOST`/`PORT` env; do not edit `app.py`) |
+| Prefer `.venv` | Canonical env is `.venv` (`python3 -m venv .venv`); `venv/` remains a legacy alias |
 | `Permission denied` on Linux | Make sure you own the directory: `sudo chown -R $USER:$USER ~/shadowcast-` |
 | `externally-managed-environment` error | Use a venv (Step 6 above) or add `--break-system-packages` flag to pip |
 | Fonts look wrong | Run `sudo apt install -y fonts-noto` and restart the app |
-| Can't access from another device on LAN | Edit `backend/app.py`: change `host="127.0.0.1"` to `host="0.0.0.0"`, then access via your machine's IP |
+| Can't access from another device on LAN | Set `HOST=0.0.0.0` in `backend/.env` (default is `127.0.0.1` for localhost-only trust), restart, then use your machine's IP |
 | Firewall blocking port 8000 | `sudo ufw allow 8000/tcp` |
 
 ---

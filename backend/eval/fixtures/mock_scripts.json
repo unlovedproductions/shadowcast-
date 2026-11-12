@@ -1,0 +1,102 @@
+{
+  "hr_long": {
+    "hook_type": "data_bomb",
+    "content_style": "honest_review",
+    "format": "long_form",
+    "title_suggestion": "SoundCore Space A40 Honest Review",
+    "chapters": [
+      {
+        "chapter_name": "The Good",
+        "segments": [
+          {"segment_id": 1, "text": "50 hours battery life", "text_style": "pros", "duration": 4},
+          {"segment_id": 2, "text": "Strong ANC for the price", "text_style": "pros", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "The Bad",
+        "segments": [
+          {"segment_id": 3, "text": "Fit issues for small ears", "text_style": "cons", "duration": 4},
+          {"segment_id": 4, "text": "Case feels plasticky", "text_style": "cons", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Verdict",
+        "segments": [
+          {"segment_id": 5, "text": "Worth it for commuters", "text_style": "verdict", "duration": 4},
+          {"segment_id": 6, "text": "Check the link for current price", "text_style": "cta_button", "duration": 3}
+        ]
+      }
+    ]
+  },
+  "vs_long": {
+    "hook_type": "myth_buster",
+    "content_style": "vs_battle",
+    "format": "long_form",
+    "title_suggestion": "Space A40 vs AirPods Pro 2",
+    "chapters": [
+      {
+        "chapter_name": "Round 1",
+        "segments": [
+          {"segment_id": 1, "text": "AirPods Pro 2 vs Space A40", "text_style": "headline_bold", "layout": "vs_split", "duration": 4},
+          {"segment_id": 2, "text": "Price: $79 vs $249", "text_style": "comparison", "layout": "spec_compare", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Scorecard",
+        "segments": [
+          {"segment_id": 3, "text": "Value winner: Space A40", "text_style": "scorecard", "layout": "scorecard", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Winner",
+        "segments": [
+          {"segment_id": 4, "text": "Space A40 wins on value", "text_style": "verdict", "layout": "winner_reveal", "duration": 4}
+        ]
+      }
+    ]
+  },
+  "budget_long": {
+    "hook_type": "listicle",
+    "content_style": "budget_challenge",
+    "format": "long_form",
+    "title_suggestion": "Best Blender Under $50",
+    "chapters": [
+      {
+        "chapter_name": "Price Check",
+        "segments": [
+          {"segment_id": 1, "text": "Under $50 blender challenge", "text_style": "headline_bold", "layout": "price_compare", "duration": 4},
+          {"segment_id": 2, "text": "Beats $80 models on smoothies", "text_style": "stat_number", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Verdict",
+        "segments": [
+          {"segment_id": 3, "text": "Best budget pick for daily use", "text_style": "verdict", "duration": 4},
+          {"segment_id": 4, "text": "Check the link for current price", "text_style": "cta_button", "duration": 3}
+        ]
+      }
+    ]
+  },
+  "worth_long": {
+    "hook_type": "problem_agitation",
+    "content_style": "worth_it_or_waste",
+    "format": "long_form",
+    "title_suggestion": "Is This $40 Blender Worth It?",
+    "chapters": [
+      {
+        "chapter_name": "The Problem",
+        "segments": [
+          {"segment_id": 1, "text": "Cheap blenders die in six months", "text_style": "headline_bold", "duration": 4},
+          {"segment_id": 2, "text": "Motor burns out on frozen fruit", "text_style": "cons", "duration": 4}
+        ]
+      },
+      {
+        "chapter_name": "Verdict",
+        "segments": [
+          {"segment_id": 3, "text": "Worth it for occasional smoothies", "text_style": "verdict", "duration": 4},
+          {"segment_id": 4, "text": "Link below for current deal", "text_style": "cta_button", "duration": 3}
+        ]
+      }
+    ]
+  }
+}

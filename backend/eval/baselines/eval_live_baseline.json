@@ -1,0 +1,168 @@
+{
+  "timestamp": "2026-07-22T21:45:58Z",
+  "live": true,
+  "required_pass_ids": [
+    "hr_short",
+    "hr_long",
+    "elim_short",
+    "elim_long",
+    "vs_short",
+    "vs_long",
+    "budget_short",
+    "budget_long",
+    "worth_short",
+    "worth_long",
+    "std_short",
+    "std_long",
+    "yt_assets_hr",
+    "yt_assets_vs",
+    "yt_assets_budget",
+    "yt_assets_worth"
+  ],
+  "total": 16,
+  "passed": 16,
+  "failed": 0,
+  "pending_live": 0,
+  "results": [
+    {
+      "id": "hr_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "hr_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "elim_short",
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "elimination",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "elim_long",
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "elimination",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "vs_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "vs_battle",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "vs_long",
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "vs_battle",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "budget_short",
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "budget_challenge",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "budget_long",
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "budget_challenge",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "worth_short",
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "worth_it_or_waste",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "worth_long",
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "worth_it_or_waste",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "std_short",
+      "passed": true,
+      "type": "script",
+      "format": "short_form",
+      "content_style": "standard",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "std_long",
+      "passed": true,
+      "type": "script",
+      "format": "long_form",
+      "content_style": "standard",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "yt_assets_hr",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "yt_assets_vs",
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "yt_assets_budget",
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
+    },
+    {
+      "id": "yt_assets_worth",
+      "passed": true,
+      "type": "youtube_assets",
+      "format": "long_form",
+      "errors": [],
+      "live": true
+    }
+  ]
+}

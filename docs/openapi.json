@@ -365,6 +365,145 @@
         ]
       }
     },
+    "/api/media-library": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Get Media Library",
+        "description": "List/tag/search operator music beds and B-roll clips (findability).",
+        "operationId": "get_media_library_api_media_library_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field selection for partial responses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Maximum number of items to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Number of items to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaLibraryResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cache hint for catalog and status responses."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Entity tag for conditional GET requests."
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
     "/api/providers": {
       "get": {
         "tags": [
@@ -1997,6 +2136,98 @@
         "security": []
       }
     },
+    "/api/cancel/{job_id}": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "operationId": "cancel_job_api_cancel__job_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Cancel Job. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
+      }
+    },
     "/api/audit/{job_id}": {
       "get": {
         "tags": [
@@ -2869,6 +3100,44 @@
           }
         },
         "description": "Oauth Disconnect. ShadowCast endpoint for affiliate video generation workflows.",
+        "security": []
+      }
+    },
+    "/api/publish/quality": {
+      "post": {
+        "summary": "Publish Quality Check",
+        "operationId": "publish_quality_check_api_publish_quality_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishQualityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Publish Quality Check. ShadowCast endpoint for affiliate video generation workflows.",
         "security": []
       }
     },
@@ -4275,7 +4544,7 @@
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false,
+            "default": true,
             "description": "use_tts field."
           },
           "tts_provider": {
@@ -4354,7 +4623,7 @@
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false,
+            "default": true,
             "description": "use_tts field."
           },
           "tts_provider": {
@@ -4684,7 +4953,7 @@
           "use_tts": {
             "type": "boolean",
             "title": "Use Tts",
-            "default": false,
+            "default": true,
             "description": "use_tts field."
           },
           "tts_provider": {
@@ -5402,6 +5671,147 @@
         "title": "LLMTestResponse",
         "description": "LLMTestResponse schema used by the ShadowCast API."
       },
+      "MediaLibraryBucket": {
+        "properties": {
+          "expected_moods": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Moods",
+            "description": "expected_moods field."
+          },
+          "expected_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Tags",
+            "description": "expected_tags field."
+          },
+          "present": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Present",
+            "description": "present field."
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "description": "missing field."
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "items field."
+          }
+        },
+        "type": "object",
+        "title": "MediaLibraryBucket",
+        "description": "MediaLibraryBucket schema used by the ShadowCast API."
+      },
+      "MediaLibraryResponse": {
+        "properties": {
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query",
+            "description": "query field."
+          },
+          "fetch_script": {
+            "type": "string",
+            "title": "Fetch Script",
+            "default": "scripts/fetch_operator_media.sh",
+            "description": "fetch_script field."
+          },
+          "music": {
+            "$ref": "#/components/schemas/MediaLibraryBucket",
+            "description": "music field."
+          },
+          "broll": {
+            "$ref": "#/components/schemas/MediaLibraryBucket",
+            "description": "broll field."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MediaLibrarySummary",
+            "description": "summary field."
+          }
+        },
+        "type": "object",
+        "required": [
+          "music",
+          "broll",
+          "summary"
+        ],
+        "title": "MediaLibraryResponse",
+        "description": "MediaLibraryResponse schema used by the ShadowCast API."
+      },
+      "MediaLibrarySummary": {
+        "properties": {
+          "music_present_count": {
+            "type": "integer",
+            "title": "Music Present Count",
+            "default": 0,
+            "description": "music_present_count field."
+          },
+          "music_missing_count": {
+            "type": "integer",
+            "title": "Music Missing Count",
+            "default": 0,
+            "description": "music_missing_count field."
+          },
+          "broll_present_count": {
+            "type": "integer",
+            "title": "Broll Present Count",
+            "default": 0,
+            "description": "broll_present_count field."
+          },
+          "broll_missing_count": {
+            "type": "integer",
+            "title": "Broll Missing Count",
+            "default": 0,
+            "description": "broll_missing_count field."
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "default": false,
+            "description": "complete field."
+          }
+        },
+        "type": "object",
+        "title": "MediaLibrarySummary",
+        "description": "MediaLibrarySummary schema used by the ShadowCast API."
+      },
       "MetricRequest": {
         "properties": {
           "video_id": {
@@ -5670,6 +6080,13 @@
             "title": "Amazon Url",
             "default": "",
             "description": "amazon_url field."
+          },
+          "image_url": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Image Url",
+            "default": "",
+            "description": "image_url field."
           }
         },
         "type": "object",
@@ -5743,6 +6160,12 @@
             "title": "Dry Run",
             "default": false,
             "description": "dry_run field."
+          },
+          "thumbnail_variant": {
+            "type": "string",
+            "title": "Thumbnail Variant",
+            "default": "variant_a",
+            "description": "thumbnail_variant field."
           }
         },
         "type": "object",
@@ -5753,6 +6176,85 @@
         ],
         "title": "PublishBatchRequest",
         "description": "PublishBatchRequest schema used by the ShadowCast API."
+      },
+      "PublishQualityRequest": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "job_id field."
+          },
+          "video_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Path",
+            "description": "video_path field."
+          },
+          "thumbnail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Path",
+            "description": "thumbnail_path field."
+          },
+          "hook_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hook Type",
+            "description": "hook_type field."
+          },
+          "video_format": {
+            "type": "string",
+            "title": "Video Format",
+            "default": "short_form",
+            "description": "video_format field."
+          },
+          "product_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Slug",
+            "description": "product_slug field."
+          },
+          "thumbnail_variant": {
+            "type": "string",
+            "title": "Thumbnail Variant",
+            "default": "variant_a",
+            "description": "thumbnail_variant field."
+          }
+        },
+        "type": "object",
+        "title": "PublishQualityRequest",
+        "description": "PublishQualityRequest schema used by the ShadowCast API."
       },
       "PublishRequest": {
         "properties": {
@@ -5867,6 +6369,50 @@
             "type": "object",
             "title": "Tts Providers",
             "description": "tts_providers field."
+          },
+          "music_beds": {
+            "type": "boolean",
+            "title": "Music Beds",
+            "default": false,
+            "description": "music_beds field."
+          },
+          "music_bed_moods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Music Bed Moods",
+            "description": "music_bed_moods field."
+          },
+          "music_beds_missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Music Beds Missing",
+            "description": "music_beds_missing field."
+          },
+          "broll_pack": {
+            "type": "boolean",
+            "title": "Broll Pack",
+            "default": false,
+            "description": "broll_pack field."
+          },
+          "broll_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Broll Tags",
+            "description": "broll_tags field."
+          },
+          "broll_missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Broll Missing",
+            "description": "broll_missing field."
           }
         },
         "type": "object",

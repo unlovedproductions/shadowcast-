@@ -233,23 +233,37 @@ def render_watermark_overlay(width, height):
 
     return watermark_img
 
+# Entity lower-third: 4–7s hold on first product mention (F9).
+LOWER_THIRD_HOLD_SEC = 5.5
+LOWER_THIRD_MENTION_LEAD_SEC = 0.3
+# Shorts: lift bar above YouTube bottom UI (~12% chrome); captions stay mid-upper.
+SHORTS_LOWER_THIRD_BOTTOM_FRAC = 0.88
+
+
 def render_lower_third(width, height, product_name, price="", is_short_form=False):
-    """Returns RGBA PIL Image with persistent lower-third bar showing product name and price with dark pink accent line."""
+    """Returns RGBA PIL Image with lower-third bar (name + price). Placement only — timing is caller-owned."""
     lt_height = int(height * 0.12) if is_short_form else int(height * 0.08)
     lt_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(lt_img)
 
+    # Shorts: sit above bottom UI; long-form: flush bottom (progress bar is thinner).
+    if is_short_form:
+        bar_bottom = int(height * SHORTS_LOWER_THIRD_BOTTOM_FRAC)
+        bar_top = bar_bottom - lt_height
+    else:
+        bar_bottom = height
+        bar_top = height - lt_height
+
     # Background bar
     bar_color = BG_COLOR + (200,) # Semi-transparent background
-    draw.rectangle([(0, height - lt_height), (width, height)], fill=bar_color)
+    draw.rectangle([(0, bar_top), (width, bar_bottom)], fill=bar_color)
 
     # Accent line
     accent_line_height = int(lt_height * 0.1)
-    draw.rectangle([(0, height - lt_height), (width, height - lt_height + accent_line_height)], fill=ACCENT_COLOR)
+    draw.rectangle([(0, bar_top), (width, bar_top + accent_line_height)], fill=ACCENT_COLOR)
 
     # Text content
     text_padding_x = int(width * 0.02)
-    text_padding_y = int(lt_height * 0.2)
 
     # Product Name
     prod_name_font_size = int(lt_height * 0.4)
@@ -284,16 +298,94 @@ def render_lower_third(width, height, product_name, price="", is_short_form=Fals
         prod_name_text_bbox = draw.textbbox((0, 0), display_name, font=prod_name_font)
 
     prod_name_text_height = prod_name_text_bbox[3] - prod_name_text_bbox[1]
-    prod_name_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
+    prod_name_y = bar_top + accent_line_height + (lt_height - accent_line_height - prod_name_text_height) / 2
     draw.text((text_padding_x, prod_name_y), display_name, font=prod_name_font, fill=TEXT_COLOR)
 
     # Draw price on the right side
     if price and price_font is not None:
         price_x = width - price_text_width - text_padding_x
-        price_y = height - lt_height + accent_line_height + (lt_height - accent_line_height - price_text_height) / 2
+        price_y = bar_top + accent_line_height + (lt_height - accent_line_height - price_text_height) / 2
         draw.text((price_x, price_y), price, font=price_font, fill=TEXT_COLOR)
 
     return lt_img
+
+
+def _mention_word_index(text: str, product_name: str) -> int | None:
+    """Return word index of first product mention in spoken text, or None."""
+    words = [w for w in str(text or "").split() if w]
+    name = str(product_name or "").strip()
+    if not words or not name:
+        return None
+    hay = " ".join(words).lower()
+    needle = name.lower()
+    pos = hay.find(needle)
+    if pos >= 0:
+        return len(hay[:pos].split()) if pos > 0 else 0
+    tokens = [t for t in needle.split() if len(t) > 2] or needle.split()
+    stripped = [w.lower().strip(".,!?;:\"'()[]") for w in words]
+    for i, w in enumerate(stripped):
+        for tok in tokens:
+            if tok == w or (len(tok) > 2 and (tok in w or w in tok)):
+                return i
+    return None
+
+
+def lower_third_event_from_timing(
+    timing_rows: list,
+    product_name: str,
+    intro_offset: float = 0.0,
+    *,
+    hold_sec: float = LOWER_THIRD_HOLD_SEC,
+    mention_lead: float = LOWER_THIRD_MENTION_LEAD_SEC,
+    video_duration: float | None = None,
+) -> dict | None:
+    """
+    Timed lower-third window from shared TTS clock (F9).
+
+    Triggers near first product mention (±mention_lead), holds ~4–7s.
+    Falls back to first speech start when the name never appears in VO text.
+    """
+    name = str(product_name or "").strip()
+    if not name:
+        return None
+    hold = max(4.0, min(float(hold_sec), 7.0))
+    lead = max(0.0, min(float(mention_lead), 0.5))
+    rows = list(timing_rows or [])
+
+    mention_abs: float | None = None
+    for row in rows:
+        text = row.get("text") or ""
+        word_i = _mention_word_index(text, name)
+        if word_i is None:
+            continue
+        seg_start = float(intro_offset) + float(row.get("start", 0.0) or 0.0)
+        speech = float(row.get("tts_duration") or 0.0)
+        if speech <= 0:
+            speech = float(row.get("duration") or 0.0)
+        speech = max(speech, 0.35)
+        n_words = max(len(str(text).split()), 1)
+        frac = min(max(word_i / n_words, 0.0), 1.0)
+        mention_abs = seg_start + frac * speech
+        break
+
+    if mention_abs is None:
+        if rows:
+            mention_abs = float(intro_offset) + float(rows[0].get("start", 0.0) or 0.0)
+        else:
+            mention_abs = float(intro_offset)
+
+    start = max(0.0, mention_abs - lead)
+    duration = hold
+    if video_duration is not None:
+        vd = float(video_duration)
+        if start >= vd:
+            return None
+        duration = min(duration, max(0.1, vd - start))
+    return {
+        "start": round(start, 3),
+        "duration": round(duration, 3),
+        "product_name": name,
+    }
 
 # --- Progress/Context Overlays Functions ---
 
@@ -494,6 +586,287 @@ def render_subscribe_card(width, height, accent_color=ACCENT_COLOR):
     draw.text((tag_text_x, tag_text_y), tag_text, font=tag_font, fill=TEXT_COLOR)
 
     return pil_to_numpy(img)
+
+
+# --- Shorts burn-in captions (TTS clock) ---
+
+SHORTS_CAPTION_MIN_WORDS = 4
+SHORTS_CAPTION_MAX_WORDS = 7
+# Upper-middle safe zone: avoid bottom YouTube UI + right action rail.
+SHORTS_CAPTION_Y_FRAC = 0.40
+SHORTS_CAPTION_MAX_WIDTH_FRAC = 0.72
+# Approx karaoke: skip per-word frames when a word would be too brief.
+SHORTS_WORD_HIGHLIGHT_MIN_SEC = 0.10
+SHORTS_CAPTION_HIGHLIGHT_FILL = (*ACCENT_COLOR, 255)
+SHORTS_CAPTION_BASE_FILL = (255, 255, 255, 255)
+SHORTS_CAPTION_STROKE = (0, 0, 0, 230)
+_CAPTION_STROKE_OFFSETS = (
+    (-3, 0), (3, 0), (0, -3), (0, 3),
+    (-2, -2), (2, 2), (-2, 2), (2, -2),
+    (-3, -1), (3, 1), (-1, -3), (1, 3),
+)
+
+
+def shorts_word_highlight_enabled() -> bool:
+    """Env gate for karaoke-style word highlight (default ON for Shorts)."""
+    raw = (os.getenv("SHADOWCAST_SHORTS_WORD_HIGHLIGHT") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def longform_burnin_captions_enabled() -> bool:
+    """Env gate for long-form burn-in captions when TTS is on (default ON)."""
+    raw = (os.getenv("SHADOWCAST_LONGFORM_BURNIN") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def chunk_caption_text(
+    text: str,
+    min_words: int = SHORTS_CAPTION_MIN_WORDS,
+    max_words: int = SHORTS_CAPTION_MAX_WORDS,
+) -> list[str]:
+    """Split spoken text into 4–7 word caption chunks (Shorts burn-in)."""
+    words = [w for w in str(text or "").split() if w]
+    if not words:
+        return []
+    if len(words) <= max_words:
+        return [" ".join(words)]
+
+    target = max(min_words, min(5, max_words))
+    chunks: list[str] = []
+    i = 0
+    n = len(words)
+    while i < n:
+        remaining = n - i
+        if remaining <= max_words:
+            chunk = words[i:]
+            if len(chunk) < min_words and chunks:
+                prev = chunks[-1].split()
+                need = min_words - len(chunk)
+                if len(prev) - need >= min_words:
+                    chunks[-1] = " ".join(prev[:-need])
+                    chunk = prev[-need:] + chunk
+                elif len(prev) + len(chunk) <= max_words:
+                    chunks[-1] = " ".join(prev + chunk)
+                    break
+            chunks.append(" ".join(chunk))
+            break
+
+        take = min(target, remaining)
+        after = remaining - take
+        if 0 < after < min_words:
+            take = remaining - min_words
+            take = max(min_words, min(take, max_words))
+        chunks.append(" ".join(words[i : i + take]))
+        i += take
+    return chunks
+
+
+def caption_events_from_timing(
+    timing_rows: list,
+    intro_offset: float = 0.0,
+    min_words: int = SHORTS_CAPTION_MIN_WORDS,
+    max_words: int = SHORTS_CAPTION_MAX_WORDS,
+) -> list[dict]:
+    """
+    Build burn-in caption events from shared TTS timing rows.
+
+    Segment-level clock: each row's speech window is subdivided evenly across
+    4–7 word chunks. Starts are offset by intro chrome so they align with VO.
+    """
+    events: list[dict] = []
+    for row in timing_rows or []:
+        text = row.get("text") or ""
+        chunks = chunk_caption_text(text, min_words=min_words, max_words=max_words)
+        if not chunks:
+            continue
+        start = float(intro_offset) + float(row.get("start", 0.0) or 0.0)
+        speech = float(row.get("tts_duration") or 0.0)
+        if speech <= 0:
+            speech = float(row.get("duration") or 0.0)
+        speech = max(speech, 0.35)
+        per = speech / len(chunks)
+        for j, chunk in enumerate(chunks):
+            events.append(
+                {
+                    "text": chunk,
+                    "start": round(start + j * per, 3),
+                    "duration": round(per, 3),
+                    "segment_index": row.get("index"),
+                }
+            )
+    return events
+
+
+def expand_caption_word_highlights(
+    events: list,
+    enabled: bool = True,
+    min_word_dur: float = SHORTS_WORD_HIGHLIGHT_MIN_SEC,
+) -> list[dict]:
+    """
+    Subdivide chunk caption events into per-word highlight frames.
+
+    Timing is approximate: each chunk's duration is split evenly across its
+    words (no WhisperX). Full chunk text stays visible; only highlight_index
+    advances. Skips expansion when per-word duration would be < min_word_dur.
+    """
+    out: list[dict] = []
+    for ev in events or []:
+        text = " ".join(str(ev.get("text") or "").split())
+        words = text.split()
+        start = float(ev.get("start", 0.0) or 0.0)
+        duration = float(ev.get("duration", 0.0) or 0.0)
+        base = {
+            "text": text,
+            "segment_index": ev.get("segment_index"),
+        }
+        if (not enabled) or len(words) <= 1 or duration <= 0:
+            hi = 0 if (enabled and len(words) == 1) else None
+            out.append({**base, "start": round(start, 3), "duration": round(max(duration, 0.0), 3), "highlight_index": hi})
+            continue
+        per = duration / len(words)
+        if per < float(min_word_dur):
+            out.append({**base, "start": round(start, 3), "duration": round(duration, 3), "highlight_index": None})
+            continue
+        for i in range(len(words)):
+            out.append(
+                {
+                    **base,
+                    "start": round(start + i * per, 3),
+                    "duration": round(per, 3),
+                    "highlight_index": i,
+                }
+            )
+    return out
+
+
+def render_shorts_caption(
+    width: int,
+    height: int,
+    text: str,
+    highlight_index: int | None = None,
+    *,
+    y_frac: float | None = None,
+    max_width_frac: float | None = None,
+    font_size_frac: float | None = None,
+) -> Image.Image:
+    """
+    High-contrast burn-in caption frame (RGBA).
+
+    Default layout is Shorts upper-middle safe zone. Pass y_frac / max_width_frac
+    for long-form (typically lower-third band above progress chrome).
+    """
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    clean = " ".join(str(text or "").split())
+    if not clean:
+        return img
+
+    y_use = SHORTS_CAPTION_Y_FRAC if y_frac is None else float(y_frac)
+    width_use = SHORTS_CAPTION_MAX_WIDTH_FRAC if max_width_frac is None else float(max_width_frac)
+    font_frac = 0.055 if font_size_frac is None else float(font_size_frac)
+
+    font_size = max(24, int(width * font_frac))
+    font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
+    max_text_width = int(width * width_use)
+
+    # Shrink font until the line fits the safe width (wrap to 2 lines max).
+    for _ in range(8):
+        lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
+        bbox = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, align="center", spacing=6)
+        text_w = bbox[2] - bbox[0]
+        if text_w <= max_text_width or font_size <= 22:
+            break
+        font_size = max(22, int(font_size * 0.9))
+        font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, font_size)
+        lines = _wrap_caption_lines(draw, clean, font, max_text_width, max_lines=2)
+
+    display = "\n".join(lines)
+    bbox = draw.multiline_textbbox((0, 0), display, font=font, align="center", spacing=6)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    # Center horizontally within the left-safe band (not full frame).
+    band_left = int((width - max_text_width) / 2)
+    x = band_left + max(0, (max_text_width - text_w) // 2)
+    y = int(height * y_use) - text_h // 2
+    y_lo = int(height * max(0.05, y_use - 0.08))
+    y_hi = int(height * min(0.92, y_use + 0.08)) - text_h
+    y = max(y_lo, min(y, max(y_lo, y_hi)))
+
+    if highlight_index is None:
+        for dx, dy in _CAPTION_STROKE_OFFSETS:
+            draw.multiline_text(
+                (x + dx, y + dy), display, font=font, fill=SHORTS_CAPTION_STROKE, align="center", spacing=6
+            )
+        draw.multiline_text((x, y), display, font=font, fill=SHORTS_CAPTION_BASE_FILL, align="center", spacing=6)
+        return img
+
+    _draw_caption_words_highlighted(
+        draw, lines, band_left, max_text_width, y, font, int(highlight_index)
+    )
+    return img
+
+
+def _draw_caption_words_highlighted(
+    draw,
+    lines: list[str],
+    band_left: int,
+    max_text_width: int,
+    y: int,
+    font,
+    highlight_index: int,
+) -> None:
+    """Draw wrapped caption lines word-by-word; accent-fill the active word."""
+    space_w = float(draw.textlength(" ", font=font))
+    line_gap = 6
+    word_i = 0
+    # Approximate line height from a sample glyph bbox.
+    sample = draw.textbbox((0, 0), "Ag", font=font)
+    line_h = max(1, (sample[3] - sample[1]) + line_gap)
+    cy = y
+    for line in lines:
+        words = line.split()
+        if not words:
+            cy += line_h
+            continue
+        widths = [float(draw.textlength(w, font=font)) for w in words]
+        line_w = int(sum(widths) + space_w * max(0, len(words) - 1))
+        cx = band_left + max(0, (max_text_width - line_w) // 2)
+        for wi, word in enumerate(words):
+            fill = (
+                SHORTS_CAPTION_HIGHLIGHT_FILL
+                if word_i == highlight_index
+                else SHORTS_CAPTION_BASE_FILL
+            )
+            for dx, dy in _CAPTION_STROKE_OFFSETS:
+                draw.text((cx + dx, cy + dy), word, font=font, fill=SHORTS_CAPTION_STROKE)
+            draw.text((cx, cy), word, font=font, fill=fill)
+            cx += widths[wi] + (space_w if wi < len(words) - 1 else 0.0)
+            word_i += 1
+        cy += line_h
+
+
+def _wrap_caption_lines(draw, text: str, font, max_width: int, max_lines: int = 2) -> list[str]:
+    words = text.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        trial = (" ".join(current + [word])).strip()
+        bbox = draw.textbbox((0, 0), trial, font=font)
+        if current and (bbox[2] - bbox[0]) > max_width:
+            lines.append(" ".join(current))
+            current = [word]
+            if len(lines) >= max_lines:
+                break
+        else:
+            current.append(word)
+    if current and len(lines) < max_lines:
+        lines.append(" ".join(current))
+    elif current and lines:
+        # Overflow: append remainder to last line (font shrink handles fit).
+        lines[-1] = (lines[-1] + " " + " ".join(current)).strip()
+    return lines or [text]
 
 
 if __name__ == "__main__":

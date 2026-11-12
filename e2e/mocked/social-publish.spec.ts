@@ -1,0 +1,62 @@
+import { test, expect } from '../fixtures/test';
+import { buttons, nav } from '../helpers/selectors';
+
+test.describe('social publish', () => {
+  test('social page loads postable jobs', async ({ page, mockApi }) => {
+    void mockApi;
+    await page.goto('/');
+    await page.locator('.nav-btn', { hasText: nav.social }).click();
+    await expect(page.getByRole('heading', { name: 'Post a Video' })).toBeVisible();
+    await expect(page.locator('#socialJobSelect')).toContainText('E2E Test Widget', {
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('button', { name: buttons.postNow })).toBeEnabled();
+  });
+
+  test('schedule without datetime shows toast', async ({ page, mockApi }) => {
+    void mockApi;
+    await page.goto('/');
+    await page.locator('.nav-btn', { hasText: nav.social }).click();
+    await expect(page.getByRole('button', { name: buttons.schedulePost })).toBeEnabled({
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: buttons.schedulePost }).click();
+    await expect(page.locator('.toast')).toContainText(/schedule date\/time|Post Now/i);
+  });
+
+  test('job dry run posts via publish/batch stub', async ({ page, mockApi }) => {
+    void mockApi;
+    await page.goto('/');
+    await page.locator('.nav-btn', { hasText: nav.social }).click();
+    await expect(page.getByRole('button', { name: buttons.dryRun })).toBeEnabled({
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: buttons.dryRun }).click();
+    await expect(page.locator('.toast')).toContainText(/Dry run successful|Posted successfully/i, {
+      timeout: 10_000,
+    });
+  });
+
+  test('oauth status shows youtube connected and connect navigates to authorize url', async ({
+    page,
+    mockApi,
+  }) => {
+    void mockApi;
+    await page.route('https://accounts.google.com/**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'text/html', body: '<html>mock oauth</html>' });
+    });
+
+    await page.goto('/');
+    await page.locator('.nav-btn', { hasText: nav.social }).click();
+    await expect(page.getByRole('heading', { name: 'Connect Accounts' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText('Connected').first()).toBeVisible();
+
+    await Promise.all([
+      page.waitForURL(/accounts\.google\.com/, { timeout: 10_000 }),
+      page.getByRole('button', { name: 'Connect YouTube' }).click(),
+    ]);
+    expect(page.url()).toContain('accounts.google.com');
+  });
+});
