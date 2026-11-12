@@ -9,7 +9,7 @@ ShadowCast runs two retrieval layers:
 
 ## Style-rules corpus
 
-Eight markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpus/):
+Nine markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpus/):
 
 | Doc | Role | Sync policy |
 |-----|------|-------------|
@@ -17,12 +17,15 @@ Eight markdown docs under [`backend/eval/rag_corpus/`](../backend/eval/rag_corpu
 | `AUDIT.md` | Prompt eval gates (corpus copy) | Mirror of themes in `backend/eval/AUDIT.md` |
 | `MOCK_SCRIPT_EXAMPLES.md` | Format exemplars | RAG-only |
 | `RENDERER_CONTRACT.md` | LLM ↔ MoviePy duration/layout contract | RAG-only (canonical here) |
-| `STYLE_RENDERING_CHECKLIST.md` | Layout / segment rules | Prefer layout rules for retrieval; keep in sync with `docs/STYLE_RENDERING_CHECKLIST.md` |
+| `STYLE_RENDERING_CHECKLIST.md` | Layout / segment rules (short retrieval stub) | Intentional trim; full operator checklist stays in `docs/STYLE_RENDERING_CHECKLIST.md` |
 | `ARCHITECTURE.md` | System structure | Mirror of `docs/ARCHITECTURE.md` |
 | `RUNBOOK.md` | Ops | Mirror of `docs/RUNBOOK.md` |
 | `RECOVERY.md` | Recovery | Mirror of `docs/RECOVERY.md` |
+| `SOCIAL_READINESS.md` | Posting readiness | Mirror of `docs/SOCIAL_READINESS.md` |
 
-Canonical product docs live under [`docs/`](.). When editing ops/architecture/recovery/style checklist, update `docs/` first, then copy mirrors into `rag_corpus/`.
+Canonical product docs live under [`docs/`](.). When editing ops/architecture/recovery/social readiness, update `docs/` first, then copy those four mirrors into `rag_corpus/`. Do **not** overwrite the shortened style checklist stub with the full `docs/` checklist.
+
+`GET /api/media-library` is operator inventory (music/B-roll findability), **not** a RAG store. Amazon review themes and YouTube research angles enter scripts via [`research_enrichment.py`](../backend/research_enrichment.py) / [`youtube_research.py`](../backend/youtube_research.py), separate from style-rules retrieval.
 
 Canonical prompt audit lives in [`backend/eval/AUDIT.md`](../backend/eval/AUDIT.md).
 

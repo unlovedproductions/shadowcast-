@@ -1,4 +1,5 @@
 {
+  "_comment": "OBSOLETE — MoviePy/ffmpeg/Kokoro long jobs do not fit Vercel serverless. Local uvicorn is the supported runtime. Kept only so accidental vercel deploys fail closed rather than looking intentional; prefer deleting if your Vercel project is unlinked.",
   "version": 2,
   "builds": [
     { "src": "backend/app.py", "use": "@vercel/python" },

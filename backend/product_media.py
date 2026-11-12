@@ -23,6 +23,13 @@ except ImportError:  # pragma: no cover
     ImageDraw = None
     ImageFilter = None
 
+from visual_quality import (
+    MIN_PRODUCT_SHARPNESS,
+    energy_bbox,
+    laplacian_variance,
+    studio_bg_mask,
+)
+
 ASSETS_CACHE = Path(__file__).resolve().parent / "assets" / "product_cache"
 
 _HERO_LAYOUTS = frozenset({"winner_reveal", "price_compare"})
@@ -117,6 +124,43 @@ def fit_contain(img: "Image.Image", max_w: int, max_h: int) -> "Image.Image":
     return img
 
 
+def prepare_product_still(
+    img: "Image.Image",
+    *,
+    min_sharpness: float = MIN_PRODUCT_SHARPNESS,
+) -> Optional["Image.Image"]:
+    """
+    Energy-crop, sharpness-gate, and optional studio-white matte.
+
+    Returns RGBA ready to paste, or None when the still is too soft to show.
+    """
+    if Image is None or img is None:
+        return None
+    rgba = img.convert("RGBA")
+    rgb_arr = np.asarray(rgba.convert("RGB"), dtype=np.float32)
+    sharp = laplacian_variance(rgb_arr)
+    if sharp is not None and sharp < min_sharpness:
+        return None
+
+    box = energy_bbox(rgb_arr)
+    if box is not None:
+        left, top, right, bottom = box
+        if right > left + 8 and bottom > top + 8:
+            rgba = rgba.crop((left, top, right, bottom))
+            rgb_arr = np.asarray(rgba.convert("RGB"), dtype=np.float32)
+
+    mask = studio_bg_mask(rgb_arr)
+    if mask is not None:
+        alpha = (np.clip(mask, 0.0, 1.0) * 255.0).astype(np.uint8)
+        # Preserve existing alpha where already transparent.
+        existing = np.asarray(rgba.split()[-1], dtype=np.uint8)
+        combined = np.minimum(existing, alpha)
+        out = rgba.copy()
+        out.putalpha(Image.fromarray(combined, mode="L"))
+        return out
+    return rgba
+
+
 def paste_product_hero(
     base: "Image.Image",
     product_img: "Image.Image",
@@ -127,16 +171,19 @@ def paste_product_hero(
     """Paste product still onto base canvas (upper zone short / left zone long)."""
     if Image is None or ImageDraw is None:
         return base
+    prepared = prepare_product_still(product_img)
+    if prepared is None:
+        return base
     canvas = base.convert("RGBA")
     w, h = canvas.size
     if is_short_form:
         box_w, box_h = int(w * 0.72), int(h * max_frac)
-        hero = fit_contain(product_img, box_w, box_h)
+        hero = fit_contain(prepared, box_w, box_h)
         x = (w - hero.width) // 2
         y = int(h * 0.12)
     else:
         box_w, box_h = int(w * 0.38), int(h * 0.70)
-        hero = fit_contain(product_img, box_w, box_h)
+        hero = fit_contain(prepared, box_w, box_h)
         x = int(w * 0.06)
         y = (h - hero.height) // 2
 
@@ -182,9 +229,12 @@ def thumbnail_with_product_hero(
     product = load_rgba(product_path)
     if product is None:
         return base_thumb
+    prepared = prepare_product_still(product)
+    if prepared is None:
+        return base_thumb
     canvas = base_thumb.convert("RGBA")
     w, h = canvas.size
-    hero = fit_contain(product, int(w * 0.42), int(h * 0.78))
+    hero = fit_contain(prepared, int(w * 0.42), int(h * 0.78))
     x = w - hero.width - int(w * 0.05)
     y = (h - hero.height) // 2
     shadow = Image.new("RGBA", (hero.width + 20, hero.height + 20), (0, 0, 0, 0))

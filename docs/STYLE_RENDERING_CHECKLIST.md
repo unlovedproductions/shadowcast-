@@ -21,7 +21,7 @@ Local verification matrix for all 6 content styles × 2 video formats. No full v
 | worth_it_or_waste | [x] pass | [x] pass | verdict styling | WORTH IT? |
 | standard | [x] pass | [x] pass | N/A | none |
 
-> Verified 2026-07-22 via `tests/test_style_matrix.py` (6×2 layout/badge matrix) + related style/APF/audio pytest suite. Manual MP4 eyeball still optional when services are up.
+> Verified 2026-08-14 via `tests/test_style_matrix.py` (6×2 layout/badge matrix) + related style/APF/audio pytest suite. Manual MP4 eyeball still optional when services are up.
 
 ## Per-Style Checks
 

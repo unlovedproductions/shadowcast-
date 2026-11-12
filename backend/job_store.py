@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import threading
 import time
 from pathlib import Path
@@ -17,11 +18,14 @@ from path_safety import OUTPUT_BASE, _PROTECTED_OUTPUT_NAMES
 
 jobs: dict = {}
 _active_job_threads: set = set()
-_job_threads: dict[str, threading.Thread] = {}
 _job_thread_lock = threading.Lock()
 _job_state_lock = threading.RLock()
 _job_heartbeats: dict[str, float] = {}
-_JOB_HEARTBEAT_STALE_SECONDS = 120
+_job_thread_objs: dict[str, threading.Thread] = {}
+_shutdown_handlers_installed = False
+_VALID_STAGES = frozenset(
+    {"research", "scripts", "audio", "video", "assemble", "audit", "done"}
+)
 
 
 def _job_path(job_id: str) -> Path:
@@ -45,6 +49,21 @@ def _save_job(job_id: str) -> None:
         with open(tmp, "w") as f:
             json.dump(job, f, indent=2)
         tmp.replace(path)
+
+
+def set_job_stage(job_id: str, stage: str) -> None:
+    """Persist current pipeline stage checkpoint on the job record."""
+    if stage not in _VALID_STAGES:
+        logging.warning("Unknown job stage %r for %s", stage, job_id)
+    job = jobs.get(job_id)
+    if not job:
+        return
+    with _job_state_lock:
+        job["current_stage"] = stage
+        job.setdefault("stage_history", []).append(
+            {"stage": stage, "ts": time.time()}
+        )
+    _save_job(job_id)
 
 
 class JobCancelled(Exception):
@@ -77,7 +96,7 @@ def _load_job(job_id: str) -> Optional[dict]:
 def _job_thread_is_alive(job_id: str) -> bool:
     """True when a worker thread for this job is still running."""
     with _job_thread_lock:
-        thread = _job_threads.get(job_id)
+        thread = _job_thread_objs.get(job_id)
         return thread is not None and thread.is_alive()
 
 
@@ -93,11 +112,11 @@ def _job_thread_is_stale(job_id: str) -> bool:
 
 def _start_job_thread(job_id: str, target) -> bool:
     with _job_thread_lock:
-        existing = _job_threads.get(job_id)
+        existing = _job_thread_objs.get(job_id)
         if existing is not None and existing.is_alive():
             return False
         _active_job_threads.discard(job_id)
-        _job_threads.pop(job_id, None)
+        _job_thread_objs.pop(job_id, None)
 
         def _runner():
             with sentry_sdk.isolation_scope() as scope:
@@ -111,15 +130,69 @@ def _start_job_thread(job_id: str, target) -> bool:
                 finally:
                     with _job_thread_lock:
                         _active_job_threads.discard(job_id)
-                        if _job_threads.get(job_id) is threading.current_thread():
-                            _job_threads.pop(job_id, None)
+                        if _job_thread_objs.get(job_id) is threading.current_thread():
+                            _job_thread_objs.pop(job_id, None)
 
-        thread = threading.Thread(target=_runner, daemon=True)
+        thread = threading.Thread(target=_runner, name=f"shadowcast-job-{job_id}", daemon=False)
         _active_job_threads.add(job_id)
-        _job_threads[job_id] = thread
+        _job_thread_objs[job_id] = thread
         _job_heartbeats[job_id] = time.time()
         thread.start()
         return True
+
+
+def request_shutdown_all_jobs(*, wait_seconds: float = 15.0) -> None:
+    """Mark running jobs interrupted, request cancel, wait briefly for threads."""
+    with _job_thread_lock:
+        active_ids = list(_active_job_threads)
+        threads = [(_job_thread_objs.get(jid), jid) for jid in active_ids]
+
+    for job_id in active_ids:
+        job = jobs.get(job_id) or _load_job(job_id)
+        if not job:
+            continue
+        with _job_state_lock:
+            job["cancel_requested"] = True
+            if job.get("status") == "running":
+                job["status"] = "interrupted"
+                job["current_step"] = "Interrupted by process shutdown"
+        _save_job(job_id)
+
+    deadline = time.time() + max(0.0, wait_seconds)
+    for thread, job_id in threads:
+        if thread is None or not thread.is_alive():
+            continue
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        thread.join(timeout=remaining)
+
+
+def install_job_shutdown_handlers() -> None:
+    """Install SIGINT/SIGTERM handlers that interrupt active jobs (once)."""
+    global _shutdown_handlers_installed
+    if _shutdown_handlers_installed:
+        return
+    _shutdown_handlers_installed = True
+
+    previous: dict[int, object] = {}
+
+    def _handler(signum, frame):
+        logging.warning("Received signal %s — interrupting active jobs", signum)
+        request_shutdown_all_jobs(wait_seconds=10.0)
+        prev = previous.get(signum)
+        if callable(prev):
+            prev(signum, frame)
+        elif prev in (None, signal.SIG_DFL):
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            previous[sig] = signal.getsignal(sig)
+            signal.signal(sig, _handler)
+        except (ValueError, OSError) as exc:
+            logging.warning("Could not install handler for %s: %s", sig, exc)
 
 
 def _output_max_age_days() -> Optional[float]:
@@ -177,13 +250,13 @@ def cleanup_old_job_outputs(
         if name in active_ids:
             continue
         mem_job = jobs.get(name) or {}
-        if mem_job.get("status") == "running":
+        if mem_job.get("status") in ("running", "interrupted"):
             continue
         try:
             disk_job = json.loads(job_json.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, TypeError):
             disk_job = {}
-        if isinstance(disk_job, dict) and disk_job.get("status") == "running":
+        if isinstance(disk_job, dict) and disk_job.get("status") in ("running", "interrupted"):
             continue
         try:
             shutil.rmtree(job_dir)

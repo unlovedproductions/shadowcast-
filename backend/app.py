@@ -108,6 +108,7 @@ from publish_quality import evaluate_publish_quality
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
+from video_claims import LONG_FORM, SHORT_FORM, count_spoken_words
 from openapi_customize import customize_openapi
 from broll import any_broll_files
 from media_library import media_library_snapshot
@@ -173,11 +174,68 @@ _OAUTH_RATE_LIMIT = 60
 _OAUTH_RATE_WINDOW = 60.0
 
 
+def _bind_host_is_loopback(host: str | None = None) -> bool:
+    h = (host if host is not None else os.getenv("HOST", "127.0.0.1")).strip().lower()
+    return h in ("127.0.0.1", "localhost", "::1") or h.startswith("127.")
+
+
+def _require_service_key_for_mutations() -> bool:
+    if os.getenv("SHADOWCAST_REQUIRE_SERVICE_KEY", "").lower() in ("1", "true", "yes"):
+        return True
+    return not _bind_host_is_loopback()
+
+
+def _assert_bind_auth_config() -> None:
+    """Non-loopback bind requires INTERNAL_SERVICE_SECRET (LAN exposure gate)."""
+    if _bind_host_is_loopback():
+        return
+    if not os.getenv("INTERNAL_SERVICE_SECRET", "").strip():
+        raise RuntimeError(
+            "HOST is non-loopback; set INTERNAL_SERVICE_SECRET before binding off-loopback "
+            "(or use HOST=127.0.0.1)."
+        )
+
+
+# Mutating paths that stay UI-public on localhost but require X-Service-Key when exposed.
+_EXPOSED_AUTH_PREFIXES = (
+    "/api/generate",
+    "/api/batch-upload",
+    "/api/batch-generate",
+    "/api/retry-missing/",
+    "/api/cancel/",
+    "/api/import-apf",
+    "/api/scrape-amazon",
+    "/api/youtube-research",
+    "/api/publish",
+    "/api/social",
+    "/api/oauth",
+)
+
+
+def _path_requires_service_key_when_exposed(path: str) -> bool:
+    if path in (
+        "/api/generate",
+        "/api/batch-upload",
+        "/api/batch-generate",
+        "/api/scrape-amazon",
+        "/api/youtube-research",
+        "/api/import-apf",
+        "/api/import-apf/direct",
+    ):
+        return True
+    return any(path.startswith(prefix) for prefix in _EXPOSED_AUTH_PREFIXES)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _assert_bind_auth_config()
     cleanup_old_job_outputs()
+    install_job_shutdown_handlers()
     _resume_incomplete_jobs()
-    yield
+    try:
+        yield
+    finally:
+        request_shutdown_all_jobs(wait_seconds=15.0)
 
 
 app = FastAPI(
@@ -193,13 +251,17 @@ app = FastAPI(
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
 _cors_origins = [origin.strip() for origin in _cors_raw.split(",") if origin.strip()]
+_cors_allow_credentials = True
 if os.getenv("CORS_ALLOW_ALL", "").lower() in ("1", "true", "yes"):
-    _cors_origins = ["*"]
+    # Wildcard + credentials is invalid/dangerous; refuse and keep explicit origins.
+    logging.warning(
+        "CORS_ALLOW_ALL is forbidden with credentialed SPA; ignoring. Set CORS_ORIGINS instead."
+    )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -271,10 +333,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def enforce_internal_auth_middleware(request: Request, call_next):
     # UNLOVED_PUBLIC_UI_ROUTE_AUTH_BYPASS — allowlist shared with openapi_customize
     path = request.url.path
+    method = request.method
+    internal_secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
+    exposed = _require_service_key_for_mutations()
+
+    if (
+        exposed
+        and method not in ("GET", "HEAD", "OPTIONS")
+        and _path_requires_service_key_when_exposed(path)
+    ):
+        if not internal_secret or request.headers.get("X-Service-Key") != internal_secret:
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
     if is_public_path(path):
         return await call_next(request)
-    internal_secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
-    if internal_secret and request.method != "GET":
+    if internal_secret and method != "GET":
         service_key = request.headers.get("X-Service-Key")
         if service_key != internal_secret:
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
@@ -320,7 +394,10 @@ from job_store import (
     _save_job,
     _start_job_thread,
     cleanup_old_job_outputs,
+    install_job_shutdown_handlers,
     jobs,
+    request_shutdown_all_jobs,
+    set_job_stage,
 )
 
 # ── Job store (imported from job_store; path helpers from path_safety) ─
@@ -429,6 +506,9 @@ def _youtube_package_ok(path: Path) -> bool:
     return bool(seo_title) and not data.get("_shadowcast_fallback", False)
 
 
+_MIN_RENDERABLE_LONG_FORM_WORDS = 120
+
+
 def _script_ready_for_render(script: dict) -> tuple[bool, str]:
     """Fail-fast before MoviePy: require speakable overlay segments."""
     if not isinstance(script, dict):
@@ -444,6 +524,18 @@ def _script_ready_for_render(script: dict) -> tuple[bool, str]:
     texts = [str(s.get("text") or "").strip() for s in segments if isinstance(s, dict)]
     if not any(texts):
         return False, "script segments have empty text"
+    fmt = str(script.get("format") or "").strip()
+    if not fmt:
+        fmt = LONG_FORM if script.get("chapters") else SHORT_FORM
+    if fmt == LONG_FORM:
+        # TTS re-times segments to measured speech, so declared durations say nothing
+        # about final runtime. Only block renders that are too thin to be worth the cost.
+        words = count_spoken_words(script, LONG_FORM)
+        if words < _MIN_RENDERABLE_LONG_FORM_WORDS:
+            return False, (
+                f"long_form has {words} spoken words, below the "
+                f"{_MIN_RENDERABLE_LONG_FORM_WORDS}-word render floor"
+            )
     return True, ""
 
 
@@ -582,6 +674,10 @@ def _run_job_audit(job_dir: Path) -> dict:
 
 def _finalize_job_status(job_id: str, job_dir: Path, *, done_message: str) -> None:
     job = jobs[job_id]
+    if job.get("status") == "interrupted":
+        job["current_step"] = "Interrupted by process shutdown"
+        _save_job(job_id)
+        return
     if job.get("cancel_requested"):
         job["status"] = "cancelled"
         job["current_step"] = "Cancelled by operator"
@@ -589,6 +685,7 @@ def _finalize_job_status(job_id: str, job_dir: Path, *, done_message: str) -> No
         _save_job(job_id)
         return
 
+    set_job_stage(job_id, "audit")
     audit_result = _run_job_audit(job_dir)
     job["audit"] = audit_result
     summary = _summarize_job_output(job)
@@ -889,7 +986,13 @@ def _resume_incomplete_jobs() -> None:
             continue
         job_id = job_dir.name
         job = _load_job(job_id)
-        if not job or job.get("status") != "running":
+        if not job:
+            continue
+        status = job.get("status")
+        # interrupted = clean signal shutdown; operator uses retry-missing.
+        if status == "interrupted":
+            continue
+        if status != "running":
             continue
         mode = job.get("mode", "single")
         job["current_step"] = f"Resuming after restart: {job.get('current_step', '...')}"
@@ -1057,6 +1160,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     product["content_style"] = effective_style
 
     research_dir = OUTPUT_BASE / job_id / "research" / slug
+    set_job_stage(job_id, "research")
     try:
         product = enrich_product_research(product, research_dir=research_dir)
         for warning in product.get("_research_warnings") or []:
@@ -1085,6 +1189,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
         phase_timings_ms[name] = round((time.perf_counter() - started) * 1000, 1)
 
     # Phase 1: Scripts
+    set_job_stage(job_id, "scripts")
     _phase_t0 = time.perf_counter()
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
@@ -1158,8 +1263,10 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     _mark_phase("scripts", _phase_t0)
 
-    # Phase 2: Videos
+    # Phase 2: Videos (TTS-first + MoviePy; audio stage checkpoint before first render)
+    set_job_stage(job_id, "audio")
     _phase_t0 = time.perf_counter()
+    set_job_stage(job_id, "video")
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
         hook_name = hook_type.replace("_", " ").title()
@@ -1249,6 +1356,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     _mark_phase("videos", _phase_t0)
 
     # Phase 3: YouTube Assets
+    set_job_stage(job_id, "assemble")
     _phase_t0 = time.perf_counter()
     for hook_type in hook_types:
         _raise_if_cancelled(job_id)
@@ -1397,6 +1505,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
     merge_llm_calls_into_job(jobs, job_id)
     _apply_llm_warnings(job)
     clear_job_context()
+    set_job_stage(job_id, "done")
     _save_job(job_id)
     return product_results, step
 
@@ -1432,8 +1541,9 @@ def _run_generation(job_id: str):
         job["results"] = result.get("hooks", {})
         _finalize_job_status(job_id, job_dir, done_message="Done!")
     except JobCancelled:
-        job["status"] = "cancelled"
-        job["current_step"] = "Cancelled by operator"
+        if job.get("status") != "interrupted":
+            job["status"] = "cancelled"
+            job["current_step"] = "Cancelled by operator"
         _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
@@ -1560,8 +1670,9 @@ def _run_batch_generation(job_id: str):
             done_message=f"Done! {len(products)} products processed.",
         )
     except JobCancelled:
-        job["status"] = "cancelled"
-        job["current_step"] = "Cancelled by operator"
+        if job.get("status") != "interrupted":
+            job["status"] = "cancelled"
+            job["current_step"] = "Cancelled by operator"
         _save_job(job_id)
     except Exception as e:
         job["status"] = "error"
@@ -2182,7 +2293,7 @@ def cancel_job(job_id: str):
 
     status = str(job.get("status") or "")
     active = _job_thread_is_alive(job_id)
-    if status in ("complete", "cancelled", "error") and not active:
+    if status in ("complete", "cancelled", "error", "interrupted") and not active:
         return {
             "job_id": job_id,
             "status": status,
@@ -2861,5 +2972,6 @@ if __name__ == "__main__":
     # Localhost-only trust model: default bind is loopback. Override with HOST=0.0.0.0 only if intentional.
     _host = os.getenv("HOST", "127.0.0.1")
     _port = int(os.getenv("PORT", "8000"))
+    _assert_bind_auth_config()
     uvicorn.run(app, host=_host, port=_port)
 

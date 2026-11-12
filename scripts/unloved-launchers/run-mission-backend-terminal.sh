@@ -41,6 +41,6 @@ source .env
 set +a
 
 echo "Python: $(python --version)"
-echo "Opening Mission Control backend on http://localhost:8100"
+echo "Opening Mission Control backend on http://127.0.0.1:8100 (localhost-only)"
 
-python -m uvicorn main:app --host 0.0.0.0 --port 8100 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8100 --reload

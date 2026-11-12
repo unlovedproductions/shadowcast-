@@ -1,0 +1,21 @@
+# Dependabot — keep pip lock and npm E2E deps current.
+# Note: root poetry.lock is a symlink to backend/requirements.lock (pip freeze), not Poetry.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

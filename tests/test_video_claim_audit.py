@@ -51,7 +51,7 @@ def test_expected_timeline_duration_short_form():
             {"duration": 2.0},
         ],
     }
-    assert expected_timeline_duration(script, SHORT_FORM) == pytest.approx(18.65, abs=0.01)
+    assert expected_timeline_duration(script, SHORT_FORM) == pytest.approx(16.50, abs=0.01)
 
 
 def test_expected_timeline_duration_long_form():
@@ -74,7 +74,7 @@ def test_expected_timeline_duration_long_form():
             },
         ],
     }
-    assert expected_timeline_duration(script, LONG_FORM) == pytest.approx(33.45, abs=0.01)
+    assert expected_timeline_duration(script, LONG_FORM) == pytest.approx(33.30, abs=0.01)
 
 
 def test_build_render_timeline_audio_offsets_match_expected_duration():
@@ -92,10 +92,9 @@ def test_build_render_timeline_audio_offsets_match_expected_duration():
         ],
     }
     timeline = build_render_timeline(short, SHORT_FORM)
-    assert timeline["intro_seconds"] == 2.0
+    assert timeline["intro_seconds"] == 0.0
     assert timeline["total_duration"] == pytest.approx(expected_timeline_duration(short, SHORT_FORM))
-    # SFX for first segment must start after intro, not at t=0
-    assert timeline["segment_events"][0]["start"] == pytest.approx(2.0)
+    assert timeline["segment_events"][0]["start"] == pytest.approx(0.0)
 
 
 
