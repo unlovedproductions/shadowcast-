@@ -1,0 +1,165 @@
+{
+  "timestamp": "2026-07-22T21:46:01Z",
+  "live": false,
+  "total": 16,
+  "passed": 16,
+  "failed": 0,
+  "results": [
+    {
+      "id": "hr_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "hr_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "honest_review",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "elim_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "elimination",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "elim_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "elimination",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "vs_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "vs_battle",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "vs_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "vs_battle",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "budget_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "budget_challenge",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "budget_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "budget_challenge",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "worth_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "worth_it_or_waste",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "worth_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "worth_it_or_waste",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "std_short",
+      "type": "script",
+      "format": "short_form",
+      "content_style": "standard",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "std_long",
+      "type": "script",
+      "format": "long_form",
+      "content_style": "standard",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_hr",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_vs",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_budget",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    },
+    {
+      "id": "yt_assets_worth",
+      "type": "youtube_assets",
+      "format": "long_form",
+      "passed": true,
+      "errors": [],
+      "live": false,
+      "note": "dry-run with synthetic output"
+    }
+  ]
+}

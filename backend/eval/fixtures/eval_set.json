@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "hr_short",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "honest_review",
+      "format": "short_form",
+      "hook_type": "curiosity"
+    },
+    {
+      "id": "hr_long",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "honest_review",
+      "format": "long_form",
+      "hook_type": "data_bomb"
+    },
+    {
+      "id": "elim_short",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "elimination",
+      "format": "short_form",
+      "hook_type": "comparison_trap"
+    },
+    {
+      "id": "elim_long",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "elimination",
+      "format": "long_form",
+      "hook_type": "contrarian"
+    },
+    {
+      "id": "vs_short",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "vs_battle",
+      "format": "short_form",
+      "hook_type": "comparison_trap"
+    },
+    {
+      "id": "vs_long",
+      "type": "script",
+      "product": "soundcore_a40.json",
+      "content_style": "vs_battle",
+      "format": "long_form",
+      "hook_type": "myth_buster"
+    },
+    {
+      "id": "budget_short",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "budget_challenge",
+      "format": "short_form",
+      "hook_type": "listicle"
+    },
+    {
+      "id": "budget_long",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "budget_challenge",
+      "format": "long_form",
+      "hook_type": "listicle"
+    },
+    {
+      "id": "worth_short",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "worth_it_or_waste",
+      "format": "short_form",
+      "hook_type": "problem_agitation"
+    },
+    {
+      "id": "worth_long",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "worth_it_or_waste",
+      "format": "long_form",
+      "hook_type": "problem_agitation"
+    },
+    {
+      "id": "std_short",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "standard",
+      "format": "short_form",
+      "hook_type": "urgency"
+    },
+    {
+      "id": "std_long",
+      "type": "script",
+      "product": "budget_blender.json",
+      "content_style": "standard",
+      "format": "long_form",
+      "hook_type": "urgency"
+    },
+    {
+      "id": "yt_assets_hr",
+      "type": "youtube_assets",
+      "product": "soundcore_a40.json",
+      "format": "long_form",
+      "mock_script": "hr_long"
+    },
+    {
+      "id": "yt_assets_vs",
+      "type": "youtube_assets",
+      "product": "soundcore_a40.json",
+      "format": "long_form",
+      "mock_script": "vs_long"
+    },
+    {
+      "id": "yt_assets_budget",
+      "type": "youtube_assets",
+      "product": "budget_blender.json",
+      "format": "long_form",
+      "mock_script": "budget_long"
+    },
+    {
+      "id": "yt_assets_worth",
+      "type": "youtube_assets",
+      "product": "budget_blender.json",
+      "format": "long_form",
+      "mock_script": "worth_long"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "queries": [
+    {"id": "q1", "query": "What content style should I use for competitor comparison videos?"},
+    {"id": "q2", "query": "What buyer-facing language is banned in scripts?"},
+    {"id": "q3", "query": "How do I run prompt evaluation baselines?"},
+    {"id": "q4", "query": "What are the health check endpoints?"},
+    {"id": "q5", "query": "How does ShadowCast startup work locally?"}
+  ]
+}

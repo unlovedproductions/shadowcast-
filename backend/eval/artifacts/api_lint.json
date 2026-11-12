@@ -1,0 +1,1364 @@
+{
+  "summary": {
+    "total_endpoints": 54,
+    "endpoints_with_issues": 51,
+    "total_issues": 193,
+    "errors": 0,
+    "warnings": 125,
+    "info": 68,
+    "score": 91.8
+  },
+  "issues": [
+    {
+      "severity": "warning",
+      "category": "documentation",
+      "message": "Missing recommended info field: description",
+      "path": "/info/description",
+      "suggestion": "Consider adding a 'description' field to improve API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "documentation",
+      "message": "Missing recommended info field: contact",
+      "path": "/info/contact",
+      "suggestion": "Consider adding a 'contact' field to improve API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "configuration",
+      "message": "Missing servers section",
+      "path": "/servers",
+      "suggestion": "Add a servers section to specify API base URLs"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/health",
+      "path": "/paths//api/health/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/health",
+      "path": "/paths//api/health/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Resource segment 'openapi.json' should use kebab-case",
+      "path": "/paths//api/openapi.json",
+      "suggestion": "Use kebab-case for 'openapi.json' (e.g., 'user-profiles', 'order-items')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/openapi.json",
+      "path": "/paths//api/openapi.json/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/openapi.json",
+      "path": "/paths//api/openapi.json/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/readiness",
+      "path": "/paths//api/readiness/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/readiness",
+      "path": "/paths//api/readiness/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/providers",
+      "path": "/paths//api/providers/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/providers",
+      "path": "/paths//api/providers/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/config",
+      "path": "/paths//api/config/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/llm/test",
+      "path": "/paths//api/llm/test/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/llm/test",
+      "path": "/paths//api/llm/test/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/llm/models",
+      "path": "/paths//api/llm/models/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/llm/models",
+      "path": "/paths//api/llm/models/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/hooks",
+      "path": "/paths//api/hooks/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/hooks",
+      "path": "/paths//api/hooks/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/content-styles",
+      "path": "/paths//api/content-styles/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/content-styles",
+      "path": "/paths//api/content-styles/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/tts-providers",
+      "path": "/paths//api/tts-providers/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/csv-template",
+      "path": "/paths//api/csv-template/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/csv-template",
+      "path": "/paths//api/csv-template/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/generate",
+      "path": "/paths//api/generate/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/batch-upload",
+      "path": "/paths//api/batch-upload/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/batch-generate",
+      "path": "/paths//api/batch-generate/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/status/{job_id}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/status/{job_id}",
+      "path": "/paths//api/status/{job_id}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/status/{job_id}",
+      "path": "/paths//api/status/{job_id}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in GET /api/status/{job_id}",
+      "path": "/paths//api/status/{job_id}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/results/{job_id}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/results/{job_id}",
+      "path": "/paths//api/results/{job_id}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/results/{job_id}",
+      "path": "/paths//api/results/{job_id}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in GET /api/results/{job_id}",
+      "path": "/paths//api/results/{job_id}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/retry-missing/{job_id}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/retry-missing/{job_id}",
+      "path": "/paths//api/retry-missing/{job_id}/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "rest_conventions",
+      "message": "POST request typically should have request body: POST /api/retry-missing/{job_id}",
+      "path": "/paths//api/retry-missing/{job_id}/post",
+      "suggestion": "Consider adding requestBody for POST operation or use GET if no data is being sent"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in POST /api/retry-missing/{job_id}",
+      "path": "/paths//api/retry-missing/{job_id}/post/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/audit/{job_id}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/audit/{job_id}",
+      "path": "/paths//api/audit/{job_id}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/audit/{job_id}",
+      "path": "/paths//api/audit/{job_id}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in GET /api/audit/{job_id}",
+      "path": "/paths//api/audit/{job_id}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/download/{job_id}/{path}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/download/{job_id}/{path}",
+      "path": "/paths//api/download/{job_id}/{path}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/download/{job_id}/{path}",
+      "path": "/paths//api/download/{job_id}/{path}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in GET /api/download/{job_id}/{path}",
+      "path": "/paths//api/download/{job_id}/{path}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case",
+      "path": "/paths//api/files/{job_id}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/files/{job_id}",
+      "path": "/paths//api/files/{job_id}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/files/{job_id}",
+      "path": "/paths//api/files/{job_id}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'job_id' should use camelCase or kebab-case in GET /api/files/{job_id}",
+      "path": "/paths//api/files/{job_id}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/jobs/postable",
+      "path": "/paths//api/jobs/postable/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/jobs/postable",
+      "path": "/paths//api/jobs/postable/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/social/status",
+      "path": "/paths//api/social/status/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/social/status",
+      "path": "/paths//api/social/status/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/media/serve",
+      "path": "/paths//api/media/serve/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/oauth/status",
+      "path": "/paths//api/oauth/status/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/oauth/status",
+      "path": "/paths//api/oauth/status/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/oauth/config",
+      "path": "/paths//api/oauth/config/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/oauth/config",
+      "path": "/paths//api/oauth/config/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/oauth/{platform}/authorize",
+      "path": "/paths//api/oauth/{platform}/authorize/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/oauth/{platform}/authorize",
+      "path": "/paths//api/oauth/{platform}/authorize/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/oauth/{platform}/callback",
+      "path": "/paths//api/oauth/{platform}/callback/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/oauth/{platform}/callback",
+      "path": "/paths//api/oauth/{platform}/callback/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/oauth/rumble/login",
+      "path": "/paths//api/oauth/rumble/login/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for DELETE /api/oauth/{platform}",
+      "path": "/paths//api/oauth/{platform}/delete/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for DELETE /api/oauth/{platform}",
+      "path": "/paths//api/oauth/{platform}/delete/responses/422",
+      "suggestion": "Consider using standard codes for DELETE: [200, 204, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/publish",
+      "path": "/paths//api/publish/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/publish/batch",
+      "path": "/paths//api/publish/batch/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "rest_conventions",
+      "message": "Avoid verbs in URLs: 'post' in /api/social/post",
+      "path": "/paths//api/social/post",
+      "suggestion": "Use HTTP methods instead of verbs in URLs. Use nouns for resources."
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/social/post",
+      "path": "/paths//api/social/post/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/social/queue",
+      "path": "/paths//api/social/queue/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/social/queue",
+      "path": "/paths//api/social/queue/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/social/schedule",
+      "path": "/paths//api/social/schedule/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/social/queue/process",
+      "path": "/paths//api/social/queue/process/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "rest_conventions",
+      "message": "POST request typically should have request body: POST /api/social/queue/process",
+      "path": "/paths//api/social/queue/process/post",
+      "suggestion": "Consider adding requestBody for POST operation or use GET if no data is being sent"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Query parameter 'dry_run' should use camelCase or kebab-case in POST /api/social/queue/process",
+      "path": "/paths//api/social/queue/process/post/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'pageSize') or kebab-case (e.g., 'page-size')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/analytics/track",
+      "path": "/paths//api/analytics/track/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/analytics/record",
+      "path": "/paths//api/analytics/record/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/analytics/sync-youtube",
+      "path": "/paths//api/analytics/sync-youtube/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "rest_conventions",
+      "message": "POST request typically should have request body: POST /api/analytics/sync-youtube",
+      "path": "/paths//api/analytics/sync-youtube/post",
+      "suggestion": "Consider adding requestBody for POST operation or use GET if no data is being sent"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for POST /api/analytics/sync-youtube",
+      "path": "/paths//api/analytics/sync-youtube/post/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/dashboard",
+      "path": "/paths//api/analytics/dashboard/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/analytics/dashboard",
+      "path": "/paths//api/analytics/dashboard/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/hooks",
+      "path": "/paths//api/analytics/hooks/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/analytics/hooks",
+      "path": "/paths//api/analytics/hooks/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/formats",
+      "path": "/paths//api/analytics/formats/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/analytics/formats",
+      "path": "/paths//api/analytics/formats/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/top",
+      "path": "/paths//api/analytics/top/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/analytics/top",
+      "path": "/paths//api/analytics/top/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/revenue",
+      "path": "/paths//api/analytics/revenue/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/analytics/revenue",
+      "path": "/paths//api/analytics/revenue/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/analytics/export",
+      "path": "/paths//api/analytics/export/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/analytics/export",
+      "path": "/paths//api/analytics/export/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/tracking-link",
+      "path": "/paths//api/tracking-link/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/tracking-link",
+      "path": "/paths//api/tracking-link/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Query parameter 'affiliate_url' should use camelCase or kebab-case in GET /api/tracking-link",
+      "path": "/paths//api/tracking-link/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'pageSize') or kebab-case (e.g., 'page-size')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Query parameter 'video_id' should use camelCase or kebab-case in GET /api/tracking-link",
+      "path": "/paths//api/tracking-link/get/parameters[1]/name",
+      "suggestion": "Use camelCase (e.g., 'pageSize') or kebab-case (e.g., 'page-size')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/bg-styles",
+      "path": "/paths//api/bg-styles/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for GET /api/bg-styles",
+      "path": "/paths//api/bg-styles/get/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/bg-preview/{style}",
+      "path": "/paths//api/bg-preview/{style}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/bg-preview/{style}",
+      "path": "/paths//api/bg-preview/{style}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/bg-recommend",
+      "path": "/paths//api/bg-recommend/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/bg-recommend",
+      "path": "/paths//api/bg-recommend/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Query parameter 'content_style' should use camelCase or kebab-case in GET /api/bg-recommend",
+      "path": "/paths//api/bg-recommend/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'pageSize') or kebab-case (e.g., 'page-size')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Query parameter 'hook_type' should use camelCase or kebab-case in GET /api/bg-recommend",
+      "path": "/paths//api/bg-recommend/get/parameters[1]/name",
+      "suggestion": "Use camelCase (e.g., 'pageSize') or kebab-case (e.g., 'page-size')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for POST /api/import-apf/direct",
+      "path": "/paths//api/import-apf/direct/post/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "rest_conventions",
+      "message": "POST request typically should have request body: POST /api/import-apf/direct",
+      "path": "/paths//api/import-apf/direct/post",
+      "suggestion": "Consider adding requestBody for POST operation or use GET if no data is being sent"
+    },
+    {
+      "severity": "warning",
+      "category": "responses",
+      "message": "Missing error responses for POST /api/import-apf/direct",
+      "path": "/paths//api/import-apf/direct/post/responses",
+      "suggestion": "Define common error responses (400, 404, 500, etc.)"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /api/import-apf/direct/{token}",
+      "path": "/paths//api/import-apf/direct/{token}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /api/import-apf/direct/{token}",
+      "path": "/paths//api/import-apf/direct/{token}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'full_path' should use camelCase or kebab-case",
+      "path": "/paths//{full_path}",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "info",
+      "category": "documentation",
+      "message": "Missing description for GET /{full_path}",
+      "path": "/paths//{full_path}/get/description",
+      "suggestion": "Add a detailed description for better API documentation"
+    },
+    {
+      "severity": "info",
+      "category": "responses",
+      "message": "Uncommon status code 422 for GET /{full_path}",
+      "path": "/paths//{full_path}/get/responses/422",
+      "suggestion": "Consider using standard codes for GET: [200, 304, 404]"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Path parameter 'full_path' should use camelCase or kebab-case in GET /{full_path}",
+      "path": "/paths//{full_path}/get/parameters[0]/name",
+      "suggestion": "Use camelCase (e.g., 'userId') or kebab-case (e.g., 'user-id')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_types' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/hook_types",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'content_style' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/content_style",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_enabled' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/audio_enabled",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_mood' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/audio_mood",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'use_tts' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/use_tts",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_provider' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/tts_provider",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_voice' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/tts_voice",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_preset' in schema 'BatchGenerateRequest' should use camelCase",
+      "path": "/components/schemas/BatchGenerateRequest/properties/video_preset",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Schema name 'Body_batch_upload_api_batch_upload_post' should use PascalCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post",
+      "suggestion": "Use PascalCase for schema names (e.g., 'UserProfile', 'OrderItem')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_types' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/hook_types",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'content_style' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/content_style",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_enabled' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/audio_enabled",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_mood' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/audio_mood",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'use_tts' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/use_tts",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_provider' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/tts_provider",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_voice' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/tts_voice",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_preset' in schema 'Body_batch_upload_api_batch_upload_post' should use camelCase",
+      "path": "/components/schemas/Body_batch_upload_api_batch_upload_post/properties/video_preset",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Schema name 'Body_import_apf_api_import_apf_post' should use PascalCase",
+      "path": "/components/schemas/Body_import_apf_api_import_apf_post",
+      "suggestion": "Use PascalCase for schema names (e.g., 'UserProfile', 'OrderItem')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Schema name 'Body_scrape_amazon_api_scrape_amazon_post' should use PascalCase",
+      "path": "/components/schemas/Body_scrape_amazon_api_scrape_amazon_post",
+      "suggestion": "Use PascalCase for schema names (e.g., 'UserProfile', 'OrderItem')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Schema name 'Body_track_video_api_analytics_track_post' should use PascalCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post",
+      "suggestion": "Use PascalCase for schema names (e.g., 'UserProfile', 'OrderItem')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_name' in schema 'Body_track_video_api_analytics_track_post' should use camelCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post/properties/product_name",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_type' in schema 'Body_track_video_api_analytics_track_post' should use camelCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post/properties/hook_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'format_type' in schema 'Body_track_video_api_analytics_track_post' should use camelCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post/properties/format_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_path' in schema 'Body_track_video_api_analytics_track_post' should use camelCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post/properties/video_path",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'youtube_url' in schema 'Body_track_video_api_analytics_track_post' should use camelCase",
+      "path": "/components/schemas/Body_track_video_api_analytics_track_post/properties/youtube_url",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Schema name 'Body_youtube_research_api_youtube_research_post' should use PascalCase",
+      "path": "/components/schemas/Body_youtube_research_api_youtube_research_post",
+      "suggestion": "Use PascalCase for schema names (e.g., 'UserProfile', 'OrderItem')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_info' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/product_info",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_types' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/hook_types",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'content_style' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/content_style",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_enabled' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/audio_enabled",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'audio_mood' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/audio_mood",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'use_tts' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/use_tts",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_provider' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/tts_provider",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'tts_voice' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/tts_voice",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_preset' in schema 'GenerateRequest' should use camelCase",
+      "path": "/components/schemas/GenerateRequest/properties/video_preset",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'api_key' in schema 'LLMConfigRequest' should use camelCase",
+      "path": "/components/schemas/LLMConfigRequest/properties/api_key",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'base_url' in schema 'LLMConfigRequest' should use camelCase",
+      "path": "/components/schemas/LLMConfigRequest/properties/base_url",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_id' in schema 'MetricRequest' should use camelCase",
+      "path": "/components/schemas/MetricRequest/properties/video_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'metric_type' in schema 'MetricRequest' should use camelCase",
+      "path": "/components/schemas/MetricRequest/properties/metric_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_path' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/video_path",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'dry_run' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/dry_run",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'job_id' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/job_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_type' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/hook_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_format' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/video_format",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_slug' in schema 'PostRequest' should use camelCase",
+      "path": "/components/schemas/PostRequest/properties/product_slug",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_name' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/product_name",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'key_features' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/key_features",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'affiliate_link' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/affiliate_link",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'target_audience' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/target_audience",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_category' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/product_category",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'unique_selling_point' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/unique_selling_point",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'discount_info' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/discount_info",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'coupon_code' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/coupon_code",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'common_complaints' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/common_complaints",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'common_praises' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/common_praises",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'who_not_for' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/who_not_for",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'series_name' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/series_name",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'price_comparison' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/price_comparison",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'content_style' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/content_style",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'amazon_url' in schema 'ProductInfo' should use camelCase",
+      "path": "/components/schemas/ProductInfo/properties/amazon_url",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'job_id' in schema 'PublishBatchRequest' should use camelCase",
+      "path": "/components/schemas/PublishBatchRequest/properties/job_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_type' in schema 'PublishBatchRequest' should use camelCase",
+      "path": "/components/schemas/PublishBatchRequest/properties/hook_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_format' in schema 'PublishBatchRequest' should use camelCase",
+      "path": "/components/schemas/PublishBatchRequest/properties/video_format",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_slug' in schema 'PublishBatchRequest' should use camelCase",
+      "path": "/components/schemas/PublishBatchRequest/properties/product_slug",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'dry_run' in schema 'PublishBatchRequest' should use camelCase",
+      "path": "/components/schemas/PublishBatchRequest/properties/dry_run",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'job_id' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/job_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_type' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/hook_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_format' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/video_format",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_slug' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/product_slug",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'dry_run' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/dry_run",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'thumbnail_variant' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/thumbnail_variant",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'target_page_id' in schema 'PublishRequest' should use camelCase",
+      "path": "/components/schemas/PublishRequest/properties/target_page_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_path' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/video_path",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'scheduled_time' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/scheduled_time",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'job_id' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/job_id",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'hook_type' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/hook_type",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'video_format' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/video_format",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    },
+    {
+      "severity": "warning",
+      "category": "naming",
+      "message": "Property 'product_slug' in schema 'SchedulePostRequest' should use camelCase",
+      "path": "/components/schemas/SchedulePostRequest/properties/product_slug",
+      "suggestion": "Use camelCase for property names (e.g., 'firstName', 'createdAt')"
+    }
+  ]
+}

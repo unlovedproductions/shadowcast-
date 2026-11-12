@@ -19,6 +19,26 @@ def _as_list(value):
     return []
 
 
+def _clean_comparison_value(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.lower() in {"n/a", "na", "none", "unknown", "tbd", "varies", "comparable"}:
+        return ""
+    return text
+
+
+def _clean_competitors(product_info: dict, limit: int = None) -> list:
+    cleaned = []
+    for comp in _as_list(product_info.get("competitors")):
+        cc = _clean_comparison_value(comp)
+        if cc:
+            cleaned.append(cc)
+    if limit is not None:
+        return cleaned[:limit]
+    return cleaned
+
+
 def _normalize_segment(seg: dict) -> dict:
     style = seg.get("text_style", "")
     if style in TEXT_STYLE_ALIASES:
@@ -81,93 +101,138 @@ def _layout_segment(segment_id: int, duration: float, layout: str, **extra) -> d
 
 
 def _inject_vs_battle(script: dict, product_info: dict) -> None:
-    if _has_layout(script):
+    """Inject any missing required vs_battle layouts (partial LLM layouts still get filled)."""
+    has_vs = _has_layout(script, "vs_split")
+    has_scorecard = _has_layout(script, "scorecard")
+    has_winner = _has_layout(script, "winner_reveal")
+    if has_vs and has_scorecard and has_winner:
         return
 
     product_name = product_info.get("product_name", "Our Pick")
     competitors = _as_list(product_info.get("competitors"))
-    competitor = competitors[0] if competitors else "Top Alternative"
-    features = _as_list(product_info.get("key_features"))
-    price = product_info.get("price", "N/A")
-    price_notes = product_info.get("price_comparison", "")
+    competitor = _clean_comparison_value(competitors[0]) if competitors else ""
+    if not competitor:
+        return
+    price = _clean_comparison_value(product_info.get("price", ""))
+    price_notes = _clean_comparison_value(product_info.get("price_comparison", ""))
 
     segments = _target_segments(script)
     if not segments:
         return
 
     sid = _next_segment_id(script)
-    injected = [
-        _layout_segment(
-            sid,
-            2.5,
-            "vs_split",
-            product_a=product_name,
-            product_b=competitor,
-            text=f"{product_name} vs {competitor}",
-            text_style="comparison",
-        ),
-    ]
-    sid += 1
+    injected = []
 
-    spec_pairs = []
-    if price_notes:
-        spec_pairs.append(("Price / Value", price, "See competitor", "a"))
-    spec_pairs.append(("Price", price, "Varies", "a"))
-    for idx, feature in enumerate(features[:2]):
-        spec_pairs.append((f"Feature {idx + 1}", feature, "Comparable", "a"))
-
-    for spec_name, value_a, value_b, winner in spec_pairs[:3]:
+    if not has_vs:
         injected.append(
             _layout_segment(
                 sid,
-                2.0,
-                "spec_compare",
-                spec_name=spec_name,
-                value_a=value_a,
-                value_b=value_b,
-                winner=winner,
-                text=spec_name,
+                2.5,
+                "vs_split",
+                product_a=product_name,
+                product_b=competitor,
+                text=f"{product_name} vs {competitor}",
                 text_style="comparison",
             )
         )
         sid += 1
 
-    injected.append(
-        _layout_segment(
-            sid,
-            2.5,
-            "scorecard",
-            product_a=product_name,
-            product_b=competitor,
-            scores=[
-                {"category": "Value", "winner": "a"},
-                {"category": "Features", "winner": "a"},
-                {"category": "Reviews", "winner": "b"},
-            ],
-            text="Final Scorecard",
-            text_style="scorecard",
-        )
-    )
-    sid += 1
+    spec_pairs = []
+    if price and price_notes:
+        spec_pairs.append(("Price / Value", price, price_notes, "none"))
 
-    injected.append(
-        _layout_segment(
-            sid,
-            2.5,
-            "winner_reveal",
-            winner_name=product_name,
-            text=f"Winner: {product_name}",
-            text_style="verdict",
-        )
-    )
+    for row in product_info.get("comparison_specs", []) or []:
+        if not isinstance(row, dict):
+            continue
+        spec_name = _clean_comparison_value(row.get("spec_name") or row.get("name"))
+        value_a = _clean_comparison_value(row.get("value_a"))
+        value_b = _clean_comparison_value(row.get("value_b"))
+        winner = str(row.get("winner", "none")).strip().lower()
+        if winner not in {"a", "b", "none"}:
+            winner = "none"
+        if spec_name and value_a and value_b:
+            spec_pairs.append((spec_name, value_a, value_b, winner))
 
-    insert_at = min(1, len(segments))
-    segments[insert_at:insert_at] = injected
+    if not _has_layout(script, "spec_compare"):
+        for spec_name, value_a, value_b, winner in spec_pairs[:3]:
+            injected.append(
+                _layout_segment(
+                    sid,
+                    2.0,
+                    "spec_compare",
+                    spec_name=spec_name,
+                    value_a=value_a,
+                    value_b=value_b,
+                    winner=winner,
+                    text=spec_name,
+                    text_style="comparison",
+                )
+            )
+            sid += 1
+
+    winners = [winner for _, _, _, winner in spec_pairs if winner in {"a", "b"}]
+    if not winners:
+        winners = ["a"]
+
+    if not has_scorecard:
+        score_rows = [
+            {"category": f"Round {idx + 1}", "winner": winner}
+            for idx, winner in enumerate(winners[:3])
+        ]
+        injected.append(
+            _layout_segment(
+                sid,
+                2.5,
+                "scorecard",
+                product_a=product_name,
+                product_b=competitor,
+                scores=score_rows,
+                text="Final Scorecard",
+                text_style="scorecard",
+            )
+        )
+        sid += 1
+
+    if not has_winner:
+        a_wins = winners.count("a")
+        b_wins = winners.count("b")
+        winner_name = product_name if a_wins >= b_wins else competitor
+        injected.append(
+            _layout_segment(
+                sid,
+                2.5,
+                "winner_reveal",
+                winner_name=winner_name,
+                text=f"Winner: {winner_name}",
+                text_style="verdict",
+            )
+        )
+
+    if injected:
+        insert_at = min(1, len(segments))
+        segments[insert_at:insert_at] = injected
+
+    if len(segments) < 3:
+        sid = _next_segment_id(script)
+        while len(segments) < 3:
+            segments.append(
+                {
+                    "segment_id": sid,
+                    "duration": 2.0,
+                    "text": f"Why {product_name} matters in this comparison",
+                    "text_style": "comparison",
+                    "animation": "fade_in",
+                    "transition_to_next": "fade",
+                }
+            )
+            sid += 1
 
 
 def _inject_elimination(script: dict, product_info: dict) -> None:
     product_name = product_info.get("product_name", "Our Pick")
-    competitors = _as_list(product_info.get("competitors")) or ["Overhyped Option", "Overpriced Pick"]
+    competitors = _clean_competitors(product_info, limit=2)
+    if not competitors:
+        return
 
     for segments in _iter_segment_lists(script):
         for seg in segments:
@@ -213,14 +278,14 @@ def _inject_budget_challenge(script: dict, product_info: dict) -> None:
         return
 
     product_name = product_info.get("product_name", "Our Pick")
-    price = product_info.get("price", "N/A")
-    competitors = _as_list(product_info.get("competitors"))
+    price = _clean_comparison_value(product_info.get("price")) or "Check current listing"
+    competitors = _clean_competitors(product_info, limit=3)
+    if not competitors:
+        return
 
     price_products = [{"name": product_name, "price": price, "highlight": True}]
-    for comp in competitors[:3]:
-        price_products.append({"name": comp, "price": "Budget option", "highlight": False})
-    if len(price_products) < 2:
-        price_products.append({"name": "Generic Alternative", "price": "Lower", "highlight": False})
+    for comp in competitors:
+        price_products.append({"name": comp, "price": "Check current listing", "highlight": False})
 
     segments = _target_segments(script)
     if not segments:
@@ -254,6 +319,56 @@ def _ensure_verdict_styling(script: dict) -> None:
                 seg["text_style"] = "verdict"
 
 
+def _ensure_honest_review_balance(script: dict, product_info: dict) -> None:
+    has_pro = False
+    has_con = False
+    con_re = re.compile(r"\b(con|cons|downside|drawback|limitation|trade[- ]?off|not for)\b")
+
+    for segments in _iter_segment_lists(script):
+        for seg in segments:
+            style = str(seg.get("text_style", "")).strip().lower()
+            text = str(seg.get("text", "")).strip().lower()
+            if style in {"pros", "pro_point"}:
+                has_pro = True
+            if style in {"cons", "con_point", "elimination"} or con_re.search(text):
+                has_con = True
+            if has_pro and has_con:
+                return
+
+    segments = _target_segments(script)
+    if not segments:
+        script.setdefault("segments", [])
+        segments = script["segments"]
+
+    sid = _next_segment_id(script)
+    product_name = product_info.get("product_name", "This product")
+
+    if not has_pro:
+        segments.append(
+            {
+                "segment_id": sid,
+                "duration": 2.4,
+                "text": f"Based on available specs and buyer feedback, {product_name} shows practical strengths for the right use case.",
+                "text_style": "pros",
+                "animation": "fade_in",
+                "transition_to_next": "fade",
+            }
+        )
+        sid += 1
+
+    if not has_con:
+        segments.append(
+            {
+                "segment_id": sid,
+                "duration": 2.6,
+                "text": "Limitations: fit and expectations vary by use case, so check recent buyer feedback before purchasing.",
+                "text_style": "cons",
+                "animation": "fade_in",
+                "transition_to_next": "fade",
+            }
+        )
+
+
 def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     """Inject layout segments and fix text_style aliases after LLM generation."""
     enriched = copy.deepcopy(script)
@@ -271,5 +386,7 @@ def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
         _inject_budget_challenge(enriched, product_info)
     elif style == "worth_it_or_waste":
         _ensure_verdict_styling(enriched)
+    elif style == "honest_review":
+        _ensure_honest_review_balance(enriched, product_info)
 
     return enriched

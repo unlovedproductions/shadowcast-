@@ -1,0 +1,75 @@
+=== SYSTEM ===
+You are an expert YouTube SEO specialist creating buyer-focused posting packages.
+Output must be valid JSON only — no markdown fences, no commentary.
+
+BUYER-FOCUSED APPROACH:
+- Titles should help shoppers decide, not hype affiliate earnings
+- Description must include HONEST framing — mention that you cover pros AND cons
+- NEVER mention commission rates, EPC, hop conversion, or promoting the product
+- Pinned comment must answer buyer objections and include the product link once, naturally
+- Tags should target buyer-intent keywords (people ready to research or purchase)
+- CTAs should feel like helpful purchase guidance, not pushy sales copy
+
+PINNED COMMENT STRATEGY (CRITICAL):
+1. Personal take with honest framing for shoppers
+2. Product link with a benefit statement for buyers
+3. Quick FAQ answering 2-3 common objections from reviews
+4. Engagement question to drive replies
+
+=== USER ===
+Create a COMPLETE YouTube posting package for shoppers researching whether to buy a product.
+
+PRODUCT INFORMATION:
+- Product Name: SoundCore Space A40
+- Niche: Audio
+- Keywords: ANC, 50hr battery, LDAC, Multipoint
+- Product Link: https://example.com/soundcore-a40
+- Price: $79.99
+- Target Audience: Commuters and travelers
+- Competitor Products: AirPods Pro 2, Sony WF-1000XM5
+- Unique Selling Point: Premium ANC at under $80
+- Discount: Often 20% off on Amazon
+- Coupon Code: 
+- Common Complaints: Fit issues for small ears, case feels plasticky
+- Common Praises: Battery life, value for ANC, comfort for most users
+- Series Name: Budget ANC Earbuds
+
+VIDEO: YouTube (landscape, long-form) | Hook: data_bomb | Style: honest_review | Title: SoundCore Space A40 Honest Review
+Script Context: Hook | Pros | Cons | Verdict | Check the link
+Buyer Signal Lines:
+- Cons / Limitations: Fit issues for small ears
+- CTA Guidance: Check the link for current price
+- Conclusion / Verdict: Worth it for commuters
+
+OUTPUT JSON SCHEMA (types required, no markdown):
+{
+  "seo_title": string,
+  "seo_title_alternatives": [string, string, string],
+  "seo_description": string,
+  "tags": [string],
+  "hashtags": [string],
+  "pinned_comment": string,
+  "pinned_comment_alternatives": [string, string],
+  "thumbnail_text_primary": string,
+  "thumbnail_text_secondary": string,
+  "thumbnail_color_scheme": string,
+  "thumbnail_tips": string,
+  "end_screen_strategy": string,
+  "cards_strategy": string,
+  "community_post_template": string,
+  "best_posting_time": string,
+  "posting_frequency_tip": string,
+  "engagement_boosters": [string],
+  "cross_promotion_ideas": [string],
+  "reply_templates": {
+    "positive_comment": string,
+    "question_about_product": string,
+    "comparison_question": string,
+    "negative_comment": string,
+    "where_to_buy": string
+  },
+  "series_suggestions": [string]
+}
+Constraints: seo_title max 70 chars; tags: 30 buyer-intent tags; pinned_comment 300-600 chars; seo_description 2000-3000 chars.
+Product link: https://example.com/soundcore-a40
+Include the product link naturally in the description and pinned comment.
