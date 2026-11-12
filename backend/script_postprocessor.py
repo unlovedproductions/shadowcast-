@@ -10,6 +10,13 @@ TEXT_STYLE_ALIASES = {
     "con_point": "cons",
 }
 
+_DANGLING_END_WORDS = frozenset({
+    "a", "an", "and", "at", "by", "for", "from", "in", "into", "of", "on",
+    "or", "the", "to", "with",
+})
+_DISCLOSURE_RE = re.compile(r"\baffiliate\b|\bcommission\b|paid\s+link", re.I)
+_DISCLOSURE_TEXT = "This video contains affiliate links."
+
 
 def _as_list(value):
     if isinstance(value, list):
@@ -369,11 +376,35 @@ def _ensure_honest_review_balance(script: dict, product_info: dict) -> None:
         )
 
 
+def _repair_truncated_text(text: str) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if not cleaned:
+        return ""
+    if cleaned[-1] in ".!?":
+        return cleaned
+    words = cleaned.split()
+    stripped = False
+    while words and words[-1].lower().strip(".,;:") in _DANGLING_END_WORDS:
+        words.pop()
+        stripped = True
+    if not stripped:
+        return cleaned
+    if not words:
+        return cleaned
+    repaired = " ".join(words)
+    if repaired[-1] not in ".!?":
+        repaired += "."
+    return repaired
+
+
 def _clamp_overlay_text(text: str, max_words: int) -> str:
     words = [w for w in str(text or "").split() if w.strip()]
     if len(words) <= max_words:
-        return " ".join(words)
-    return " ".join(words[:max_words])
+        return _repair_truncated_text(" ".join(words))
+    clipped = words[:max_words]
+    while len(clipped) > 1 and clipped[-1].lower().strip(".,;:") in _DANGLING_END_WORDS:
+        clipped.pop()
+    return _repair_truncated_text(" ".join(clipped))
 
 
 def _apply_kinetic_presets(script: dict) -> None:
@@ -394,6 +425,10 @@ def _apply_kinetic_presets(script: dict) -> None:
                 clamped = _clamp_overlay_text(text, max_words)
                 if clamped != text:
                     seg["text"] = clamped
+            elif text:
+                repaired = _repair_truncated_text(text)
+                if repaired != text:
+                    seg["text"] = repaired
             try:
                 dur = float(seg.get("duration") or 0)
             except (TypeError, ValueError):
@@ -428,6 +463,47 @@ def _apply_kinetic_presets(script: dict) -> None:
         script["total_duration_seconds"] = round(total, 2)
 
 
+def _ensure_affiliate_disclosure(script: dict) -> None:
+    """Guarantee one on-screen affiliate disclosure beat."""
+    blob_parts: list[str] = []
+    lists = list(_iter_segment_lists(script))
+    for segments in lists:
+        for seg in segments:
+            if isinstance(seg, dict):
+                blob_parts.append(str(seg.get("text") or ""))
+    if _DISCLOSURE_RE.search(" ".join(blob_parts)):
+        return
+    fmt = str(script.get("format") or "").strip()
+    is_short = fmt == "short_form" or "chapters" not in script
+    beat = {
+        "text": _DISCLOSURE_TEXT,
+        "text_style": "subtitle",
+        "duration": 1.5 if is_short else 3.5,
+        "animation": "fade_in",
+        "transition_to_next": "fade",
+    }
+    if not lists:
+        script["segments"] = [beat]
+        script["total_duration_seconds"] = beat["duration"]
+        return
+    target = lists[-1]
+    insert_at = len(target)
+    for idx, seg in enumerate(target):
+        if isinstance(seg, dict) and str(seg.get("text_style") or "") == "cta_button":
+            insert_at = idx
+            break
+    target.insert(insert_at, beat)
+    total = 0.0
+    for segments in _iter_segment_lists(script):
+        for seg in segments:
+            try:
+                total += float(seg.get("duration") or 0)
+            except (TypeError, ValueError):
+                pass
+    if total > 0:
+        script["total_duration_seconds"] = round(total, 2)
+
+
 def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
     """Inject layout segments and fix text_style aliases after LLM generation."""
     enriched = copy.deepcopy(script)
@@ -449,4 +525,5 @@ def enrich_script(script: dict, product_info: dict, content_style: str) -> dict:
         _ensure_honest_review_balance(enriched, product_info)
 
     _apply_kinetic_presets(enriched)
+    _ensure_affiliate_disclosure(enriched)
     return enriched

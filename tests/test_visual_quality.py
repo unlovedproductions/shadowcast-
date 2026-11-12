@@ -10,10 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from visual_quality import (
     MIN_WCAG_CONTRAST,
     audit_thumbnail_contrast,
+    caption_band_needs_scrim,
     contrast_ratio,
+    energy_bbox,
+    laplacian_variance,
     measure_image_contrast,
     measure_pil_contrast,
     pick_best_contrast_path,
+    studio_bg_mask,
 )
 
 
@@ -94,3 +98,68 @@ def test_pick_best_contrast_path(tmp_path):
             img.putpixel((x, y), (250, 250, 250))
     img.save(high)
     assert pick_best_contrast_path([low, high]) == high
+
+
+def test_laplacian_variance_sharp_vs_blurred():
+    pytest.importorskip("PIL")
+    pytest.importorskip("numpy")
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    sharp = Image.new("RGB", (128, 128), color=(20, 20, 20))
+    for x in range(40, 90):
+        for y in range(40, 90):
+            sharp.putpixel((x, y), (240, 40, 40) if (x + y) % 2 == 0 else (40, 40, 240))
+    blurred = sharp.filter(ImageFilter.GaussianBlur(radius=6))
+    s_sharp = laplacian_variance(np.asarray(sharp, dtype=np.float32))
+    s_blur = laplacian_variance(np.asarray(blurred, dtype=np.float32))
+    assert s_sharp is not None and s_blur is not None
+    assert s_sharp > s_blur * 2
+
+
+def test_energy_bbox_on_offset_square():
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    arr = np.zeros((100, 100, 3), dtype=np.float32)
+    arr[20:50, 55:85] = 255.0
+    box = energy_bbox(arr, percentile=85, pad=0.02)
+    assert box is not None
+    left, top, right, bottom = box
+    assert left >= 40  # subject is on the right half
+    assert right > 70
+    assert top < 40
+    assert bottom > 40
+
+
+def test_studio_bg_mask_white_canvas_dark_center():
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    arr = np.full((120, 120, 3), 245.0, dtype=np.float32)
+    arr[40:80, 40:80] = 40.0
+    mask = studio_bg_mask(arr)
+    assert mask is not None
+    assert float(mask[60, 60]) > float(mask[5, 5])
+
+
+def test_studio_bg_mask_skips_white_on_white():
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    arr = np.full((120, 120, 3), 245.0, dtype=np.float32)
+    arr[40:80, 40:80] = 235.0  # nearly white product
+    assert studio_bg_mask(arr) is None
+
+
+def test_caption_band_needs_scrim_on_bright_band():
+    pytest.importorskip("numpy")
+    import numpy as np
+
+    dark = np.full((200, 108, 3), 10.0, dtype=np.float32)
+    bright = np.full((200, 108, 3), 10.0, dtype=np.float32)
+    # Shorts caption band ~ y_frac 0.40
+    y0, y1 = 60, 100
+    bright[y0:y1, :] = 230.0
+    assert caption_band_needs_scrim(dark, y_frac=0.40) is False
+    assert caption_band_needs_scrim(bright, y_frac=0.40) is True

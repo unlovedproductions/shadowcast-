@@ -84,3 +84,59 @@ def test_download_rejects_traversal(client, tmp_path, monkeypatch):
     (outside / "youtube.json").write_text("secret", encoding="utf-8")
     res = client.get("/api/download/job1/../credentials/youtube.json")
     assert res.status_code == 404
+
+
+def test_cors_allow_all_refused_at_runtime():
+    """Module keeps explicit origins; never stores wildcard when CORS_ALLOW_ALL was set at import."""
+    from app import _cors_origins
+
+    assert "*" not in _cors_origins
+
+
+def test_non_loopback_requires_secret(monkeypatch):
+    monkeypatch.setenv("HOST", "0.0.0.0")
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET", raising=False)
+    from app import _assert_bind_auth_config
+
+    with pytest.raises(RuntimeError, match="INTERNAL_SERVICE_SECRET"):
+        _assert_bind_auth_config()
+
+
+def test_exposed_generate_requires_service_key(monkeypatch):
+    monkeypatch.setenv("HOST", "0.0.0.0")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "lan-secret")
+    from fastapi.testclient import TestClient
+    from app import app
+    from unittest.mock import patch
+
+    with patch("app._start_job_thread", return_value=True), patch(
+        "app._ensure_generation_ready"
+    ):
+        client = TestClient(app)
+        denied = client.post(
+            "/api/generate",
+            json={
+                "product_info": {
+                    "product_name": "Test Product",
+                    "niche": "Kitchen",
+                    "key_features": ["fast"],
+                },
+                "hook_types": ["curiosity"],
+                "formats": ["short_form"],
+            },
+        )
+        assert denied.status_code == 401
+        ok = client.post(
+            "/api/generate",
+            headers={"X-Service-Key": "lan-secret"},
+            json={
+                "product_info": {
+                    "product_name": "Test Product",
+                    "niche": "Kitchen",
+                    "key_features": ["fast"],
+                },
+                "hook_types": ["curiosity"],
+                "formats": ["short_form"],
+            },
+        )
+        assert ok.status_code == 200

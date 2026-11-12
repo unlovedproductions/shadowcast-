@@ -33,11 +33,11 @@ def test_build_render_timeline_short_includes_transitions():
         ],
     }
     timeline = build_render_timeline(script, SHORT_FORM)
-    assert timeline["intro_seconds"] == 2.0
-    assert timeline["segment_events"][0]["start"] == pytest.approx(2.0)
-    # first transition (glitch 0.15) pushes second segment start
-    assert timeline["segment_events"][1]["start"] == pytest.approx(4.15)
-    assert timeline["segment_events"][0]["transition_duration"] == pytest.approx(0.15)
+    assert timeline["intro_seconds"] == 0.0
+    assert timeline["segment_events"][0]["start"] == pytest.approx(0.0)
+    # glitch is treated as a cut (0s); swipe still adds 0.30
+    assert timeline["segment_events"][1]["start"] == pytest.approx(2.0)
+    assert timeline["segment_events"][0]["transition_duration"] == pytest.approx(0.0)
     assert timeline["total_duration"] == pytest.approx(expected_timeline_duration(script, SHORT_FORM))
 
 
@@ -64,9 +64,9 @@ def test_build_render_timeline_long_sfx_offsets_include_chapter_cards():
     timeline = build_render_timeline(script, LONG_FORM)
     # intro 3 + chapter card 2.5 = first segment at 5.5
     assert timeline["segment_events"][0]["start"] == pytest.approx(5.5)
-    # after seg0(4)+glitch(0.15) = 9.65
-    assert timeline["segment_events"][1]["start"] == pytest.approx(9.65)
-    assert timeline["total_duration"] == pytest.approx(33.45, abs=0.01)
+    # after seg0(4)+glitch-as-cut(0) = 9.5
+    assert timeline["segment_events"][1]["start"] == pytest.approx(9.5)
+    assert timeline["total_duration"] == pytest.approx(33.30, abs=0.01)
 
 
 def test_mix_audio_voiceover_respects_intro_offset(tmp_path):
@@ -116,6 +116,28 @@ def test_add_audio_to_video_raises_on_called_process_error(tmp_path):
     ):
         with pytest.raises(RuntimeError, match="ffmpeg mux failed"):
             add_audio_to_video(str(video), str(audio), str(out))
+
+
+def test_add_audio_to_video_uses_youtube_aac_stereo(tmp_path):
+    video = tmp_path / "v.mp4"
+    audio = tmp_path / "a.wav"
+    out = tmp_path / "out.mp4"
+    video.write_bytes(b"x")
+    audio.write_bytes(b"y")
+    captured = {}
+
+    def fake_run(command, check, capture_output):
+        captured["command"] = command
+        out.write_bytes(b"ok")
+        return mock.Mock(returncode=0)
+
+    with mock.patch("sound_design.subprocess.run", side_effect=fake_run):
+        add_audio_to_video(str(video), str(audio), str(out))
+    cmd = captured["command"]
+    assert cmd[cmd.index("-ar") + 1] == "48000"
+    assert cmd[cmd.index("-ac") + 1] == "2"
+    assert cmd[cmd.index("-b:a") + 1] == "384k"
+    assert "+faststart" in cmd[cmd.index("-movflags") + 1]
 
 
 def test_compute_render_fingerprint_changes_with_script_and_options():
