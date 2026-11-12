@@ -13,14 +13,21 @@ import json
 import os
 import tempfile
 import subprocess
+import threading
 
-from moviepy import AudioFileClip, VideoFileClip, CompositeAudioClip, concatenate_audioclips
+from moviepy import AudioClip, AudioFileClip, VideoFileClip, concatenate_audioclips
+
+
+_PROVIDERS_CACHE = None
+_PROVIDERS_LOCK = threading.Lock()
+_KOKORO_INSTANCE = None
+_KOKORO_LOCK = threading.Lock()
 
 
 # ── Provider Detection ───────────────────────────────────────────────
 def _check_kokoro():
     try:
-        import kokoro_onnx
+        import kokoro_onnx  # noqa: F401
         return True
     except ImportError:
         return False
@@ -34,7 +41,7 @@ def _check_piper():
 
 def _check_openai_tts():
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: F401
         key = os.environ.get("OPENAI_API_KEY", "")
         return bool(key)
     except ImportError:
@@ -42,66 +49,80 @@ def _check_openai_tts():
 
 def _check_gtts():
     try:
-        from gtts import gTTS
+        from gtts import gTTS  # noqa: F401
         return True
     except ImportError:
         return False
 
 
-def get_available_providers():
-    """Return list of available TTS providers with status."""
-    providers = {
-        "kokoro": {
-            "name": "Kokoro TTS",
-            "available": _check_kokoro(),
-            "type": "local",
-            "quality": "high",
-            "cost": "free",
-            "install": "pip install kokoro-onnx",
-            "description": "High-quality local TTS. Runs on your GPU. Best free option.",
-            "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
-        },
-        "piper": {
-            "name": "Piper TTS",
-            "available": _check_piper(),
-            "type": "local",
-            "quality": "medium",
-            "cost": "free",
-            "install": "pip install piper-tts",
-            "description": "Fast local TTS. Lower quality but very fast inference.",
-            "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
-        },
-        "openai": {
-            "name": "OpenAI TTS",
-            "available": _check_openai_tts(),
-            "type": "cloud",
-            "quality": "highest",
-            "cost": "paid (~$0.015/1K chars)",
-            "install": "pip install openai (+ API key)",
-            "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
-            "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-        },
-        "gtts": {
-            "name": "Google TTS",
-            "available": _check_gtts(),
-            "type": "cloud",
-            "quality": "basic",
-            "cost": "free",
-            "install": "pip install gtts",
-            "description": "Free online TTS. Basic quality but always works.",
-            "voices": ["en"],
-        },
-    }
-    return providers
+def get_available_providers(force_refresh: bool = False):
+    """Return list of available TTS providers with status (cached per process)."""
+    global _PROVIDERS_CACHE
+    with _PROVIDERS_LOCK:
+        if _PROVIDERS_CACHE is not None and not force_refresh:
+            return _PROVIDERS_CACHE
+        providers = {
+            "kokoro": {
+                "name": "Kokoro TTS",
+                "available": _check_kokoro(),
+                "type": "local",
+                "quality": "high",
+                "cost": "free",
+                "install": "pip install kokoro-onnx",
+                "description": "High-quality local TTS. Runs on your GPU. Best free option.",
+                "voices": ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
+            },
+            "piper": {
+                "name": "Piper TTS",
+                "available": _check_piper(),
+                "type": "local",
+                "quality": "medium",
+                "cost": "free",
+                "install": "pip install piper-tts",
+                "description": "Fast local TTS. Lower quality but very fast inference.",
+                "voices": ["en_US-lessac-medium", "en_US-amy-medium", "en_US-ryan-medium"],
+            },
+            "openai": {
+                "name": "OpenAI TTS",
+                "available": _check_openai_tts(),
+                "type": "cloud",
+                "quality": "highest",
+                "cost": "paid (~$0.015/1K chars)",
+                "install": "pip install openai (+ API key)",
+                "description": "Best quality. Costs ~1.5 cents per 1000 characters.",
+                "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            },
+            "gtts": {
+                "name": "Google TTS",
+                "available": _check_gtts(),
+                "type": "cloud",
+                "quality": "basic",
+                "cost": "free",
+                "install": "pip install gtts",
+                "description": "Free online TTS. Basic quality but always works.",
+                "voices": ["en"],
+            },
+        }
+        _PROVIDERS_CACHE = providers
+        return providers
 
 
 def get_best_provider():
     """Return the best available provider in quality order."""
+    providers = get_available_providers()
     for provider in ["kokoro", "openai", "piper", "gtts"]:
-        providers = get_available_providers()
         if providers[provider]["available"]:
             return provider
     return "gtts"  # fallback
+
+
+def _get_kokoro():
+    """Lazily load and reuse a single Kokoro model instance. Caller must hold _KOKORO_LOCK."""
+    global _KOKORO_INSTANCE
+    if _KOKORO_INSTANCE is None:
+        import kokoro_onnx
+        _KOKORO_INSTANCE = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
+    return _KOKORO_INSTANCE
 
 
 # ── TTS Generation by Provider ──────────────────────────────────────
@@ -115,11 +136,11 @@ def _generate_gtts(text: str, output_path: str, voice: str = "en"):
 
 def _generate_kokoro(text: str, output_path: str, voice: str = "af_bella"):
     """Generate audio using Kokoro TTS (local, GPU-accelerated)."""
-    import kokoro_onnx
     import soundfile as sf
 
-    kokoro = kokoro_onnx.Kokoro("kokoro-v0_19.onnx", "voices.bin")
-    samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
+    with _KOKORO_LOCK:
+        kokoro = _get_kokoro()
+        samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
     sf.write(output_path, samples, sample_rate)
 
 
@@ -164,6 +185,13 @@ DEFAULT_VOICES = {
 }
 
 
+def _silence_clip(duration: float, fps: int = 44100):
+    duration = max(float(duration or 0.0), 0.0)
+    if duration <= 0:
+        return None
+    return AudioClip(lambda t: 0 * t, duration=duration, fps=fps)
+
+
 def generate_segment_audio(text: str, output_path: str,
                            provider: str = "auto", voice: str = None) -> str:
     """Generate audio for a single text segment."""
@@ -203,6 +231,8 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
 
     temp_files = []
     audio_clips = []
+    target_pause = float(os.getenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.08") or 0.08)
+    target_pause = max(0.0, min(target_pause, 0.4))
 
     try:
         for i, seg in enumerate(segments):
@@ -218,7 +248,6 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
             try:
                 generate_segment_audio(text, tmp.name, provider=provider, voice=voice)
                 clip = AudioFileClip(tmp.name)
-                audio_clips.append(clip)
             except Exception as e:
                 print(f"TTS segment {i} failed ({provider}): {e}")
                 # Try fallback to gtts
@@ -229,10 +258,36 @@ def generate_voiceover_for_segments(segments: list, output_path: str,
                         fallback_tmp.close()
                         _generate_gtts(text, fallback_tmp.name)
                         clip = AudioFileClip(fallback_tmp.name)
-                        audio_clips.append(clip)
                         print(f"  Fell back to gTTS for segment {i}")
                     except Exception as e2:
                         print(f"  gTTS fallback also failed: {e2}")
+                        continue
+                else:
+                    continue
+
+            expected_duration = 0.0
+            try:
+                expected_duration = float(seg.get("duration", 0) or 0)
+            except (TypeError, ValueError):
+                expected_duration = 0.0
+
+            if expected_duration > 0:
+                # Keep a small pause budget between segments while honoring target timing.
+                max_voice_duration = max(expected_duration - target_pause, 0.12)
+                if clip.duration > max_voice_duration:
+                    trimmed = clip.subclipped(0, max_voice_duration)
+                    clip.close()
+                    clip = trimmed
+                audio_clips.append(clip)
+                remaining = max(expected_duration - clip.duration, target_pause)
+                silence = _silence_clip(remaining, int(getattr(clip, "fps", 44100) or 44100))
+                if silence:
+                    audio_clips.append(silence)
+            else:
+                audio_clips.append(clip)
+                silence = _silence_clip(target_pause, int(getattr(clip, "fps", 44100) or 44100))
+                if silence:
+                    audio_clips.append(silence)
 
         if audio_clips:
             final_audio = concatenate_audioclips(audio_clips)
@@ -257,9 +312,19 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
     video = VideoFileClip(video_path)
     audio = AudioFileClip(audio_path)
 
-    # Trim audio to match video duration
+    clip_refs = [audio]
+
+    # Trim or pad audio to match video duration.
     if audio.duration > video.duration:
         audio = audio.subclipped(0, video.duration)
+        clip_refs.append(audio)
+    elif audio.duration < video.duration:
+        silence = _silence_clip(video.duration - audio.duration, int(getattr(audio, "fps", 44100) or 44100))
+        if silence:
+            clip_refs.append(silence)
+            padded = concatenate_audioclips([audio, silence])
+            clip_refs.append(padded)
+            audio = padded
 
     video_with_audio = video.with_audio(audio)
     video_with_audio.write_videofile(
@@ -272,7 +337,11 @@ def add_voiceover_to_video(video_path: str, audio_path: str, output_path: str) -
     )
 
     video.close()
-    audio.close()
+    for ref in reversed(clip_refs):
+        try:
+            ref.close()
+        except Exception:
+            pass
     video_with_audio.close()
 
     return output_path
