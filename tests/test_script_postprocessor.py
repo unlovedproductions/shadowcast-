@@ -12,6 +12,10 @@ PRODUCT = {
     "key_features": ["ANC", "50hr battery"],
     "competitors": ["AirPods Pro 2", "Sony WF-1000XM5"],
     "price_comparison": "AirPods Pro 2 costs $249 for similar ANC",
+    "comparison_specs": [
+        {"spec_name": "ANC", "value_a": "Strong", "value_b": "Moderate", "winner": "a"},
+        {"spec_name": "Battery", "value_a": "50hr", "value_b": "30hr", "winner": "a"},
+    ],
 }
 
 
@@ -53,6 +57,28 @@ def test_vs_battle_injects_layout_segments():
     assert "vs_split" in layouts
     assert "scorecard" in layouts
     assert "winner_reveal" in layouts
+
+
+def test_vs_battle_fills_missing_layouts_when_partial():
+    partial = {
+        "format": "short_form",
+        "segments": [
+            {"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "duration": 2},
+            {
+                "segment_id": 2,
+                "text": "A vs B",
+                "text_style": "comparison",
+                "duration": 2,
+                "layout": "vs_split",
+                "product_a": "SoundCore Space A40",
+                "product_b": "AirPods Pro 2",
+            },
+            {"segment_id": 3, "text": "CTA", "text_style": "cta_button", "duration": 2},
+        ],
+    }
+    enriched = enrich_script(partial, PRODUCT, "vs_battle")
+    layouts = {seg.get("layout") for seg in enriched["segments"] if seg.get("layout")}
+    assert layouts >= {"vs_split", "scorecard", "winner_reveal"}
 
 
 def test_elimination_injects_winner_reveal_and_elimination_style():

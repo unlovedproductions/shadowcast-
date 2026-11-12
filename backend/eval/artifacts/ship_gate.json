@@ -1,0 +1,522 @@
+{
+  "version": "1.0.0",
+  "scan_time": 1.61,
+  "stack": {
+    "framework": "",
+    "has_supabase": false,
+    "has_typescript": false,
+    "deploy_target": "",
+    "has_ai": false
+  },
+  "results": [
+    {
+      "id": "SEC-01",
+      "description": "No API keys or secrets in frontend code",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-04",
+      "description": "CORS not wildcard",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-05",
+      "description": "CSRF protection on state-changing endpoints",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "SKIP",
+      "message": "No Express-style routes found",
+      "findings": []
+    },
+    {
+      "id": "SEC-06",
+      "description": "Input validated and sanitized server-side",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-07",
+      "description": "Rate limiting on auth and sensitive endpoints",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-08",
+      "description": "Passwords hashed with bcrypt or argon2",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-11",
+      "description": "CSP headers configured",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-13",
+      "description": "No eval() or dangerouslySetInnerHTML without sanitization",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "SKIP",
+      "message": "Not a JS/TS project",
+      "findings": []
+    },
+    {
+      "id": "SEC-14",
+      "description": "No sensitive data in URLs or logs",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-17",
+      "description": "No hardcoded secrets in .env committed to repo",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "SEC-18",
+      "description": ".env files listed in .gitignore",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "DB-03",
+      "description": "Parameterized queries everywhere (no SQL injection)",
+      "severity": "CRITICAL",
+      "category": "DB",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "DB-05",
+      "description": "Connection pooling configured",
+      "severity": "HIGH",
+      "category": "DB",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "DB-06",
+      "description": "Migrations in version control",
+      "severity": "HIGH",
+      "category": "DB",
+      "status": "SKIP",
+      "message": "No database usage detected",
+      "findings": []
+    },
+    {
+      "id": "DB-07",
+      "description": "RLS enabled on all Supabase tables",
+      "severity": "CRITICAL",
+      "category": "DB",
+      "status": "SKIP",
+      "message": "Not a Supabase project",
+      "findings": []
+    },
+    {
+      "id": "DB-08",
+      "description": "No service_role key in client-side code",
+      "severity": "CRITICAL",
+      "category": "DB",
+      "status": "SKIP",
+      "message": "Not a Supabase project",
+      "findings": []
+    },
+    {
+      "id": "DB-12",
+      "description": "No PII stored unencrypted",
+      "severity": "HIGH",
+      "category": "DB",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "CODE-01",
+      "description": "No console.log in production build",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "SKIP",
+      "message": "Not a JS/TS project",
+      "findings": []
+    },
+    {
+      "id": "CODE-03",
+      "description": "No empty catch blocks",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "CODE-07",
+      "description": "No TODO-auth or TODO-security patterns",
+      "severity": "CRITICAL",
+      "category": "CODE",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "CODE-09",
+      "description": "React error boundaries in place",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "SKIP",
+      "message": "Not a React project",
+      "findings": []
+    },
+    {
+      "id": "CODE-10",
+      "description": "No leaked stack traces in error responses",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "CODE-11",
+      "description": "No eslint-disable on security rules",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "SKIP",
+      "message": "Not a JS/TS project",
+      "findings": []
+    },
+    {
+      "id": "CODE-12",
+      "description": "Lockfile committed",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "CODE-13",
+      "description": "No wildcard versions in package.json",
+      "severity": "HIGH",
+      "category": "CODE",
+      "status": "SKIP",
+      "message": "Not a JS/TS project",
+      "findings": []
+    },
+    {
+      "id": "CODE-14",
+      "description": "TypeScript strict mode enabled",
+      "severity": "ADVISORY",
+      "category": "CODE",
+      "status": "SKIP",
+      "message": "Not a TypeScript project",
+      "findings": []
+    },
+    {
+      "id": "DEP-01",
+      "description": "No git:// or URL-based dependencies",
+      "severity": "HIGH",
+      "category": "DEP",
+      "status": "SKIP",
+      "message": "Not a Node.js project",
+      "findings": []
+    },
+    {
+      "id": "DEP-05",
+      "description": "No suspicious postinstall scripts",
+      "severity": "HIGH",
+      "category": "DEP",
+      "status": "SKIP",
+      "message": "Not a Node.js project",
+      "findings": []
+    },
+    {
+      "id": "DEP-06",
+      "description": "Dependencies pinned (no wildcard *)",
+      "severity": "HIGH",
+      "category": "DEP",
+      "status": "SKIP",
+      "message": "Not a Node.js project",
+      "findings": []
+    },
+    {
+      "id": "AI-01",
+      "description": "System prompts not leakable via user input",
+      "severity": "CRITICAL",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "AI-02",
+      "description": "No prompt injection vectors in user inputs",
+      "severity": "CRITICAL",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "AI-03",
+      "description": "LLM API keys not in frontend code",
+      "severity": "CRITICAL",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "AI-05",
+      "description": "AI response output sanitized before rendering",
+      "severity": "HIGH",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-09",
+      "description": "Health check endpoint exists",
+      "severity": "HIGH",
+      "category": "DEPLOY",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-10",
+      "description": "Structured logging (not raw console)",
+      "severity": "HIGH",
+      "category": "DEPLOY",
+      "status": "SKIP",
+      "message": "No server-side code detected",
+      "findings": []
+    },
+    {
+      "id": "FE-01",
+      "description": "Meta tags present (title, description, OG)",
+      "severity": "ADVISORY",
+      "category": "FE",
+      "status": "SKIP",
+      "message": "Not a web project",
+      "findings": []
+    },
+    {
+      "id": "FE-02",
+      "description": "Favicon configured",
+      "severity": "ADVISORY",
+      "category": "FE",
+      "status": "SKIP",
+      "message": "Not a web project",
+      "findings": []
+    },
+    {
+      "id": "FE-03",
+      "description": "Custom 404 page exists",
+      "severity": "ADVISORY",
+      "category": "FE",
+      "status": "SKIP",
+      "message": "Not a web project",
+      "findings": []
+    },
+    {
+      "id": "FE-09",
+      "description": "robots.txt present",
+      "severity": "ADVISORY",
+      "category": "FE",
+      "status": "SKIP",
+      "message": "Not a web project",
+      "findings": []
+    },
+    {
+      "id": "OBS-01",
+      "description": "Error monitoring configured (Sentry, etc.)",
+      "severity": "ADVISORY",
+      "category": "OBS",
+      "status": "FAIL",
+      "message": "No error monitoring library detected",
+      "findings": []
+    },
+    {
+      "id": "OBS-03",
+      "description": "Structured logging with request IDs",
+      "severity": "ADVISORY",
+      "category": "OBS",
+      "status": "PASS",
+      "message": "",
+      "findings": []
+    },
+    {
+      "id": "AI-07",
+      "description": "Agent permissions scoped (no unrestricted access)",
+      "severity": "HIGH",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "AI-08",
+      "description": "No sensitive data sent to third-party LLMs without consent",
+      "severity": "HIGH",
+      "category": "AI",
+      "status": "SKIP",
+      "message": "No AI/LLM usage detected",
+      "findings": []
+    },
+    {
+      "id": "FE-04",
+      "description": "Responsive design tested on mobile",
+      "severity": "HIGH",
+      "category": "FE",
+      "status": "SKIP",
+      "message": "Not a web project",
+      "findings": []
+    },
+    {
+      "id": "SEC-02",
+      "description": "Every route checks authentication",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "SEC-03",
+      "description": "HTTPS enforced, HTTP redirected",
+      "severity": "CRITICAL",
+      "category": "SEC",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "SEC-10",
+      "description": "Sessions invalidated on logout (server-side)",
+      "severity": "HIGH",
+      "category": "SEC",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DB-01",
+      "description": "Backups configured and tested",
+      "severity": "CRITICAL",
+      "category": "DB",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DB-02",
+      "description": "Backup restore tested (not just backup)",
+      "severity": "CRITICAL",
+      "category": "DB",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DB-04",
+      "description": "Separate dev and production databases",
+      "severity": "HIGH",
+      "category": "DB",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DB-11",
+      "description": "App uses a non-root DB user",
+      "severity": "HIGH",
+      "category": "DB",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-01",
+      "description": "All env vars set on production server",
+      "severity": "CRITICAL",
+      "category": "DEPLOY",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-02",
+      "description": "SSL certificate installed and valid",
+      "severity": "CRITICAL",
+      "category": "DEPLOY",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-05",
+      "description": "Rollback plan exists",
+      "severity": "HIGH",
+      "category": "DEPLOY",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "DEPLOY-06",
+      "description": "Staging test passed before production",
+      "severity": "HIGH",
+      "category": "DEPLOY",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    },
+    {
+      "id": "OBS-05",
+      "description": "Uptime monitoring configured",
+      "severity": "HIGH",
+      "category": "OBS",
+      "status": "MANUAL",
+      "message": "Not confirmed (run without --no-interactive to answer)",
+      "findings": []
+    }
+  ],
+  "summary": {
+    "critical": 6,
+    "high": 6,
+    "verdict": "DO_NOT_SHIP"
+  }
+}

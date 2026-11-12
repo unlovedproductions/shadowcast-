@@ -1,0 +1,68 @@
+{
+  "overall": {
+    "score": 80.76,
+    "grade": "B",
+    "totalEndpoints": 54
+  },
+  "api_info": {
+    "title": "ShadowCast by Unloved Productions",
+    "version": "4.0",
+    "description": "Affiliate video generation API: product research, script generation, video rendering, publishing, and analytics.",
+    "total_paths": 54,
+    "openapi_version": "3.1.0"
+  },
+  "categories": {
+    "consistency": {
+      "score": 84.65,
+      "grade": "B",
+      "weight": 30.0,
+      "weightedScore": 25.39,
+      "issues": [],
+      "recommendations": [
+        "Minor consistency improvements needed in naming or response formats",
+        "Consider creating API design guidelines document"
+      ]
+    },
+    "documentation": {
+      "score": 80.35,
+      "grade": "B",
+      "weight": 20.0,
+      "weightedScore": 16.07,
+      "issues": [],
+      "recommendations": []
+    },
+    "security": {
+      "score": 80.0,
+      "grade": "B",
+      "weight": 20.0,
+      "weightedScore": 16.0,
+      "issues": [],
+      "recommendations": []
+    },
+    "usability": {
+      "score": 67.33,
+      "grade": "D",
+      "weight": 15.0,
+      "weightedScore": 10.1,
+      "issues": [],
+      "recommendations": [
+        "Consider adding HATEOAS links for better discoverability",
+        "Enhance developer experience with better examples"
+      ]
+    },
+    "performance": {
+      "score": 88.0,
+      "grade": "B",
+      "weight": 15.0,
+      "weightedScore": 13.2,
+      "issues": [],
+      "recommendations": []
+    }
+  },
+  "topRecommendations": [
+    "Consistency: Minor consistency improvements needed in naming or response formats",
+    "Consistency: Consider creating API design guidelines document",
+    "Usability: Consider adding HATEOAS links for better discoverability",
+    "Usability: Enhance developer experience with better examples"
+  ]
+}

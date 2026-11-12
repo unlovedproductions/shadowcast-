@@ -12,9 +12,11 @@ from moviepy import (
     vfx,
 )
 
-# Fallback font paths
-FONT_BOLD = "./assets/Montserrat-Bold.ttf"
+# Absolute asset fonts (must match video_renderer / brand_overlays)
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+FONT_BOLD = os.path.join(_ASSETS_DIR, "Montserrat-Bold.ttf")
 if not os.path.exists(FONT_BOLD):
+    print(f"Warning: Montserrat Bold missing at {FONT_BOLD}; falling back to NotoSans")
     FONT_BOLD = "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
 
 def get_font(font_path, size):

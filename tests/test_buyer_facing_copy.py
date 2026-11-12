@@ -10,17 +10,23 @@ def test_apf_import_module_avoids_commission_discount_mapping():
     assert "_sanitize_product_name" in text
 
 
-def test_script_generator_prompts_are_buyer_focused():
-    text = (ROOT / "backend" / "script_generator.py").read_text()
+def test_prompts_are_buyer_focused():
+    text = (ROOT / "backend" / "prompts.py").read_text()
     assert "affiliate product marketing" not in text
     assert "NOT affiliate marketers" in text
     assert "NEVER mention commission rates" in text
 
 
-def test_youtube_assets_prompt_is_buyer_focused():
+def test_script_generator_uses_prompt_builders():
+    text = (ROOT / "backend" / "script_generator.py").read_text()
+    assert "build_script_user_prompt" in text
+    assert "NOT affiliate marketers" not in text
+
+
+def test_youtube_assets_uses_prompt_builder():
     text = (ROOT / "backend" / "youtube_assets_generator.py").read_text()
+    assert "build_youtube_assets_user_prompt" in text
     assert "affiliate marketing strategist" not in text.lower()
-    assert "buyer-focused posting packages" in text
     assert "Include it 3+ times" not in text
 
 

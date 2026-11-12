@@ -1,0 +1,163 @@
+{
+  "token_count": 1110,
+  "estimated_cost": null,
+  "model": "qwen2.5",
+  "clarity_score": 31,
+  "structure_score": 90,
+  "issues": [
+    {
+      "type": "redundancy",
+      "line": 37,
+      "text": "airpods pro 2",
+      "message": "Phrase repeated from line 31",
+      "context": "- Price Comparison Notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 41,
+      "text": "soundcore space a40",
+      "message": "Phrase repeated from line 25",
+      "context": "- Main product: SoundCore Space A40"
+    },
+    {
+      "type": "redundancy",
+      "line": 42,
+      "text": " competitors airpods",
+      "message": "Phrase repeated from line 31",
+      "context": "- Competitors: AirPods Pro 2, Sony WF-1000XM5"
+    },
+    {
+      "type": "redundancy",
+      "line": 42,
+      "text": "competitors airpods pro",
+      "message": "Phrase repeated from line 31",
+      "context": "- Competitors: AirPods Pro 2, Sony WF-1000XM5"
+    },
+    {
+      "type": "redundancy",
+      "line": 42,
+      "text": "airpods pro 2",
+      "message": "Phrase repeated from line 31",
+      "context": "- Competitors: AirPods Pro 2, Sony WF-1000XM5"
+    },
+    {
+      "type": "redundancy",
+      "line": 42,
+      "text": "2 sony wf1000xm5",
+      "message": "Phrase repeated from line 31",
+      "context": "- Competitors: AirPods Pro 2, Sony WF-1000XM5"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": " price comparison",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "price comparison notes",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "comparison notes airpods",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "notes airpods pro",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "airpods pro 2",
+      "message": "Phrase repeated from line 31",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "pro 2 costs",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "2 costs 249",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "costs 249 for",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "249 for similar",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "for similar anc",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 43,
+      "text": "similar anc tier",
+      "message": "Phrase repeated from line 37",
+      "context": "- Price comparison notes: AirPods Pro 2 costs $249 for similar ANC tier"
+    },
+    {
+      "type": "redundancy",
+      "line": 107,
+      "text": "38 words max",
+      "message": "Phrase repeated from line 79",
+      "context": "Generate 12-20 segments. Each text field: 3-8 words max."
+    }
+  ],
+  "suggestions": [
+    "Consider adding 2-3 few-shot examples for consistent outputs",
+    "Improve clarity: replace vague terms with specific instructions",
+    "Consider adding role context: \"You are an expert...\""
+  ],
+  "sections": [
+    {
+      "name": "Introduction",
+      "lines": "1-13"
+    },
+    {
+      "name": "RULES",
+      "lines": "14-23"
+    },
+    {
+      "name": "PRODUCT RESEARCH DATA",
+      "lines": "24-50"
+    },
+    {
+      "name": "SPECIAL INSTRUCTIONS",
+      "lines": "51-107"
+    }
+  ],
+  "has_examples": false,
+  "example_count": 0,
+  "has_output_format": true,
+  "word_count": 526,
+  "line_count": 107
+}
