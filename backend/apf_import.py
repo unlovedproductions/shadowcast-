@@ -528,6 +528,26 @@ def _is_marketplace_brand_name(name: str) -> bool:
     return bool(re.match(r"(?i)^(digistore24?|marketplace)$", _clean(name)))
 
 
+def _is_non_buyer_affiliate_url(url: str) -> bool:
+    """True for login-walled marketplace/portal URLs that must not be published as CTAs."""
+    low = _clean(url).lower()
+    if not low:
+        return False
+    if "digistore24-app.com" in low:
+        return True
+    if re.search(r"digistore24\.com/.*/affiliate/account/", low):
+        return True
+    return False
+
+
+def _first_buyer_affiliate(*candidates: str) -> str:
+    for raw in candidates:
+        cleaned = _clean(raw)
+        if cleaned and not _is_non_buyer_affiliate_url(cleaned):
+            return cleaned
+    return ""
+
+
 def _is_junk_vendor_title(title: str) -> bool:
     text = _clean(title)
     if not text:
@@ -882,11 +902,15 @@ def normalize_apf_payload(payload: dict) -> dict:
         _clean(_pick(shadowcast_import, ["niche", "product_category", "productCategory"]))
         or _clean(_pick(product, ["niche", "product_category", "productCategory", "category"]))
     )
-    affiliate_link = _clean(
-        _pick(shadowcast_import, ["affiliate_link", "affiliateLink"])
-        or _pick(product, [
-            "affiliate_url", "affiliateLink", "affiliate_link", "hoplink", "product_url", "url"
-        ])
+    affiliate_link = _first_buyer_affiliate(
+        _pick(shadowcast_import, ["affiliate_link"]),
+        _pick(shadowcast_import, ["affiliateLink"]),
+        _pick(product, ["affiliate_url"]),
+        _pick(product, ["affiliateLink"]),
+        _pick(product, ["affiliate_link"]),
+        _pick(product, ["hoplink"]),
+        _pick(product, ["product_url"]),
+        _pick(product, ["url"]),
     )
 
     positives = (
@@ -1160,6 +1184,9 @@ def assess_product_completeness(product: dict, content_style: str | None = None)
         warnings.append("price")
 
     affiliate = str(info.get("affiliate_link") or "").strip()
+    if _is_non_buyer_affiliate_url(affiliate):
+        info["affiliate_link"] = ""
+        affiliate = ""
     if affiliate.lower() in _PLACEHOLDER_AFFILIATE:
         warnings.append("affiliate_link")
 
