@@ -317,7 +317,6 @@
         providerPresets: {},
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
-        affiliateLink: '', keywords: '', targetAudience: '',
         affiliateLink: '', imageUrl: '', keywords: '', targetAudience: '',
         amazonUrl: '',
         productCategory: '', competitors: '', usp: '',
@@ -1263,11 +1262,6 @@
                 <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
                 <button class="btn-sm btn-template" onclick="buildTrackingLink()">Build Tracking Link</button>
             </div>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
-                <button class="btn-sm btn-template" onclick="buildTrackingLink()">Build Tracking Link</button>
-            </div>
             ${state.trackingLinkResult ? `<div class="result-block" style="margin-top:12px;"><h3>Tracking URL</h3><div class="content">${esc(state.trackingLinkResult)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(state.trackingLinkResult)}\`)">Copy</button></div></div>` : ''}
         </div>
 
@@ -2193,23 +2187,6 @@
                 showToast('Post scheduled!');
                 loadPostingQueue();
                 return;
-            }
-
-            // Job-backed posts go through publish_service (same path as Results).
-            if (jobId && hookType) {
-                const data = await publishJobBatch({
-                    jobId,
-                    hookType,
-                    videoFormat,
-                    platforms: [platform],
-                    productSlug: variant?.product_slug || null,
-                    dryRun: !!dryRun,
-                });
-                state.publishResults = data;
-                showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
-                return;
-            }
-
             }
 
             // Job-backed posts go through publish_service (same path as Results).
