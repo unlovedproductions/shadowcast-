@@ -23,4 +23,4 @@ Required layouts for `vs_battle`: `vs_split` + `scorecard` + `winner_reveal` (ma
 | vs_battle | [x] | [x] |
 | standard | [x] | [x] |
 
-Verified 2026-07-22 (Lilith audit) — automated via `tests/test_style_matrix.py`; manual MP4 optional.
+Verified 2026-08-14 — automated via `tests/test_style_matrix.py` (layouts/badges unchanged); manual MP4 optional.

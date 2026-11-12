@@ -2,6 +2,8 @@
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import os
+import re
+import textwrap
 
 # Brand Colors
 BG_COLOR = (10, 10, 15)  # Near black
@@ -215,20 +217,17 @@ def render_watermark_overlay(width, height):
     watermark_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(watermark_img)
 
-    wm_font_size = int(height * 0.1)
+    wm_font_size = max(18, int(height * 0.04))
     wm_font = load_font(MONTSERRAT_BLACK, NOTO_SANS_BLACK, wm_font_size)
     wm_text = "SC"
 
     wm_text_bbox = draw.textbbox((0, 0), wm_text, font=wm_font)
-    wm_text_width = wm_text_bbox[2] - wm_text_bbox[0]
-    wm_text_height = wm_text_bbox[3] - wm_text_bbox[1]
+    pad_x = int(width * 0.04)
+    pad_y = int(height * 0.04)
+    wm_x = width - pad_x - wm_text_bbox[2]
+    wm_y = height - pad_y - wm_text_bbox[3]
 
-    padding = int(width * 0.02)
-    wm_x = width - wm_text_width - padding
-    wm_y = height - wm_text_height - padding
-
-    # Semi-transparent accent color
-    wm_color = ACCENT_COLOR + (100,) # 100 alpha for semi-transparency
+    wm_color = ACCENT_COLOR + (160,)
     draw.text((wm_x, wm_y), wm_text, font=wm_font, fill=wm_color)
 
     return watermark_img
@@ -238,10 +237,31 @@ LOWER_THIRD_HOLD_SEC = 5.5
 LOWER_THIRD_MENTION_LEAD_SEC = 0.3
 # Shorts: lift bar above YouTube bottom UI (~12% chrome); captions stay mid-upper.
 SHORTS_LOWER_THIRD_BOTTOM_FRAC = 0.88
+_PLACEHOLDER_PRICES = frozenset({
+    "varies",
+    "n/a",
+    "na",
+    "tbd",
+    "unknown",
+    "see official offer page",
+    "[price]",
+})
+
+
+def displayable_price(price: str | None) -> str:
+    """Hide non-money placeholders like 'Varies' from the lower third."""
+    raw = str(price or "").strip()
+    if not raw:
+        return ""
+    key = re.sub(r"\s+", " ", raw).strip(" .").lower()
+    if key in _PLACEHOLDER_PRICES:
+        return ""
+    return raw
 
 
 def render_lower_third(width, height, product_name, price="", is_short_form=False):
     """Returns RGBA PIL Image with lower-third bar (name + price). Placement only — timing is caller-owned."""
+    price = displayable_price(price)
     lt_height = int(height * 0.12) if is_short_form else int(height * 0.08)
     lt_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(lt_img)
@@ -423,11 +443,13 @@ def render_section_header(width, height, section_type, accent_color=ACCENT_COLOR
     text_font = load_font(MONTSERRAT_BOLD, NOTO_SANS_BOLD, text_font_size)
     padding_x = int(width * 0.03)
 
+    # ASCII-only labels: Montserrat-Bold has no glyphs for check/cross/star/arrow
+    # and renders them as tofu boxes in the banner.
     text_map = {
-        "pros": ("✓ THE GOOD", (0, 150, 0)),  # Green
-        "cons": ("✗ THE BAD", (150, 0, 0)),  # Red
-        "verdict": ("★ VERDICT", accent_color), # Accent
-        "comparison": ("↔ COMPARISON", (0, 100, 150)) # Blue-ish
+        "pros": ("THE GOOD", (0, 150, 0)),  # Green
+        "cons": ("THE BAD", (150, 0, 0)),  # Red
+        "verdict": ("VERDICT", accent_color), # Accent
+        "comparison": ("COMPARISON", (0, 100, 150)) # Blue-ish
     }
 
     display_text, section_color = text_map.get(section_type.lower(), ("SECTION", (100, 100, 100)))
@@ -576,14 +598,30 @@ def render_subscribe_card(width, height, accent_color=ACCENT_COLOR):
 
     # Text: Don't miss out!
     tag_font_size = int(card_height * 0.08)
-    tag_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, tag_font_size)
     tag_text = "Don't miss out on honest reviews!"
-    tag_text_bbox = draw.textbbox((0, 0), tag_text, font=tag_font)
+    max_tag_width = card_width - int(width * 0.08)
+    tag_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, tag_font_size)
+    tag_draw_text = tag_text
+    tag_text_bbox = draw.textbbox((0, 0), tag_draw_text, font=tag_font)
+    while tag_font_size > 14 and (tag_text_bbox[2] - tag_text_bbox[0]) > max_tag_width:
+        tag_font_size -= 2
+        tag_font = load_font(MONTSERRAT_REGULAR, NOTO_SANS_REGULAR, tag_font_size)
+        tag_text_bbox = draw.textbbox((0, 0), tag_draw_text, font=tag_font)
+    if (tag_text_bbox[2] - tag_text_bbox[0]) > max_tag_width:
+        wrap_cols = max(12, int(max_tag_width / max(tag_font_size * 0.55, 1)))
+        tag_draw_text = textwrap.fill(tag_text, width=wrap_cols)
+        tag_text_bbox = draw.multiline_textbbox((0, 0), tag_draw_text, font=tag_font, align="center")
     tag_text_width = tag_text_bbox[2] - tag_text_bbox[0]
     tag_text_height = tag_text_bbox[3] - tag_text_bbox[1]
     tag_text_x = card_x + (card_width - tag_text_width) / 2
     tag_text_y = sub_text_y + sub_text_height + int(card_height * 0.02)
-    draw.text((tag_text_x, tag_text_y), tag_text, font=tag_font, fill=TEXT_COLOR)
+    draw.multiline_text(
+        (tag_text_x, tag_text_y),
+        tag_draw_text,
+        font=tag_font,
+        fill=TEXT_COLOR,
+        align="center",
+    )
 
     return pil_to_numpy(img)
 
@@ -613,10 +651,16 @@ def shorts_word_highlight_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def shorts_burnin_captions_enabled() -> bool:
+    """Burn-in Shorts captions. Default OFF — kinetic overlay is the on-screen text; SRT sidecar remains."""
+    raw = (os.getenv("SHADOWCAST_SHORTS_BURNIN") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def longform_burnin_captions_enabled() -> bool:
-    """Env gate for long-form burn-in captions when TTS is on (default ON)."""
-    raw = (os.getenv("SHADOWCAST_LONGFORM_BURNIN") or "1").strip().lower()
-    return raw not in ("0", "false", "no", "off")
+    """Env gate for long-form burn-in captions when TTS is on (default OFF; SRT sidecar remains)."""
+    raw = (os.getenv("SHADOWCAST_LONGFORM_BURNIN") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def chunk_caption_text(
@@ -791,6 +835,16 @@ def render_shorts_caption(
     y_lo = int(height * max(0.05, y_use - 0.08))
     y_hi = int(height * min(0.92, y_use + 0.08)) - text_h
     y = max(y_lo, min(y, max(y_lo, y_hi)))
+
+    # Compact dark plate under captions — cheap local contrast vs bright hero stills.
+    pad_x, pad_y = 18, 12
+    plate = [
+        max(0, x - pad_x),
+        max(0, y - pad_y),
+        min(width, x + text_w + pad_x),
+        min(height, y + text_h + pad_y),
+    ]
+    draw.rounded_rectangle(plate, radius=14, fill=(0, 0, 0, 150))
 
     if highlight_index is None:
         for dx, dy in _CAPTION_STROKE_OFFSETS:

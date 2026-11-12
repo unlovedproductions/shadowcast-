@@ -202,6 +202,29 @@ def test_enriched_script_passes_vs_battle_validator():
     assert ok, errors
 
 
+def test_validate_script_rejects_short_long_form_duration():
+    script = {
+        "hook_type": "curiosity",
+        "content_style": "honest_review",
+        "format": "long_form",
+        "title_suggestion": "Review",
+        "chapters": [
+            {
+                "chapter_name": "A",
+                "segments": [
+                    {"text": "Hook", "text_style": "headline_bold", "duration": 4.0},
+                    {"text": "Bad fit", "text_style": "cons", "duration": 4.0},
+                ],
+            },
+            {"chapter_name": "B", "segments": [{"text": "Body", "text_style": "subtitle", "duration": 4.0}]},
+            {"chapter_name": "C", "segments": [{"text": "CTA", "text_style": "cta_button", "duration": 4.0}]},
+        ],
+    }
+    ok, errors = validate_script_output(script, "honest_review", "long_form")
+    assert not ok
+    assert any("120s" in e for e in errors)
+
+
 def test_eval_set_fixture_loads():
     spec = json.loads((EVAL / "fixtures" / "eval_set.json").read_text())
     assert len(spec["cases"]) >= 12

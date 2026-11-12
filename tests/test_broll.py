@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from broll import (  # noqa: E402
     any_broll_files,
+    best_broll_window_start,
     broll_enabled,
     make_broll_clip,
     resolve_broll_path,
@@ -25,6 +26,24 @@ def test_resolve_prefers_section_then_pad(tmp_path, monkeypatch):
     monkeypatch.setattr("broll.broll_dir", lambda: bdir)
     assert resolve_broll_path("pros").endswith("pros.mp4")
     assert resolve_broll_path("unknown").endswith("pad.mp4")
+    assert resolve_broll_path("pad").endswith("pad.mp4")
+
+
+def test_resolve_falls_through_to_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHADOWCAST_BROLL", "1")
+    bdir = tmp_path / "broll"
+    bdir.mkdir()
+    (bdir / "default.mp4").write_bytes(b"fake")
+    monkeypatch.setattr("broll.broll_dir", lambda: bdir)
+    assert resolve_broll_path("cons").endswith("default.mp4")
+    assert resolve_broll_path(None).endswith("default.mp4")
+
+
+def test_best_broll_window_start_picks_high_score_region():
+    # Early samples weak, late samples strong → start later.
+    scores = [1.0, 1.0, 10.0, 12.0, 11.0, 10.0]
+    start = best_broll_window_start(scores, src_duration=12.0, target_duration=2.0)
+    assert start >= 4.0
 
 
 def test_broll_disabled_env(monkeypatch, tmp_path):
