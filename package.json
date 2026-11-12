@@ -1,0 +1,13 @@
+{
+  "name": "shadowcast-e2e",
+  "private": true,
+  "description": "Playwright E2E for ShadowCast SPA + FastAPI",
+  "scripts": {
+    "e2e": "playwright test --project=mocked",
+    "e2e:live": "SHADOWCAST_E2E_LIVE=1 playwright test --project=live",
+    "e2e:ui": "playwright test --project=mocked --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}

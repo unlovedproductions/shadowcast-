@@ -26,11 +26,7 @@ def contrast_ratio(l1: float, l2: float) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def measure_image_contrast(path: Path) -> Optional[dict]:
-    if Image is None or np is None or not path.exists():
-        return None
-    img = Image.open(path).convert("RGB")
-    arr = np.asarray(img, dtype=np.float32)
+def _contrast_from_rgb_array(arr) -> dict:
     flat = arr.reshape(-1, 3)
     sample = flat[:: max(1, len(flat) // 5000)]
     luminance = 0.2126 * sample[:, 0] + 0.7152 * sample[:, 1] + 0.0722 * sample[:, 2]
@@ -45,6 +41,41 @@ def measure_image_contrast(path: Path) -> Optional[dict]:
         "dark_luma": round(dark, 1),
         "bright_luma": round(bright, 1),
     }
+
+
+def measure_pil_contrast(img) -> Optional[dict]:
+    if Image is None or np is None or img is None:
+        return None
+    rgb = img.convert("RGB") if hasattr(img, "convert") else img
+    arr = np.asarray(rgb, dtype=np.float32)
+    return _contrast_from_rgb_array(arr)
+
+
+def measure_image_contrast(path: Path | str) -> Optional[dict]:
+    if Image is None or np is None:
+        return None
+    path = Path(path)
+    if not path.exists():
+        return None
+    img = Image.open(path).convert("RGB")
+    arr = np.asarray(img, dtype=np.float32)
+    return _contrast_from_rgb_array(arr)
+
+
+def pick_best_contrast_path(paths: list[Path | str]) -> Optional[Path]:
+    """Return the path with the highest measured contrast ratio."""
+    best: Optional[Path] = None
+    best_ratio = -1.0
+    for raw in paths:
+        path = Path(raw)
+        metrics = measure_image_contrast(path)
+        if not metrics:
+            continue
+        ratio = float(metrics.get("contrast_ratio") or 0)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best = path
+    return best
 
 
 def audit_thumbnail_contrast(path: Path) -> tuple[str, str, str, str]:

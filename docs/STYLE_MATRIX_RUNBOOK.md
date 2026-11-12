@@ -2,15 +2,17 @@
 
 Run after APF enrichment + ShadowCast are up. Check each box when script JSON + badges pass; sample MP4 optional.
 
-**Command helper** (from ShadowCast repo):
+**Command helper** (from ShadowCast **repo root**):
 
 ```bash
-cd ~/shadowcast-/backend
-python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py -q
-python video_claim_audit.py --output-dir output --fail-on warn
+source .venv/bin/activate
+python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_style_matrix.py tests/test_audio_options.py -q
+python backend/video_claim_audit.py --output-dir backend/output --fail-on warn
 ```
 
 Manual matrix: see `docs/STYLE_RENDERING_CHECKLIST.md` and `tests/STYLE_MATRIX_CHECKLIST.md`.
+
+Required layouts for `vs_battle`: `vs_split` + `scorecard` + `winner_reveal` (matches renderer contract).
 
 | Style | Short | Long |
 |-------|-------|------|

@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import sentry_sdk
+
 from path_safety import OUTPUT_BASE, _PROTECTED_OUTPUT_NAMES
 
 jobs: dict = {}
@@ -89,11 +91,17 @@ def _start_job_thread(job_id: str, target) -> bool:
     _job_heartbeats[job_id] = time.time()
 
     def _runner():
-        try:
-            target(job_id)
-        finally:
-            with _job_thread_lock:
-                _active_job_threads.discard(job_id)
+        with sentry_sdk.isolation_scope() as scope:
+            scope.set_tag("job_id", job_id)
+            try:
+                target(job_id)
+            except JobCancelled:
+                pass
+            except Exception:
+                sentry_sdk.capture_exception()
+            finally:
+                with _job_thread_lock:
+                    _active_job_threads.discard(job_id)
 
     threading.Thread(target=_runner, daemon=True).start()
     return True

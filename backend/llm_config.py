@@ -101,6 +101,27 @@ def supports_json_response_format(provider: str) -> bool:
     return provider in _JSON_MODE_PROVIDERS
 
 
+def get_ollama_keep_alive():
+    """Ollama model residency for batch LLM calls.
+
+    Native /api/chat keep_alive (OpenAI-compat /v1 drops this field).
+    Default -1 (never unload). Override via SHADOWCAST_OLLAMA_KEEP_ALIVE
+    or OLLAMA_KEEP_ALIVE (duration like 30m, seconds, or -1). Use off/none/default
+    to omit and defer to the Ollama server default (5m).
+    """
+    raw = os.getenv("SHADOWCAST_OLLAMA_KEEP_ALIVE")
+    if raw is None:
+        raw = os.getenv("OLLAMA_KEEP_ALIVE")
+    if raw is None:
+        return -1
+    value = raw.strip()
+    if not value or value.lower() in ("off", "none", "default"):
+        return None
+    if value.lstrip("-").isdigit():
+        return int(value)
+    return value
+
+
 def _config_from_env() -> LLMConfig:
     provider = os.getenv("LLM_PROVIDER", "ollama").strip() or "ollama"
     base_url = os.getenv("LLM_BASE_URL", "").strip()

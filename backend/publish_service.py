@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,9 +14,25 @@ from publishers.meta_publisher import MetaPublisher
 from publishers.rumble_publisher import RumblePublisher
 from publishers.tiktok_publisher import TikTokPublisher
 from publishers.youtube_publisher import YouTubePublisher
+from visual_quality import pick_best_contrast_path
 
 OUTPUT_BASE = Path(__file__).parent / "output"
 PUBLISH_LOG = OUTPUT_BASE / "publish_log.json"
+_VARIANT_RE = re.compile(r"variant_[abc]")
+
+
+def _swap_thumbnail_variant(path: str | None, variant: str) -> str | None:
+    if not path:
+        return path
+    return _VARIANT_RE.sub(variant, path)
+
+
+def _best_thumb_fname(base_dir: Path, hook_type: str, preferred: str | None = None) -> str | None:
+    matches = sorted(base_dir.glob(f"*_{hook_type}_thumbnail_*.png"))
+    if not matches:
+        return preferred
+    best = pick_best_contrast_path(matches)
+    return best.name if best else (preferred or matches[0].name)
 
 
 def _slugify(text: str) -> str:
@@ -62,6 +79,7 @@ def resolve_job_assets(
     assets_data: dict[str, Any] | None = None
     video_fname: str | None = None
     thumb_fname: str | None = None
+    thumbs_map: dict[str, str] = {}
     product_name = product_slug or ""
 
     if jobs and job_id in jobs:
@@ -72,16 +90,16 @@ def resolve_job_assets(
                     hook = (pr.get("hooks") or {}).get(hook_type, {})
                     assets_data = (hook.get("youtube_assets") or {}).get(video_format)
                     video_fname = (hook.get("videos") or {}).get(video_format)
-                    thumbs = hook.get("thumbnails") or {}
-                    thumb_fname = thumbs.get("variant_a") or next(iter(thumbs.values()), None)
+                    thumbs_map = hook.get("thumbnails") or {}
+                    thumb_fname = thumbs_map.get("variant_a") or next(iter(thumbs_map.values()), None)
                     product_name = product_slug
                     break
         else:
             hook = (job.get("results") or {}).get(hook_type, {})
             assets_data = (hook.get("youtube_assets") or {}).get(video_format)
             video_fname = (hook.get("videos") or {}).get(video_format)
-            thumbs = hook.get("thumbnails") or {}
-            thumb_fname = thumbs.get("variant_a") or next(iter(thumbs.values()), None)
+            thumbs_map = hook.get("thumbnails") or {}
+            thumb_fname = thumbs_map.get("variant_a") or next(iter(thumbs_map.values()), None)
 
     base_dir = job_dir / product_slug if product_slug else job_dir
 
@@ -101,10 +119,18 @@ def resolve_job_assets(
         if pkg_matches:
             assets_data = json.loads(pkg_matches[0].read_text())
 
+    # Prefer highest-contrast thumbnail among A/B/C (not hard-coded A).
+    if thumbs_map:
+        candidate_paths = [
+            base_dir / name
+            for name in thumbs_map.values()
+            if name and (base_dir / name).is_file()
+        ]
+        best = pick_best_contrast_path(candidate_paths) if candidate_paths else None
+        if best:
+            thumb_fname = best.name
     if not thumb_fname:
-        thumb_matches = sorted(base_dir.glob(f"*_{hook_type}_thumbnail_*.png"))
-        if thumb_matches:
-            thumb_fname = thumb_matches[0].name
+        thumb_fname = _best_thumb_fname(base_dir, hook_type)
 
     if not video_fname or not assets_data:
         raise FileNotFoundError(
@@ -163,12 +189,38 @@ class PublishService:
             product_slug=product_slug, jobs=self.jobs,
         )
 
-        if thumbnail_variant != "variant_a" and resolved.get("thumbnail_path"):
-            resolved["thumbnail_path"] = resolved["thumbnail_path"].replace("variant_a", thumbnail_variant)
+        if thumbnail_variant in ("variant_b", "variant_c"):
+            resolved["thumbnail_path"] = _swap_thumbnail_variant(
+                resolved.get("thumbnail_path"), thumbnail_variant
+            )
 
         payload = build(platform, resolved["posting_package"], {"format": effective_format})
         video_path = resolved["video_path"]
         thumb_path = resolved.get("thumbnail_path")
+
+        if not dry_run:
+            allow_gtts = os.getenv("ALLOW_GTTS_PUBLISH", "").strip() in ("1", "true", "True")
+            try:
+                from tts_generator import get_best_provider as get_best_tts
+                best = get_best_tts()
+            except Exception:
+                best = "gtts"
+            if best not in ("kokoro", "openai", "piper") and not allow_gtts:
+                raise RuntimeError(
+                    "Live publish blocked: only gTTS (or no quality TTS) is available. "
+                    "Install Kokoro/Piper or configure OpenAI TTS, or set ALLOW_GTTS_PUBLISH=1."
+                )
+            allow_synth = os.getenv("ALLOW_SYNTH_MUSIC_PUBLISH", "").strip() in ("1", "true", "True")
+            try:
+                from sound_design import music_beds_present
+                beds_ok = music_beds_present()
+            except Exception:
+                beds_ok = False
+            if not beds_ok and not allow_synth:
+                raise RuntimeError(
+                    "Live publish blocked: no royalty-free music beds under backend/assets/music/. "
+                    "Run scripts/fetch_operator_media.sh or set ALLOW_SYNTH_MUSIC_PUBLISH=1."
+                )
 
         rel_video = self._relative_media_path(job_id, video_path, product_slug)
         rel_thumb = self._relative_media_path(job_id, thumb_path, product_slug) if thumb_path else None

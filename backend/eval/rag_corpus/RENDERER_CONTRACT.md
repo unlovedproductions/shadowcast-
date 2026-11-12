@@ -8,8 +8,10 @@ Scripts drive MoviePy rendering. Follow this contract so video matches intent.
 - `start_time` and `chapter_start_time` are advisory; the renderer ignores them for ordering.
 - Set `total_duration_seconds` to the sum of all segment durations.
 - Intro, outro, transitions, and engagement cards are added by the renderer (chrome).
-- Short-form segment duration: 1.0–1.5 seconds (3–8 words).
-- Long-form segment duration: 3.0–5.0 seconds (5–15 words).
+- Short-form segment duration: 1.0–1.5 seconds (4–6 words).
+- Long-form segment duration: 3.0–5.0 seconds (5–15 words; prefer ≤12 on-screen).
+- First short-form segment: scroll-stopping hook (`headline_bold` + `impact_scale`/`pop_in`).
+- **When TTS is enabled:** the renderer generates voiceover first and **rewrites** each segment `duration` to measured speech length + inter-segment pause (~0.35s). LLM duration guesses are not used to trim speech. A `{hook}_{format}_voiceover_timing.json` sidecar stores the shared clock for captions/overlays.
 
 ## Required layouts by style
 

@@ -31,14 +31,22 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
     if scraped.get("key_features") and not out.get("key_features"):
         features = scraped.get("key_features")
         out["key_features"] = features if isinstance(features, list) else [features]
+    if scraped.get("image_url") and _is_blank(out.get("image_url")):
+        out["image_url"] = scraped["image_url"]
 
     positives = scraped.get("positive_reviews") or []
     negatives = scraped.get("negative_reviews") or []
-    if positives and _is_blank(out.get("common_praises")):
+    praise_themes = str(scraped.get("common_praise_themes") or "").strip()
+    complaint_themes = str(scraped.get("common_complaint_themes") or "").strip()
+    if praise_themes and _is_blank(out.get("common_praises")):
+        out["common_praises"] = praise_themes
+    elif positives and _is_blank(out.get("common_praises")):
         out["common_praises"] = "\n".join(
             f"- {r.get('title', 'Praise')}: {r.get('text', '')}" for r in positives[:5]
         )
-    if negatives and _is_blank(out.get("common_complaints")):
+    if complaint_themes and _is_blank(out.get("common_complaints")):
+        out["common_complaints"] = complaint_themes
+    elif negatives and _is_blank(out.get("common_complaints")):
         out["common_complaints"] = "\n".join(
             f"- {r.get('title', 'Complaint')}: {r.get('text', '')}" for r in negatives[:5]
         )
@@ -47,6 +55,8 @@ def _merge_amazon_scrape(product: dict, scraped: dict) -> dict:
         "price": scraped.get("price", ""),
         "positive_count": len(positives),
         "negative_count": len(negatives),
+        "praise_themes": praise_themes,
+        "complaint_themes": complaint_themes,
     }
     if not positives and not negatives:
         _append_warning(out, "Amazon scrape returned no review signals.")
@@ -64,6 +74,9 @@ def _merge_youtube_research(product: dict, research: dict) -> dict:
         "recommended_tags": tags[:20],
         "recommended_titles": titles[:5],
         "question_keywords": (research.get("question_keywords") or [])[:10],
+        "title_angles": (research.get("title_angles") or [])[:8],
+        "content_gap_ideas": (research.get("content_gap_ideas") or [])[:6],
+        "data_api_titles": (research.get("data_api_titles") or [])[:5],
     }
     if not tags and not titles:
         _append_warning(out, "YouTube research returned no tags or titles.")

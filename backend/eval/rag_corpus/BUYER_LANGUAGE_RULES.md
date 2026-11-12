@@ -6,11 +6,16 @@ Script and YouTube asset prompts enforce shopper-focused language. These rules a
 
 Never mention in scripts or YouTube assets:
 
-- commission rates
-- EPC (earnings per click)
+- commission rates / EPC math
 - hop conversion
-- promoting the product as an affiliate
-- earning as an affiliate
+- teaching viewers how to promote products as affiliates
+- "earn as an affiliate" creator-howto framing
+
+## Required shopper disclosure (FTC)
+
+- Scripts: one short plain-language affiliate disclosure in VO (early or end CTA)
+- YouTube description + pinned comment: disclose affiliate relationship; label the URL as `Paid link:` or `Affiliate link:` with a clear explanation
+- Example: "This video contains affiliate links. If you buy through them, I may earn a commission at no extra cost to you."
 
 ## Required buyer-focused framing
 

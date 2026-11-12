@@ -16,6 +16,18 @@ TIKTOK_TITLE_MAX = 150
 TIKTOK_HASHTAG_MAX = 5
 RUMBLE_TAG_MAX = 10
 
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
+
+# TikTok Content Posting API privacy_level values
+TIKTOK_PRIVACY_LEVELS = frozenset(
+    {
+        "PUBLIC_TO_EVERYONE",
+        "MUTUAL_FOLLOW_FRIENDS",
+        "FOLLOWER_OF_CREATOR",
+        "SELF_ONLY",
+    }
+)
+
 
 def _strip_hashtag_prefix(tag: str) -> str:
     return tag.lstrip("#").strip()
@@ -38,6 +50,11 @@ def _truncate(text: str, limit: int) -> str:
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _strip_markdown_links(text: str) -> str:
+    """Convert markdown links [label](url) to plain URLs for YouTube payloads."""
+    return _MD_LINK_RE.sub(r"\2", text)
+
+
 def _sanitize_youtube_text(text: str, *, max_bytes: int | None = None) -> str:
     """YouTube rejects < and > in snippet text; descriptions are limited to 5000 bytes."""
     if text is None:
@@ -45,6 +62,7 @@ def _sanitize_youtube_text(text: str, *, max_bytes: int | None = None) -> str:
     if not isinstance(text, str):
         text = str(text)
     text = "".join(ch for ch in text if ch in "\n\r\t" or ord(ch) >= 32)
+    text = _strip_markdown_links(text)
     text = text.replace("<", "(").replace(">", ")").strip()
     if not max_bytes:
         return text
@@ -70,6 +88,17 @@ def _truncate_youtube_tags(tags: list[str], max_chars: int = YOUTUBE_TAG_MAX_CHA
         result.append(clean)
         total += extra
     return result
+
+
+def _bool_meta(script_meta: dict[str, Any], key: str, default: bool) -> bool:
+    if key not in script_meta:
+        return default
+    val = script_meta[key]
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 
 def select_video_format(platform: str, requested_format: str) -> str:
@@ -122,10 +151,17 @@ def build(platform: str, assets: dict[str, Any], script_meta: dict[str, Any] | N
         caption = _truncate(pinned, max(room, 0))
         if hashtag_text:
             caption = f"{caption}\n\n{hashtag_text}".strip()
+        clean_tags = [_strip_hashtag_prefix(h) for h in hashtags][:30]
+        # Graph API Reels fields used by meta_publisher.publish_instagram
         return {
             "platform": "instagram",
             "caption": _truncate(caption, INSTAGRAM_CAPTION_MAX),
-            "hashtags": [_strip_hashtag_prefix(h) for h in hashtags][:30],
+            "hashtags": clean_tags,
+            "media_type": "REELS",
+            "share_to_feed": _bool_meta(script_meta, "share_to_feed", True),
+            "cover_url": script_meta.get("cover_url") or assets.get("thumbnail_url"),
+            "location_id": script_meta.get("location_id"),
+            "collaborators": script_meta.get("collaborators") or [],
         }
 
     if platform == "facebook":
@@ -139,11 +175,25 @@ def build(platform: str, assets: dict[str, Any], script_meta: dict[str, Any] | N
         caption = pinned
         if hashtag_text:
             caption = f"{caption}\n\n{hashtag_text}".strip()
+        privacy = str(script_meta.get("privacy_level") or "PUBLIC_TO_EVERYONE").strip().upper()
+        if privacy not in TIKTOK_PRIVACY_LEVELS:
+            privacy = "PUBLIC_TO_EVERYONE"
+        cover_ts = script_meta.get("video_cover_timestamp_ms")
+        try:
+            cover_ts_int = int(cover_ts) if cover_ts is not None else 1000
+        except (TypeError, ValueError):
+            cover_ts_int = 1000
+        # post_info fields for TikTok Content Posting API /post/publish/video/init/
         return {
             "platform": "tiktok",
             "title": _truncate(title, TIKTOK_TITLE_MAX),
             "description": _truncate(caption, 2200),
             "hashtags": [_strip_hashtag_prefix(h) for h in hashtags][:TIKTOK_HASHTAG_MAX],
+            "privacy_level": privacy,
+            "disable_comment": _bool_meta(script_meta, "disable_comment", False),
+            "disable_duet": _bool_meta(script_meta, "disable_duet", False),
+            "disable_stitch": _bool_meta(script_meta, "disable_stitch", False),
+            "video_cover_timestamp_ms": max(0, cover_ts_int),
         }
 
     if platform == "rumble":

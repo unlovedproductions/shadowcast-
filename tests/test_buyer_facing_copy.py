@@ -15,6 +15,8 @@ def test_prompts_are_buyer_focused():
     assert "affiliate product marketing" not in text
     assert "NOT affiliate marketers" in text
     assert "NEVER mention commission rates" in text
+    assert "affiliate disclosure" in text.lower() or "AFFILIATE DISCLOSURE" in text
+    assert "Paid link" in text or "Paid link:" in text
 
 
 def test_script_generator_uses_prompt_builders():
@@ -35,3 +37,10 @@ def test_frontend_apf_fallback_avoids_affiliate_marketer_copy():
     assert "sanitizeProductName" in text
     assert "affiliate product" not in text
     assert "ClickBank product imported from APF" not in text
+
+
+def test_buyer_language_rules_require_disclosure():
+    text = (ROOT / "backend" / "eval" / "rag_corpus" / "BUYER_LANGUAGE_RULES.md").read_text()
+    assert "Required shopper disclosure" in text
+    assert "Paid link" in text or "Affiliate link" in text
+    assert "EPC" in text

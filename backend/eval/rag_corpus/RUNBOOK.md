@@ -2,26 +2,67 @@
 
 ## Service Summary
 - App: ShadowCast backend + static frontend assets
-- Default URL: `http://localhost:8000`
+- Default URL: `http://127.0.0.1:8000` (override with `HOST` / `PORT`)
 - Primary command: `python3 backend/app.py`
 
 ## Startup
-1. Activate venv:
-   - `source venv/bin/activate`
+1. Activate venv (canonical):
+   - `source .venv/bin/activate`
+   - Legacy alias: `venv/` is acceptable if that is your local env
 2. Start server:
    - `python3 backend/app.py`
 3. Open:
-   - `http://localhost:8000`
+   - `http://127.0.0.1:8000`
 
 ## Health Checks
 - Import/runtime checks:
   - `python3 -c "import fastapi, moviepy, PIL"`
 - HTTP health:
-  - `curl -fsS http://localhost:8000/api/health >/dev/null`
+  - `curl -fsS http://127.0.0.1:8000/api/health >/dev/null`
+- Readiness (ffmpeg, ffprobe, LLM, TTS quality):
+  - `curl -fsS http://127.0.0.1:8000/api/readiness`
+
+## TTS and captions
+- Shorts burn-in captions require `use_tts=true`.
+- Quality providers: Kokoro, Piper, OpenAI. gTTS is smoke-only.
+- UI auto-enables TTS when a quality provider is ready; API defaults prefer TTS on unless `SHADOWCAST_TTS_DEFAULT=0`.
+- Live publish soft-blocks gTTS-only unless `ALLOW_GTTS_PUBLISH=1`.
+- Optional karaoke align: `SHADOWCAST_WHISPERX_ALIGN=1` (+ optional `whisperx` install).
+- Optional long-form B-roll pads: drop clips in `backend/assets/broll/` or set `SHADOWCAST_BROLL=1`.
+
+## Publish dry-run vs live
+- UI **Dry Run** and API `dry_run: true` never upload — publishers return synthetic success payloads.
+- Use dry-run first for YouTube / Meta / TikTok / **Rumble**.
+- Rumble live publish needs browser login cookies via OAuth/Rumble connect; Playwright selectors are multi-fallback (title/desc/file/submit). If upload DOM changes, reconnect session and check `rumble_publisher.py` selector tuples.
+- Pick thumbnail A/B/C in the Publish card before live YouTube/IG cover upload (`thumbnail_variant`).
+
+## Playwright E2E
+
+Two tiers against the real FastAPI + SPA (`http://127.0.0.1:8000`). Playwright starts uvicorn via `webServer` when nothing is already listening.
+
+Prerequisites (shared):
+- Root `.venv` with backend deps (`uvicorn`), or `python -m uvicorn` on PATH
+- `npm install` at repo root
+- `npx playwright install chromium`
+
+### Tier 1 — mocked (default, CI)
+
+```bash
+npm run e2e
+```
+
+### Tier 2 — live generate (opt-in)
+
+```bash
+SHADOWCAST_E2E_LIVE=1 npm run e2e:live
+```
+
+Expect 5–15+ minutes. Do not run in CI.
 
 ## Daily Operations
 - Process job creation via UI or Mission Control.
-- Confirm generated files are written to expected output locations.
+- Confirm generated files under `backend/output/` (or configured output).
+- Prefer quality TTS + product `image_url` for postable assets (see `docs/SOCIAL_READINESS.md`).
 - Monitor terminal logs for render or provider errors.
 
 ## Shutdown
@@ -29,28 +70,28 @@
 
 ## Common Failures
 
-- `ffmpeg` missing: install FFmpeg package.
+- `ffmpeg` / `ffprobe` missing: install FFmpeg package.
 - Provider errors: verify local Ollama/service availability or API keys in local env.
-- Render failures: validate product payload and available disk space.
+- Silent Shorts: enable TTS so captions and VO render.
+- gTTS publish blocked: install Kokoro/Piper/OpenAI TTS or set `ALLOW_GTTS_PUBLISH=1` for emergencies only.
 
-## Prompt Eval (LLM)
+## Style matrix / claim audit
 
-Static analysis and validator dry-run (no LLM required):
+From repo root:
+
+```bash
+.venv/bin/python -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_style_matrix.py tests/test_audio_options.py -q
+.venv/bin/python backend/video_claim_audit.py --output-dir backend/output --fail-on warn
+```
+
+## RAG eval gates
 
 ```bash
 cd backend
-python3 eval/export_snapshots.py
-python3 eval/prompt_optimizer.py eval/snapshots/script_short_honest_review.txt --analyze --model qwen2.5
-python3 eval/eval_runner.py --output eval/baselines/eval_baseline.json
-pytest ../tests/test_prompt_eval.py -q
+../.venv/bin/python eval/run_corpus_rag_eval.py --min-precision 0.80
+../.venv/bin/python eval/run_rag_eval.py --min-relevance 0.80
 ```
 
-Live LLM eval (requires Ollama or configured provider):
+## Quality gates (CI mirror)
 
-```bash
-cd backend
-LLM_EVAL=1 pytest ../tests/test_prompt_eval.py -m llm -q
-python3 eval/eval_runner.py --live --filter hr_short,hr_long --output eval_results.json
-```
-
-See `backend/eval/AUDIT.md` for baseline metrics and iteration gates.
+See `.github/workflows/quality-gates.yml` and `scripts/quality/`.

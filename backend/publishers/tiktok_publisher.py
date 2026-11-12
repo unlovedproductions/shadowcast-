@@ -47,6 +47,8 @@ class TikTokPublisher:
         title = payload.get("title", "Video")
         description = payload.get("description", "")
         hashtags = payload.get("hashtags", [])
+        privacy = payload.get("privacy_level") or "PUBLIC_TO_EVERYONE"
+        cover_ts = int(payload.get("video_cover_timestamp_ms") or 1000)
 
         with httpx.Client(timeout=300) as client:
             init = client.post(
@@ -56,10 +58,11 @@ class TikTokPublisher:
                     "post_info": {
                         "title": title,
                         "description": description,
-                        "privacy_level": "PUBLIC_TO_EVERYONE",
-                        "disable_comment": False,
-                        "disable_duet": False,
-                        "disable_stitch": False,
+                        "privacy_level": privacy,
+                        "disable_comment": bool(payload.get("disable_comment", False)),
+                        "disable_duet": bool(payload.get("disable_duet", False)),
+                        "disable_stitch": bool(payload.get("disable_stitch", False)),
+                        "video_cover_timestamp_ms": cover_ts,
                     },
                     "source_info": {"source": "FILE_UPLOAD", "video_size": Path(video_path).stat().st_size},
                 },

@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
+import sentry_sdk
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,6 +58,7 @@ from api_models import (
     LLMModelsResponse,
     LLMTestResponse,
     MetricRequest,
+    MediaLibraryResponse,
     ProductInfo,
     ProvidersResponse,
     ReadinessChecks,
@@ -94,16 +96,22 @@ from video_renderer import (
 )
 from youtube_assets_generator import generate_youtube_assets, save_posting_package_readable
 from thumbnail_generator import generate_thumbnail_set, add_badge
+from product_media import resolve_product_image
+from visual_quality import audit_thumbnail_contrast
 from tts_generator import get_available_providers as get_tts_providers, get_best_provider as get_best_tts
 from social_poster import SocialPoster, get_platform_status
 from analytics_tracker import AnalyticsTracker, create_tracking_link
 from youtube_analytics import YouTubeAnalyticsClient, extract_youtube_video_id
 from oauth_manager import OAuthManager
-from publish_service import PublishService, resolve_job_assets
+from publish_service import PublishService, resolve_job_assets, _slugify as job_slugify
+from publish_quality import evaluate_publish_quality
 from publishers.rumble_publisher import RumblePublisher
 from bg_generator import generate_background, get_style_for_content, apply_vignette, apply_film_grain
 from video_claim_audit import audit_output
 from openapi_customize import customize_openapi
+from broll import any_broll_files
+from media_library import media_library_snapshot
+from sound_design import music_bed_moods, music_beds_present
 from auth_public_routes import is_public_path
 
 logging.basicConfig(
@@ -111,6 +119,54 @@ logging.basicConfig(
     format='{"level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
 )
 logger = logging.getLogger("shadowcast")
+
+_SENTRY_SCRUB_HEADERS = frozenset({"authorization", "cookie", "x-service-key"})
+_SENTRY_DROP_TRACE_PATHS = frozenset({"/api/health", "/api/readiness"})
+
+
+def _sentry_frontend_loader_key() -> str:
+    dsn = (os.getenv("SENTRY_FRONTEND_DSN") or "").strip()
+    if not dsn or "@" not in dsn:
+        return ""
+    try:
+        return dsn.split("://", 1)[1].split("@", 1)[0]
+    except IndexError:
+        return ""
+
+
+def _sentry_before_send(event, hint):
+    request_data = event.get("request")
+    if isinstance(request_data, dict):
+        headers = request_data.get("headers")
+        if isinstance(headers, dict):
+            for key in list(headers):
+                if str(key).lower() in _SENTRY_SCRUB_HEADERS:
+                    headers[key] = "[Filtered]"
+    return event
+
+
+def _sentry_traces_sampler(sampling_context):
+    asgi_scope = sampling_context.get("asgi_scope") or {}
+    path = asgi_scope.get("path") or ""
+    if path in _SENTRY_DROP_TRACE_PATHS:
+        return 0.0
+    parent_sampled = sampling_context.get("parent_sampled")
+    if parent_sampled is not None:
+        return float(parent_sampled)
+    return 1.0
+
+
+if os.getenv("SENTRY_DSN", "").strip():
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+        release=os.getenv("SENTRY_RELEASE") or None,
+        send_default_pii=False,
+        traces_sampler=_sentry_traces_sampler,
+        enable_logs=True,
+        ignore_errors=["JobCancelled"],
+        before_send=_sentry_before_send,
+    )
 
 _oauth_rate_buckets: dict[str, list[float]] = defaultdict(list)
 _OAUTH_RATE_LIMIT = 60
@@ -184,6 +240,8 @@ def _error_payload(status_code: int, message: str, details: list | None = None) 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code >= 500:
+        sentry_sdk.capture_exception(exc)
     message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
@@ -239,7 +297,7 @@ async def security_headers_and_rate_limit(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+        "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://js.sentry-cdn.com https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.sentry.io https://*.ingest.sentry.io; worker-src 'self' blob:",
     )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
@@ -369,6 +427,24 @@ def _youtube_package_ok(path: Path) -> bool:
         return False
     seo_title = str(data.get("seo_title", "")).strip()
     return bool(seo_title) and not data.get("_shadowcast_fallback", False)
+
+
+def _script_ready_for_render(script: dict) -> tuple[bool, str]:
+    """Fail-fast before MoviePy: require speakable overlay segments."""
+    if not isinstance(script, dict):
+        return False, "script is not an object"
+    segments: list = []
+    if isinstance(script.get("segments"), list):
+        segments.extend(script["segments"])
+    for chapter in script.get("chapters") or []:
+        if isinstance(chapter, dict) and isinstance(chapter.get("segments"), list):
+            segments.extend(chapter["segments"])
+    if not segments:
+        return False, "script has no segments"
+    texts = [str(s.get("text") or "").strip() for s in segments if isinstance(s, dict)]
+    if not any(texts):
+        return False, "script segments have empty text"
+    return True, ""
 
 
 def _artifact_ok(path: Path, artifact_type: str = "generic", formats: Optional[List[str]] = None) -> bool:
@@ -847,7 +923,7 @@ CSV_COLUMNS = [
     "keywords", "target_audience", "product_category", "competitors",
     "unique_selling_point", "discount_info", "coupon_code",
     "common_complaints", "common_praises", "who_not_for",
-    "series_name", "price_comparison", "content_style", "amazon_url",
+    "series_name", "price_comparison", "content_style", "amazon_url", "image_url",
 ]
 
 
@@ -886,6 +962,7 @@ def parse_csv_products(csv_text: str) -> List[dict]:
             "price_comparison": norm.get("price_comparison", ""),
             "content_style": normalize_content_style(norm.get("content_style", DEFAULT_CONTENT_STYLE)),
             "amazon_url": norm.get("amazon_url", ""),
+            "image_url": norm.get("image_url", ""),
         }
         products.append(product)
     return products
@@ -928,11 +1005,34 @@ def _prepare_products_for_generate(
         )
         field_warnings = _completeness_gate(item, item["content_style"])
         for field in field_warnings:
-            warnings.append(f"{item.get('product_name', '?')}: weak/missing {field}")
+            name = item.get("product_name", "?")
+            if field == "image_url":
+                warnings.append(f"{name}: No product image — thumbs will be text-only")
+            elif field == "claim_ledger":
+                warnings.append(f"{name}: No cited claims — scripts will hedge or invent")
+            else:
+                warnings.append(f"{name}: weak/missing {field}")
         prepared.append(item)
     if not prepared:
         raise HTTPException(status_code=400, detail="No valid products after completeness/dedupe.")
     return prepared, warnings
+
+
+def _tts_default_enabled() -> bool:
+    """API default: TTS on unless SHADOWCAST_TTS_DEFAULT=0."""
+    return os.getenv("SHADOWCAST_TTS_DEFAULT", "1").strip() not in ("0", "false", "False")
+
+
+def _resolve_use_tts(requested: bool) -> bool:
+    """Honor client flag; SHADOWCAST_TTS_DEFAULT=0 forces off."""
+    if not _tts_default_enabled():
+        return False
+    return bool(requested)
+
+
+def _resolve_product_image_path(product: dict) -> str | None:
+    path = resolve_product_image(product.get("image_url") or product.get("imageUrl") or "")
+    return str(path) if path else None
 
 
 # ── Single Product Generation Worker ──────────────────────────────────
@@ -942,7 +1042,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         step_offset: int, total_steps: int,
                         audio_enabled: bool = True,
                         audio_mood: str = "auto",
-                        use_tts: bool = False,
+                        use_tts: bool = True,
                         tts_provider: str = "auto",
                         tts_voice: Optional[str] = None,
                         video_preset: str = "medium"):
@@ -966,6 +1066,15 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
 
     mood_arg = None if audio_mood in (None, "", "auto") else audio_mood
     render_preset = resolve_video_preset(video_preset)
+    product_image_path = _resolve_product_image_path(product)
+    if product.get("image_url") and not product_image_path:
+        job.setdefault("warnings", []).append(
+            f"[{product.get('product_name', '?')}] Product image_url could not be downloaded; using procedural backgrounds."
+        )
+    elif not (product.get("image_url") or "").strip():
+        job.setdefault("warnings", []).append(
+            f"[{product.get('product_name', '?')}] No product image — thumbs will be text-only"
+        )
 
     all_scripts = {}
     all_yt_packages = {}
@@ -1070,6 +1179,17 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
             _save_job(job_id)
 
             try:
+                ready, ready_detail = _script_ready_for_render(scripts_data[fmt])
+                if not ready:
+                    job["errors"].append(
+                        f"[{product['product_name']}] Video ({hook_type} {fmt}): "
+                        f"fail-fast before render — {ready_detail}"
+                    )
+                    step += 1
+                    job["progress"] = int(step / total_steps * 100)
+                    _save_job(job_id)
+                    continue
+
                 render_options = {
                     "product_name": product.get("product_name", ""),
                     "price": product.get("price", ""),
@@ -1082,6 +1202,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                     "tts_provider": tts_provider,
                     "tts_voice": tts_voice,
                     "video_preset": render_preset,
+                    "product_image_path": product_image_path or "",
                 }
                 fingerprint = compute_render_fingerprint(
                     scripts_data[fmt],
@@ -1104,6 +1225,7 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         tts_voice=tts_voice,
                         video_preset=render_preset,
                         render_warnings=job.setdefault("warnings", []),
+                        product_image_path=product_image_path,
                     )
                     if fmt == "short_form":
                         render_short_form_video(scripts_data[fmt], str(video_path), **render_kwargs)
@@ -1224,11 +1346,16 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                     product_results["hooks"][hook_type] = {}
                 product_results["hooks"][hook_type]["thumbnails"] = existing
             else:
+                yt_assets = (product_results.get("hooks", {}).get(hook_type) or {}).get("youtube_assets") or {}
+                pkg = yt_assets.get("short_form") or yt_assets.get("long_form") or {}
                 thumb_set = generate_thumbnail_set(
                     product.get('product_name', 'Product'),
                     hook_type,
                     content_style_name,
                     keywords=product.get('keywords', []) if isinstance(product.get('keywords'), list) else [],
+                    product_image_path=product_image_path,
+                    thumbnail_text_primary=pkg.get("thumbnail_text_primary"),
+                    thumbnail_text_secondary=pkg.get("thumbnail_text_secondary"),
                 )
                 for variant_key, thumb_img in thumb_set.items():
                     badge_text = style_badge_text(content_style_name)
@@ -1237,7 +1364,13 @@ def _run_single_product(job_id: str, product: dict, product_dir: Path,
                         thumb_img = add_badge(thumb_img, badge_text)
 
                     thumb_fname = f"{slug}_{hook_type}_thumbnail_{variant_key}.png"
-                    thumb_img.save(str(product_dir / thumb_fname))
+                    thumb_path = product_dir / thumb_fname
+                    thumb_img.save(str(thumb_path))
+                    severity, _expected, actual, detail = audit_thumbnail_contrast(thumb_path)
+                    if severity == "WARN":
+                        job.setdefault("warnings", []).append(
+                            f"[{product['product_name']}] Thumbnail {variant_key} contrast {actual}: {detail}"
+                        )
 
                     if hook_type not in product_results["hooks"]:
                         product_results["hooks"][hook_type] = {}
@@ -1517,6 +1650,30 @@ def get_readiness():
             "Only basic Google TTS is available. Install Kokoro/Piper or configure OpenAI TTS for better voice quality."
         )
 
+    beds_ok = music_beds_present()
+    bed_moods = music_bed_moods()
+    broll_ok = any_broll_files()
+    library = media_library_snapshot()
+    music_missing = list(library.get("music", {}).get("missing") or [])
+    broll_tags = list(library.get("broll", {}).get("present") or [])
+    broll_missing = list(library.get("broll", {}).get("missing") or [])
+    if not beds_ok:
+        warnings.append(
+            "No royalty-free music beds under backend/assets/music/. Run scripts/fetch_operator_media.sh (synth fallback sounds weak)."
+        )
+    elif music_missing:
+        warnings.append(
+            f"Music beds incomplete — missing moods: {', '.join(music_missing)}. See GET /api/media-library."
+        )
+    if not broll_ok:
+        warnings.append(
+            "No B-roll clips under backend/assets/broll/. Run scripts/fetch_operator_media.sh for long-form pads."
+        )
+    elif broll_missing:
+        warnings.append(
+            f"B-roll pack incomplete — missing: {', '.join(broll_missing)}. See GET /api/media-library."
+        )
+
     return ReadinessResponse(
         ready=len(blockers) == 0,
         blockers=blockers,
@@ -1533,9 +1690,26 @@ def get_readiness():
                 key: bool(info.get("available"))
                 for key, info in providers.items()
             },
+            music_beds=beds_ok,
+            music_bed_moods=bed_moods,
+            music_beds_missing=music_missing,
+            broll_pack=broll_ok,
+            broll_tags=broll_tags,
+            broll_missing=broll_missing,
         ),
         default_video_preset=resolve_video_preset(None),
     )
+
+
+@app.get(
+    "/api/media-library",
+    response_model=MediaLibraryResponse,
+    responses=_COMMON_ERROR_RESPONSES,
+    tags=["ops"],
+)
+def get_media_library(q: str = ""):
+    """List/tag/search operator music beds and B-roll clips (findability)."""
+    return media_library_snapshot(query=q or None)
 
 
 @app.get("/api/providers", response_model=ProvidersResponse, responses=_COMMON_ERROR_RESPONSES, tags=["config"])
@@ -1640,12 +1814,26 @@ async def scrape_amazon(url: str = Form(...)):
         "key_features": ", ".join(result.get("key_features", [])),
         "star_rating": result.get("star_rating", ""),
         "number_of_reviews": result.get("number_of_reviews", ""),
-        "common_praises": "\n".join(
-            [f"- {r['title']}: {r['text']}" for r in result.get("positive_reviews", [])]
-        ) if result.get("positive_reviews") else "",
-        "common_complaints": "\n".join(
-            [f"- {r['title']}: {r['text']}" for r in result.get("negative_reviews", [])]
-        ) if result.get("negative_reviews") else "",
+        "common_praises": (
+            (result.get("common_praise_themes") or "").strip()
+            or (
+                "\n".join(
+                    [f"- {r['title']}: {r['text']}" for r in result.get("positive_reviews", [])]
+                )
+                if result.get("positive_reviews")
+                else ""
+            )
+        ),
+        "common_complaints": (
+            (result.get("common_complaint_themes") or "").strip()
+            or (
+                "\n".join(
+                    [f"- {r['title']}: {r['text']}" for r in result.get("negative_reviews", [])]
+                )
+                if result.get("negative_reviews")
+                else ""
+            )
+        ),
     }
     return {"status": "ok", "data": mapped, "raw": result}
 
@@ -1698,7 +1886,7 @@ def start_generation(req: GenerateRequest):
         "formats": req.formats, "content_style": product["content_style"],
         "audio_enabled": req.audio_enabled,
         "audio_mood": req.audio_mood,
-        "use_tts": req.use_tts,
+        "use_tts": _resolve_use_tts(req.use_tts),
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
@@ -1725,7 +1913,7 @@ async def batch_upload(
     content_style: str = Form(DEFAULT_CONTENT_STYLE),
     audio_enabled: bool = Form(True),
     audio_mood: str = Form("auto"),
-    use_tts: bool = Form(False),
+    use_tts: bool = Form(True),
     tts_provider: str = Form("auto"),
     tts_voice: str = Form(""),
     video_preset: str = Form("medium"),
@@ -1758,7 +1946,7 @@ async def batch_upload(
         "formats": fmt_list, "content_style": style,
         "audio_enabled": audio_enabled,
         "audio_mood": audio_mood,
-        "use_tts": use_tts,
+        "use_tts": _resolve_use_tts(use_tts),
         "tts_provider": tts_provider,
         "tts_voice": tts_voice or None,
         "video_preset": resolve_video_preset(video_preset),
@@ -1854,7 +2042,7 @@ def batch_generate(req: BatchGenerateRequest):
         "formats": req.formats, "content_style": style,
         "audio_enabled": req.audio_enabled,
         "audio_mood": req.audio_mood,
-        "use_tts": req.use_tts,
+        "use_tts": _resolve_use_tts(req.use_tts),
         "tts_provider": req.tts_provider,
         "tts_voice": req.tts_voice,
         "video_preset": resolve_video_preset(req.video_preset),
@@ -2195,6 +2383,58 @@ def oauth_disconnect(platform: str):
 
 
 # ── Publish ───────────────────────────────────────────────────────────
+class PublishQualityRequest(BaseModel):
+    job_id: Optional[str] = None
+    video_path: Optional[str] = None
+    thumbnail_path: Optional[str] = None
+    hook_type: Optional[str] = None
+    video_format: str = "short_form"
+    product_slug: Optional[str] = None
+    thumbnail_variant: str = "variant_a"
+
+
+@app.post("/api/publish/quality")
+def publish_quality_check(req: PublishQualityRequest):
+    try:
+        video_path = req.video_path
+        thumb_path = req.thumbnail_path
+        image_url = None
+        if req.job_id and req.hook_type:
+            resolved = resolve_job_assets(
+                req.job_id,
+                req.hook_type,
+                req.video_format,
+                product_slug=req.product_slug,
+                jobs=jobs,
+            )
+            video_path = video_path or resolved.get("video_path")
+            thumb_path = thumb_path or resolved.get("thumbnail_path")
+            if req.thumbnail_variant in ("variant_b", "variant_c") and thumb_path:
+                thumb_path = re.sub(r"variant_[abc]", req.thumbnail_variant, str(thumb_path))
+            image_url = resolved.get("image_url")
+            if not image_url and req.job_id in jobs:
+                job = jobs[req.job_id]
+                product = job.get("product_info") or {}
+                if req.product_slug and job.get("mode") == "batch":
+                    for pr in job.get("product_results") or []:
+                        if job_slugify(pr.get("product_name", "")) == req.product_slug:
+                            product = pr.get("product_info") or product
+                            break
+                image_url = (product.get("image_url") or "").strip() or None
+        if not video_path:
+            raise HTTPException(status_code=400, detail="video_path or job_id+hook_type required")
+        return evaluate_publish_quality(
+            video_path=video_path,
+            thumbnail_path=thumb_path,
+            video_format=req.video_format,
+            image_url=image_url,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class PublishRequest(BaseModel):
     job_id: str
     hook_type: str
@@ -2213,6 +2453,7 @@ class PublishBatchRequest(BaseModel):
     platforms: List[str]
     product_slug: Optional[str] = None
     dry_run: bool = False
+    thumbnail_variant: str = "variant_a"
 
 
 @app.post("/api/publish")
@@ -2233,6 +2474,7 @@ def publish_video_batch(req: PublishBatchRequest):
         return {"results": publish_service.publish_batch(
             req.job_id, req.hook_type, req.video_format, req.platforms,
             product_slug=req.product_slug, dry_run=req.dry_run,
+            thumbnail_variant=req.thumbnail_variant,
         )}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2580,6 +2822,22 @@ app.openapi = _custom_openapi
 
 # ── Serve Frontend ────────────────────────────────────────────────────
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+_SENTRY_LOADER_PLACEHOLDER = "__SENTRY_LOADER_KEY__"
+_SENTRY_LOADER_TAG = (
+    f'    <script src="https://js.sentry-cdn.com/{_SENTRY_LOADER_PLACEHOLDER}.min.js" '
+    'crossorigin="anonymous" data-lazy="no"></script>\n'
+)
+
+
+def _serve_index_html() -> HTMLResponse:
+    html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    loader_key = _sentry_frontend_loader_key()
+    if loader_key:
+        html = html.replace(_SENTRY_LOADER_PLACEHOLDER, loader_key)
+    else:
+        html = html.replace(_SENTRY_LOADER_TAG, "")
+    return HTMLResponse(html)
+
 
 if (FRONTEND_DIR / "index.html").exists():
     assets_dir = FRONTEND_DIR / "assets"
@@ -2590,8 +2848,10 @@ if (FRONTEND_DIR / "index.html").exists():
     async def serve_frontend(full_path: str):
         file_path = FRONTEND_DIR / full_path
         if file_path.exists() and file_path.is_file():
+            if file_path.name == "index.html":
+                return _serve_index_html()
             return FileResponse(str(file_path))
-        return FileResponse(str(FRONTEND_DIR / "index.html"))
+        return _serve_index_html()
 else:
     @app.get("/")
     def root():

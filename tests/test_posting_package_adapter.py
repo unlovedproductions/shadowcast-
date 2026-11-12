@@ -58,6 +58,8 @@ def test_instagram_caption_truncation():
     assert payload["platform"] == "instagram"
     assert len(payload["caption"]) <= 2200
     assert "#widget" in payload["caption"]
+    assert payload["media_type"] == "REELS"
+    assert payload["share_to_feed"] is True
 
 
 def test_tiktok_title_limit():
@@ -65,6 +67,20 @@ def test_tiktok_title_limit():
     payload = build("tiktok", assets)
     assert len(payload["title"]) <= 150
     assert len(payload["hashtags"]) <= 5
+    assert payload["privacy_level"] == "PUBLIC_TO_EVERYONE"
+    assert payload["disable_duet"] is False
+    assert payload["video_cover_timestamp_ms"] == 1000
+
+
+def test_tiktok_privacy_override():
+    payload = build(
+        "tiktok",
+        SAMPLE_ASSETS,
+        {"privacy_level": "SELF_ONLY", "disable_comment": True, "video_cover_timestamp_ms": 2500},
+    )
+    assert payload["privacy_level"] == "SELF_ONLY"
+    assert payload["disable_comment"] is True
+    assert payload["video_cover_timestamp_ms"] == 2500
 
 
 def test_facebook_build():
@@ -77,6 +93,19 @@ def test_rumble_tags_limit():
     assets = {**SAMPLE_ASSETS, "tags": [f"tag{i}" for i in range(20)]}
     payload = build("rumble", assets)
     assert len(payload["tags"]) <= 10
+
+
+def test_youtube_build_strips_markdown_links():
+    assets = {
+        **SAMPLE_ASSETS,
+        "pinned_comment": "Check it out: [Product Link](https://example.com/aff).",
+        "seo_description": "Buy here [Shop Now](https://example.com/buy) today.",
+    }
+    payload = build("youtube", assets, {"format": "short_form"})
+    assert "[Product Link]" not in payload["pinned_comment"]
+    assert "https://example.com/aff" in payload["pinned_comment"]
+    assert "[Shop Now]" not in payload["description"]
+    assert "https://example.com/buy" in payload["description"]
 
 
 def test_youtube_tags_char_limit():

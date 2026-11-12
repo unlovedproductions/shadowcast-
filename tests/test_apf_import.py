@@ -96,14 +96,170 @@ def test_price_fallback_to_apv_then_varies():
     assert empty_price["price"] == "Varies"
 
 
-def test_style_inference_from_angles():
+def test_image_url_from_vendor_material_excerpt():
     payload = {
-        "product": {"name": "Budget Gadget"},
-        "review_brief": {
-            "best_video_angles": ["Best budget pick under $50"],
-        },
+        "product": {"name": "Glow Serum", "affiliate_url": "https://example.com/hop"},
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Glow Serum Official",
+                "url": "https://vendor.example.com/glow",
+                "excerpt": "See the bottle https://cdn.example.com/products/glow-serum.jpg on the page.",
+            }
+        ],
     }
-    assert normalize_apf_payload(payload)["recommended_content_style"] == "budget_challenge"
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/products/glow-serum.jpg"
+
+
+def test_image_url_from_sales_page_og_image(monkeypatch):
+    html = """
+    <html><head>
+      <meta property="og:image" content="https://cdn.example.com/media/product-hero.png"/>
+    </head><body><img src="/logo.png"/></body></html>
+    """
+
+    def fake_fetch(url, timeout=8.0):
+        assert "vendor.example.com" in url
+        return html
+
+    monkeypatch.setattr("apf_import._fetch_page_html", fake_fetch)
+    payload = {
+        "product": {"name": "Hero Bottle"},
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Hero Bottle Offer",
+                "url": "https://vendor.example.com/hero",
+            }
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/media/product-hero.png"
+
+
+def test_explicit_image_url_wins_over_vendor_page(monkeypatch):
+    monkeypatch.setattr(
+        "apf_import._fetch_page_html",
+        lambda *a, **k: '<meta property="og:image" content="https://cdn.example.com/wrong.jpg"/>',
+    )
+    payload = {
+        "product": {
+            "name": "Explicit",
+            "image_url": "https://cdn.example.com/products/explicit.webp",
+        },
+        "vendor_materials": [
+            {"source_type": "sales_page", "title": "Offer", "url": "https://vendor.example.com/x"}
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert normalized["image_url"] == "https://cdn.example.com/products/explicit.webp"
+
+
+def test_digistore_skips_compliance_coda_and_picks_bottle(monkeypatch):
+    """Mislabeled Digistore compliance 'sales_page' must not beat real order-page bottle art."""
+    pages = {
+        "https://vendor.example.com/compliance": """
+            <html><body>
+              <img src="https://cdn.coda.io/assets/x/img/import_google_docs.png"/>
+              <img src="https://codaio.imgix.net/docs/x/blobs/bl-abc/deadbeef"/>
+            </body></html>
+        """,
+        "https://vendor.example.com/order": """
+            <html><body>
+              <img src="https://assets.vendor.com/Images/Logo/Logo-White.png"/>
+              <img src="https://assets.vendor.com/Images/Landing/chart.png"/>
+              <img src="https://assets.vendor.com/Images/Products-2020/Advanced-Mitochondrial-Formula/1bottle.png"/>
+              <img src="https://assets.vendor.com/Images/Landing/header-bottle.png"/>
+            </body></html>
+        """,
+        "https://www.digistore24-app.com/detail/50163": """
+            <html><head>
+              <meta property="og:image" content="https://www.digistore24.com/webinc/images/brand/digistore/logo/logo_for_fb.png"/>
+            </head></html>
+        """,
+    }
+
+    def fake_fetch(url, timeout=8.0):
+        return pages.get(url, "")
+
+    monkeypatch.setattr("apf_import._fetch_page_html", fake_fetch)
+    payload = {
+        "product": {
+            "name": "Advanced Mitochondrial Formula",
+            "affiliate_url": "https://www.checkout-ds24.com/redir/50163/x/apf",
+            "product_detail_url": "https://www.digistore24-app.com/detail/50163",
+        },
+        "vendor_materials": [
+            {
+                "source_type": "sales_page",
+                "title": "Compliance Guidelines (Read Before Launch)",
+                "url": "https://vendor.example.com/compliance",
+            },
+            {
+                "source_type": "order_page",
+                "title": "Too Tired To Enjoy It",
+                "url": "https://vendor.example.com/order",
+            },
+            {
+                "source_type": "offer_page",
+                "title": "Earn 60% Commission Promoting Advanced Mitochondrial Formula",
+                "url": "https://www.digistore24-app.com/detail/50163",
+            },
+        ],
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    assert "bottle" in normalized["image_url"]
+    assert "coda" not in normalized["image_url"]
+    assert normalized["image_url"].endswith("header-bottle.png") or "1bottle.png" in normalized["image_url"]
+    assert normalized["_image_resolve"]["status"] == "ok"
+
+
+def test_looks_like_product_image_allows_extensionless_cdn():
+    from apf_import import _looks_like_product_image
+
+    assert _looks_like_product_image(
+        "https://cdn.vendor.com/images/media/blob/abc123?w=800"
+    )
+    assert not _looks_like_product_image(
+        "https://cdn.coda.io/assets/x/img/import_google_docs.png"
+    )
+    assert not _looks_like_product_image(
+        "https://www.digistore24.com/webinc/images/brand/digistore/logo/logo_for_fb.png"
+    )
+
+
+def test_assess_completeness_warns_when_image_missing_but_offer_present():
+    assessment = assess_product_completeness(
+        {
+            "product_name": "No Image Offer",
+            "content_style": "honest_review",
+            "price": "$47.00",
+            "affiliate_link": "https://www.checkout-ds24.com/redir/1/x/apf",
+            "image_url": "",
+            "common_praises": "Works well",
+            "common_complaints": "Pricey",
+        }
+    )
+    assert "image_url" in assessment["warnings"]
+    assert assessment["blocking"] == []
+    assert assessment.get("image_resolve", {}).get("status") == "empty"
+
+
+def test_assess_completeness_silent_when_image_present():
+    assessment = assess_product_completeness(
+        {
+            "product_name": "Has Image",
+            "content_style": "honest_review",
+            "price": "$47.00",
+            "affiliate_link": "https://example.com/hop",
+            "image_url": "https://cdn.example.com/products/bottle.png",
+            "common_praises": "Good",
+            "common_complaints": "None",
+        }
+    )
+    assert "image_url" not in assessment["warnings"]
+
 
 
 def test_shadowcast_import_style_from_enriched_brief():
@@ -347,6 +503,56 @@ def test_assess_completeness_warns_on_thin_trust_product():
     assert "common_praises_or_common_complaints" in assessment["warnings"]
     assert "price" in assessment["warnings"]
     assert "affiliate_link" in assessment["warnings"]
+
+
+def test_claim_ledger_fills_key_features():
+    payload = {
+        "product": {
+            "name": "Advanced Mitochondrial Formula",
+            "affiliate_url": "https://example.com/hop",
+        },
+        "shadowcast_import": {
+            "claim_ledger": [
+                {
+                    "text": "1 Bottle $79.95",
+                    "kind": "price",
+                    "source_url": "https://vendor.example/order",
+                    "source_type": "order_page",
+                },
+                {
+                    "text": "Niacinamide supports NAD",
+                    "kind": "ingredient",
+                    "source_url": "https://vendor.example/order",
+                    "source_type": "order_page",
+                },
+            ]
+        },
+        "review_brief": {
+            "common_claims": ["Positioned as a Health product."],
+        },
+    }
+    normalized = normalize_apf_payload(payload)["normalized"]
+    joined = "\n".join(normalized["key_features"])
+    assert "79.95" in joined
+    assert "Niacinamide" in joined
+    assert "Positioned as" not in joined
+
+
+def test_assess_completeness_warns_when_claim_ledger_empty_with_offer():
+    assessment = assess_product_completeness(
+        {
+            "product_name": "No Claims Offer",
+            "content_style": "honest_review",
+            "price": "$47.00",
+            "affiliate_link": "https://www.checkout-ds24.com/redir/1/x/apf",
+            "image_url": "https://cdn.example.com/products/bottle.png",
+            "common_praises": "Good",
+            "common_complaints": "None",
+            "claim_ledger": [],
+        }
+    )
+    assert "claim_ledger" in assessment["warnings"]
+    assert assessment["blocking"] == []
 
 
 def test_dedupe_products_by_name_keeps_last():

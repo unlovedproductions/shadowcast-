@@ -69,8 +69,7 @@
         .upload-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
         .upload-actions button { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
         .btn-template { background: var(--blue); color: #fff; }
-        .btn-gsheet { background: var(--green); color: #fff; }
-        .btn-template:hover, .btn-gsheet:hover { opacity: .85; }
+        .btn-template:hover { opacity: .85; }
         .preview-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
         .preview-table th { background: var(--bg3); color: var(--text2); padding: 8px 10px; text-align: left; font-weight: 600; }
         .preview-table td { padding: 8px 10px; border-bottom: 1px solid var(--bg3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -129,6 +128,10 @@
         .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag { background: var(--bg3); padding: 3px 10px; border-radius: 20px; font-size: 11px; color: var(--text2); }
         .video-player { width: 100%; max-width: 480px; border-radius: var(--radius); background: #000; }
+        .social-preview-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-top: 16px; }
+        .social-preview-meta { flex: 1; min-width: 220px; font-size: 13px; color: var(--text2); }
+        .social-preview-meta h3 { font-size: 15px; color: var(--text); margin-bottom: 8px; }
+        .social-preview-thumb { width: 120px; border-radius: 8px; border: 1px solid var(--bg3); }
 
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
         .modal { background: var(--bg2); border: 1px solid var(--bg3); border-radius: 12px; padding: 28px; width: 90%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
@@ -230,6 +233,27 @@
         /* Hook Badge */
         .hook-badge { background: var(--pink-glow); color: var(--pink); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     </style>
+    <script>
+        window.sentryOnLoad = function () {
+            Sentry.init({
+                environment: (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+                    ? "development"
+                    : "production",
+                tracesSampleRate: 1.0,
+                tracePropagationTargets: ["localhost", /^\//],
+                replaysSessionSampleRate: 0.1,
+                replaysOnErrorSampleRate: 1.0,
+                integrations: [
+                    Sentry.browserTracingIntegration(),
+                    Sentry.replayIntegration({
+                        maskAllText: true,
+                        blockAllMedia: true,
+                    }),
+                ],
+            });
+        };
+    </script>
+    <script src="https://js.sentry-cdn.com/__SENTRY_LOADER_KEY__.min.js" crossorigin="anonymous" data-lazy="no"></script>
 </head>
 <body>
     <div id="app"></div>
@@ -237,15 +261,64 @@
     <script>
     const API = window.location.origin + '/api';
 
+    let pollTimer = null;
+    let pollBackoffMs = 2000;
+    const POLL_BACKOFF_MAX = 15000;
+    let pollActive = false;
+
+    function clearPollTimer() {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    }
+
+    function cancelJobPolling() {
+        pollActive = false;
+        clearPollTimer();
+        pollBackoffMs = 2000;
+        const jobId = state.jobId;
+        if (jobId) {
+            fetch(`${API}/cancel/${jobId}`, { method: 'POST' })
+                .then(async (res) => {
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        showToast('Cancel failed: ' + (data.detail || res.status));
+                        return;
+                    }
+                    showToast(data.message || 'Cancel requested');
+                    if (data.status) state.jobStatus = data.status;
+                })
+                .catch((e) => showToast('Cancel failed: ' + e.message));
+        } else {
+            showToast('Stopped status polling.');
+        }
+        render();
+    }
+
+    function beginPolling() {
+        pollActive = true;
+        pollBackoffMs = 2000;
+        state.pollStaleCount = 0;
+        state.lastPollProgress = null;
+        state.lastPollStep = null;
+        clearPollTimer();
+        pollStatus();
+    }
+
+    function scheduleNextPoll() {
+        clearPollTimer();
+        if (!pollActive || !state.jobId) return;
+        pollTimer = setTimeout(pollStatus, pollBackoffMs);
+    }
+
     let state = {
         page: 'form',
         mode: 'single',
         showSettings: false,
-        llmProvider: 'openai', llmApiKey: '', llmBaseUrl: '', llmModel: '',
+        llmProvider: 'ollama', llmApiKey: '', llmBaseUrl: 'http://localhost:11434/v1', llmModel: 'qwen2.5:14b-instruct-q5_K_M',
         providerPresets: {},
         // Single product — core
         productName: '', niche: '', keyFeatures: '', price: '',
-        affiliateLink: '', keywords: '', targetAudience: '',
+        affiliateLink: '', imageUrl: '', keywords: '', targetAudience: '',
+        amazonUrl: '',
         productCategory: '', competitors: '', usp: '',
         discountInfo: '', couponCode: '',
         // Single product — trust-based
@@ -262,28 +335,42 @@
         selectedFormats: ['short_form', 'long_form'],
         audioMood: 'chill',
         audioEnabled: true,
-        useTts: false,
+        useTts: true,
+        useTtsUserSet: false,
         ttsProvider: 'auto',
         ttsVoice: '',
         ttsProviders: null,
+        videoPreset: 'medium',
+        readiness: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
-        results: null, batchResults: null, errors: [],
+        results: null, batchResults: null, resultsSummary: null, resultsProductInfo: null, trustInputs: null,
+        errors: [], scriptErrors: [], videoWarnings: [], otherErrors: [], jobWarnings: [],
+        auditResult: null,
+        pollStaleCount: 0, lastPollProgress: null, lastPollStep: null,
         // Results view
         activeTab: null, activeFormat: 'short_form', activeProductIdx: 0, activeBatchIdx: 0,
         // Navigation
         navPage: 'generate',
         // Analytics
-        analyticsData: null, analyticsLoading: false,
-        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: '',
+        analyticsData: null, analyticsLoading: false, youtubeSyncLoading: false,
+        llmModels: [], llmModelsLoading: false, llmModelsSource: '',
+        trackVideoId: '', trackProduct: '', trackHook: '', trackFormat: 'short_form',
         metricVideoId: '', metricType: 'views', metricValue: '',
         // Social
         socialStatus: null, socialLoading: false,
-        oauthStatus: null, oauthLoading: false,
+        oauthStatus: null, oauthLoading: false, oauthConfig: null, oauthConnecting: null,
         postingQueue: [], queueLoading: false,
+        postableJobs: [], postableJobsLoading: false,
+        socialSelectedJobId: '', socialSelectedProductSlug: '', socialSelectedVariantKey: '',
+        socialShowManualPath: false,
         socialPostPlatform: 'instagram', socialPostVideo: '', socialPostCaption: '', socialPostHashtags: '', socialPostSchedule: '',
         publishPlatforms: ['youtube', 'instagram', 'tiktok'],
         publishLoading: false, publishResults: null,
+        publishQuality: null, publishQualityLoading: false,
+        publishThumbVariant: 'variant_a',
+        bgRecommend: '',
+        trackAffiliateUrl: '', trackingLinkResult: '',
         rumbleUsername: '', rumblePassword: '',
     };
 
@@ -295,7 +382,7 @@
         { id: 'rumble', label: 'Rumble' },
     ];
 
-    const hooks = [
+    let hooks = [
         { id: 'curiosity', name: 'Curiosity', desc: 'Provocative questions, surprising reveals that make viewers click', adv: false },
         { id: 'problem_agitation', name: 'Problem-Agitation', desc: 'Pain point \u2192 agitate \u2192 tease the solution', adv: false },
         { id: 'listicle', name: 'Listicle', desc: 'Top X reasons / numbered format for easy consumption', adv: false },
@@ -306,6 +393,7 @@
         { id: 'comparison_trap', name: 'Comparison Trap', desc: 'Price comparison that makes viewers feel smart', adv: true },
         { id: 'myth_buster', name: 'Myth Buster', desc: 'Challenge conventional wisdom to spark engagement', adv: true },
     ];
+    const ADVANCED_HOOK_IDS = new Set(['data_bomb', 'confession', 'comparison_trap', 'myth_buster']);
 
     const contentStyles = {
         honest_review: { name: 'Honest Review', desc: 'Balanced pros AND cons. "Who This Is NOT For" section. Builds trust.' },
@@ -324,6 +412,7 @@
         if (state.navPage === 'generate') {
             if (state.page === 'form') html += renderForm();
             else if (state.page === 'progress') html += renderProgress();
+            else if (state.page === 'error') html += renderGenerationError();
             else html += renderResults();
         } else if (state.navPage === 'analytics') {
             html += renderAnalyticsPage();
@@ -351,6 +440,50 @@
         </div>`;
     }
 
+    function renderGenerationScopePreview() {
+        const productCount = isBatchMode() ? Math.max(state.batchProducts.length, 1) : 1;
+        const hookCount = Math.max(state.selectedHooks.length, 1);
+        const formatCount = Math.max(state.selectedFormats.length, 1);
+        const totalOutputs = productCount * hookCount * formatCount;
+        const perOutputMinutes = state.useTts ? 1.8 : state.audioEnabled ? 1.5 : 1.2;
+        const presetFactor = state.videoPreset === 'best' ? 1.35 : state.videoPreset === 'fast' ? 0.85 : 1;
+        const etaMinutes = Math.max(1, Math.round(totalOutputs * perOutputMinutes * presetFactor));
+
+        const hookNames = hooks
+            .filter((h) => state.selectedHooks.includes(h.id))
+            .map((h) => h.name);
+        const formatNames = state.selectedFormats.map((f) => (f === "short_form" ? "Shorts" : "Long"));
+        const hookPreview = hookNames.length > 2 ? `${hookNames.slice(0, 2).join(", ")} +${hookNames.length - 2}` : hookNames.join(", ");
+
+        return `<p style="font-size:12px;color:var(--text2);margin-top:8px;">
+            Scope: ${productCount} product${productCount === 1 ? "" : "s"} × ${hookCount} hook${hookCount === 1 ? "" : "s"} × ${formatCount} format${formatCount === 1 ? "" : "s"} = <strong>${totalOutputs}</strong> outputs (est. ~${etaMinutes} min).<br>
+            Hooks: ${esc(hookPreview || "none")} • Formats: ${esc(formatNames.join(", ") || "none")}${!state.useTts && !state.audioEnabled ? '<br><span style="color:var(--accent);">Warning: no voiceover or background audio selected.</span>' : ''}
+        </p>`;
+    }
+
+    function mapVideoPreset(uiPreset) {
+        if (uiPreset === 'fast') return 'veryfast';
+        if (uiPreset === 'best') return 'slow';
+        return 'medium';
+    }
+
+    function renderReadinessBanner() {
+        const r = state.readiness;
+        if (!r) return '';
+        let html = '';
+        if (r.blockers && r.blockers.length) {
+            html += `<div style="font-size:12px;color:var(--red);margin-top:8px;border:1px solid var(--red);border-radius:8px;padding:10px;">
+                <strong>Preflight blocked:</strong><br>${r.blockers.map((b) => esc(b)).join('<br>')}
+            </div>`;
+        } else if (r.ready) {
+            html += `<p style="font-size:12px;color:#6f6;margin-top:8px;">Preflight OK — LLM, ffmpeg, and TTS checks passed.</p>`;
+        }
+        if (r.warnings && r.warnings.length) {
+            html += `<p style="font-size:12px;color:var(--accent);margin-top:8px;">${r.warnings.map((w) => esc(w)).join(' ')}</p>`;
+        }
+        return html;
+    }
+
     function renderForm() {
         return `
         <div class="mode-tabs">
@@ -367,7 +500,9 @@
             ${isBatchMode() && state.batchProducts.length > 0
                 ? 'Generate ' + state.batchProducts.length + ' Products'
                 : 'Generate Videos + YouTube Package'}
-        </button>`;
+        </button>
+        ${renderReadinessBanner()}
+        ${renderGenerationScopePreview()}`;
     }
 
     function renderSingleForm() {
@@ -388,6 +523,7 @@
                 <div class="form-group full"><label>Key Features <span class="req">*</span></label><input id="keyFeatures" value="${esc(state.keyFeatures)}" placeholder="Comma-separated: ANC, 50hr battery, Hi-Res Audio"><span class="hint">Separate each feature with a comma</span></div>
                 <div class="form-group"><label>Price</label><input id="price" value="${esc(state.price)}" placeholder="$79.99"></div>
                 <div class="form-group"><label>Affiliate Link <span class="req">*</span></label><input id="affiliateLink" value="${esc(state.affiliateLink)}" placeholder="https://amzn.to/your-link"></div>
+                <div class="form-group full"><label>Product Image URL</label><input id="imageUrl" value="${esc(state.imageUrl)}" placeholder="https://…/product.jpg"><span class="hint">Optional. APF imports auto-pull photos from vendor sales pages when available; this overrides.</span></div>
                 <div class="form-group full"><label>Target Keywords <button onclick="researchKeywords()" style="background:var(--pink);color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:8px;" id="researchBtn">🔍 Research Keywords</button></label><input id="keywords" value="${esc(state.keywords)}" placeholder="Comma-separated: wireless earbuds, budget ANC earbuds 2025"><span class="hint">SEO keywords for YouTube search optimization. Click "Research Keywords" to auto-discover trending terms.</span><div id="keywordResults" style="display:none;margin-top:10px;"></div></div>
                 <div class="form-group"><label>Target Audience</label><input id="targetAudience" value="${esc(state.targetAudience)}" placeholder="e.g., Tech-savvy consumers aged 18-35"></div>
                 <div class="form-group"><label>Product Category</label><input id="productCategory" value="${esc(state.productCategory)}" placeholder="e.g., Wireless Earbuds"></div>
@@ -460,7 +596,6 @@
             </div>
             <div class="upload-actions">
                 <button class="btn-sm btn-template" onclick="downloadTemplate()">Download CSV Template</button>
-                <button class="btn-sm btn-gsheet" onclick="openGoogleSheet()">Open Google Sheets Template</button>
             </div>
             ${preview}
         </div>`;
@@ -492,6 +627,9 @@
             <div class="style-grid">
                 ${Object.entries(contentStyles).map(([id,s])=>`<div class="style-option ${state.contentStyle===id?'selected':''}" onclick="setContentStyle('${id}')"><h3>${s.name}</h3><p>${s.desc}</p></div>`).join('')}
             </div>
+            ${state.bgRecommend ? `<p style="font-size:12px;color:var(--text2);margin-top:12px;">Recommended background for this style: <strong style="color:var(--pink);">${esc(state.bgRecommend)}</strong>
+                <a href="${API}/bg-preview/${encodeURIComponent(state.bgRecommend)}" target="_blank" rel="noopener" style="margin-left:8px;">Preview</a>
+            </p>` : ''}
         </div>`;
     }
 
@@ -532,9 +670,17 @@
                     <span style="font-size:13px;">Enable Background Music & SFX</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-                    <input type="checkbox" ${state.useTts?'checked':''} onchange="state.useTts=this.checked;if(this.checked)loadTtsProviders();render()">
+                    <input type="checkbox" ${state.useTts?'checked':''} onchange="state.useTtsUserSet=true;state.useTts=this.checked;if(this.checked)loadTtsProviders();render()">
                     <span style="font-size:13px;">Enable Voiceover (TTS)</span>
                 </label>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;max-width:320px;">
+                <label>Export Quality</label>
+                <select class="input-field" onchange="state.videoPreset=this.value;render()">
+                    <option value="fast" ${state.videoPreset==='fast'?'selected':''}>Fast (lower quality, quicker)</option>
+                    <option value="medium" ${state.videoPreset==='medium'?'selected':''}>Balanced (recommended)</option>
+                    <option value="best" ${state.videoPreset==='best'?'selected':''}>Best quality (slower)</option>
+                </select>
             </div>
             ${state.audioEnabled ? `
             <div class="format-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px;">
@@ -588,33 +734,318 @@
         return voices.map(v => `<option value="${esc(v)}" ${state.ttsVoice===v?'selected':''}>${esc(v)}</option>`).join('');
     }
 
-    async function loadTtsProviders() {
-        if (state.ttsProviders) return;
+    async function loadTtsProviders(force=false) {
+        if (state.ttsProviders && !force) {
+            applySmartTtsDefault();
+            return;
+        }
         try {
             const res = await fetch(`${API}/tts-providers`);
             state.ttsProviders = await res.json();
             if (!state.ttsProvider || state.ttsProvider === 'auto') {
                 state.ttsProvider = 'auto';
             }
+            applySmartTtsDefault();
             render();
         } catch (e) {
             console.warn('TTS providers unavailable', e);
         }
     }
 
+    function applySmartTtsDefault() {
+        if (state.useTtsUserSet || !state.ttsProviders) return;
+        const best = state.ttsProviders.best || 'gtts';
+        if (['kokoro', 'openai', 'piper'].includes(best)) {
+            state.useTts = true;
+        }
+    }
+
+    async function loadReadiness() {
+        try {
+            const res = await fetch(`${API}/readiness`);
+            state.readiness = await res.json();
+        } catch (e) {
+            state.readiness = {
+                ready: false,
+                blockers: ['Could not reach backend readiness check.'],
+                warnings: [],
+            };
+        }
+    }
+
+    async function ensurePreflight() {
+        await loadReadiness();
+        const r = state.readiness || {};
+        if (r.blockers && r.blockers.length) {
+            showToast('Fix preflight blockers before generating.');
+            render();
+            return false;
+        }
+        if (!state.useTts && !state.audioEnabled) {
+            showToast('Enable voiceover or background audio — silent videos underperform.');
+            return false;
+        }
+        return true;
+    }
+
+    function getErrorRecoveryHints(phase) {
+        const hints = [];
+        if (phase === 'Script' || phase === 'Starting') {
+            hints.push('Confirm Ollama/LM Studio is running and the configured model is loaded.');
+            hints.push('Delete cached *_scripts.json for this product if a bad script keeps replaying.');
+        }
+        if (phase === 'Render') {
+            hints.push('Verify ffmpeg is installed (`ffmpeg -version`).');
+            hints.push('Try Export Quality = Fast if renders time out on long batches.');
+        }
+        if (phase === 'Package') {
+            hints.push('YouTube package generation uses the same LLM — recheck provider/model in Settings.');
+        }
+        hints.push('Use Retry Status if the server restarted mid-run; completed artifacts are skipped on rerun.');
+        return hints;
+    }
+
+    function splitJobMessages(messages) {
+        const scriptErrors = [];
+        const videoWarnings = [];
+        const otherErrors = [];
+        (messages || []).forEach((msg) => {
+            const text = String(msg || '');
+            if (!text) return;
+            if (
+                text.includes('] Script (') ||
+                text.includes('No segments found in script') ||
+                text.includes('Generated scripts invalid')
+            ) {
+                scriptErrors.push(text);
+                return;
+            }
+            if (text.includes('] Video (')) {
+                videoWarnings.push(text);
+                return;
+            }
+            otherErrors.push(text);
+        });
+        return { scriptErrors, videoWarnings, otherErrors };
+    }
+
     function renderProgress() {
-        return `<div class="progress-section card">
+        const pct = Number.isFinite(state.progress) ? state.progress : 0;
+        const phase = getProgressPhase(state.currentStep, state.jobStatus);
+        const scriptIssueBlock = state.scriptErrors.length
+            ? `<div style="color:var(--red);margin-top:12px;font-size:13px;">
+                <strong>Script Errors:</strong>
+                ${state.scriptErrors.map(err => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+                <div style="margin-top:8px;color:var(--text2);">If this came from cached output, delete the cached <code>*_curiosity_scripts.json</code> for this job and rerun.</div>
+              </div>`
+            : '';
+        const warningRows = [...state.videoWarnings, ...state.otherErrors];
+        const warningBlock = warningRows.length
+            ? `<div style="color:var(--red);margin-top:12px;font-size:13px;">
+                <strong>Warnings:</strong>
+                ${warningRows.map(err => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+              </div>`
+            : '';
+        const staleHint = state.pollStaleCount >= 5
+            ? `<div style="color:var(--text2);font-size:12px;margin-top:8px;">No progress change detected — polling slower. Job may still be running.</div>`
+            : '';
+        return `<div class="progress-section card" aria-live="polite" aria-atomic="true" role="status">
             <div class="spinner"></div>
-            <div class="progress-pct">${state.progress}%</div>
-            <div class="progress-bar-bg"><div class="progress-bar" style="width:${state.progress}%"></div></div>
+            <div class="progress-pct">${pct}%</div>
+            <div class="progress-bar-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Phase: <strong style="color:var(--pink);">${esc(phase)}</strong></div>
+            ${renderProgressPhaseTrail(phase)}
             <div class="progress-text">${esc(state.currentStep)}</div>
-            ${state.errors.length?'<div style="color:var(--red);margin-top:12px;font-size:13px;">Warnings: '+state.errors.join(', ')+'</div>':''}
+            ${scriptIssueBlock}
+            ${warningBlock}
+            ${staleHint}
+            <div style="margin-top:14px;text-align:center;">
+                <button type="button" class="settings-btn" onclick="cancelJobPolling()">Cancel Job</button>
+            </div>
+        </div>`;
+    }
+
+    function getProgressPhase(step, status='') {
+        if ((status || '').toLowerCase() === 'error') return 'Error';
+        const s = String(step || '').toLowerCase();
+        if (s.includes('starting batch') || s.includes('starting...')) return 'Starting';
+        if (s.includes('cached') || s.includes('using cached')) {
+            if (s.includes('script')) return 'Script';
+            if (s.includes('youtube') || s.includes('package')) return 'Package';
+            if (s.includes('video')) return 'Render';
+            if (s.includes('thumbnail')) return 'Finalize';
+        }
+        if (s.includes('script')) return 'Script';
+        if (s.includes('render') || s.includes('video')) return 'Render';
+        if (s.includes('youtube package') || s.includes('yt assets') || s.includes('package')) return 'Package';
+        if (s.includes('thumbnail') || s.includes('done') || s.includes('final')) return 'Finalize';
+        return 'Starting';
+    }
+
+    function renderProgressPhaseTrail(activePhase) {
+        const phases = ['Script', 'Render', 'Package', 'Finalize'];
+        return `<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            ${phases.map((phase) => {
+                const isActive = phase === activePhase;
+                const style = isActive
+                    ? 'background:rgba(255,45,149,.18);border-color:var(--pink);color:var(--pink);'
+                    : 'background:var(--bg);border-color:#2a2a2a;color:var(--text2);';
+                return `<span style="font-size:11px;padding:4px 9px;border:1px solid;border-radius:999px;${style}">${phase}</span>`;
+            }).join('')}
+        </div>`;
+    }
+
+    function renderGenerationError() {
+        const phase = getProgressPhase(state.currentStep, 'error');
+        const details = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors];
+        const detailBlock = details.length
+            ? details.map((err) => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')
+            : '<div style="margin-top:6px;">No additional details provided.</div>';
+        const recoveryHints = getErrorRecoveryHints(phase)
+            .map((hint) => `<div style="margin-top:6px;">• ${esc(hint)}</div>`)
+            .join('');
+        return `<div class="card" style="border-color:var(--red);" aria-live="assertive" role="alert">
+            <h2 style="color:var(--red);justify-content:center;">Generation Stopped</h2>
+            <p style="color:var(--text2);font-size:14px;text-align:center;">The run hit an issue during <strong>${esc(phase)}</strong>.</p>
+            <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
+                <div><strong>Current step:</strong> ${esc(state.currentStep || 'Unknown')}</div>
+                ${detailBlock}
+            </div>
+            <div style="background:var(--bg);border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-top:10px;font-size:13px;color:var(--text2);">
+                <div><strong>Recovery steps:</strong></div>
+                ${recoveryHints}
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;">
+                <button class="btn-primary" onclick="retryMissingOutputs()">Retry Missing Outputs</button>
+                <button class="btn-primary" onclick="retryStatusPoll()">Retry Status</button>
+                <button class="settings-btn" onclick="resetToForm()">Back to Generator</button>
+            </div>
         </div>`;
     }
 
     function renderResults() {
         if (state.jobMode === 'batch') return renderBatchResults();
         return renderSingleResults();
+    }
+
+    function buildPostingKit(ytAssets, affiliateLink) {
+        const parts = [];
+        if (ytAssets.seo_title) parts.push(`TITLE:\n${ytAssets.seo_title}`);
+        if (ytAssets.pinned_comment) parts.push(`\nPINNED COMMENT:\n${ytAssets.pinned_comment}`);
+        if (ytAssets.seo_description) parts.push(`\nDESCRIPTION:\n${ytAssets.seo_description}`);
+        if ((ytAssets.hashtags || []).length) parts.push(`\nHASHTAGS:\n${ytAssets.hashtags.join(' ')}`);
+        if (affiliateLink) parts.push(`\nAFFILIATE LINK:\n${affiliateLink}`);
+        return parts.join('\n').trim();
+    }
+
+    function copyPostingKit(affiliateLink) {
+        let ytAssets = {};
+        if (state.jobMode === 'batch') {
+            const pr = (state.batchResults || [])[state.activeProductIdx] || {};
+            const data = (pr.hooks || {})[state.activeTab] || {};
+            ytAssets = (data.youtube_assets || {})[state.activeFormat] || {};
+            if (!affiliateLink) affiliateLink = pr.affiliate_link || '';
+        } else {
+            const hookKeys = Object.keys(state.results || {});
+            const data = (state.results || {})[state.activeTab || hookKeys[0]] || {};
+            ytAssets = (data.youtube_assets || {})[state.activeFormat] || {};
+        }
+        const kit = buildPostingKit(ytAssets, affiliateLink);
+        if (!kit) {
+            showToast('No posting assets available for this tab.');
+            return;
+        }
+        copyText(kit);
+    }
+
+    function renderResultsSummary(isBatch) {
+        const s = state.resultsSummary || {};
+        const partial = !!s.is_partial;
+        const borderColor = partial ? 'var(--accent)' : 'var(--green)';
+        const titleColor = partial ? 'var(--accent)' : 'var(--green)';
+        const title = partial
+            ? (isBatch ? 'Batch Complete (Review Warnings)' : 'Generation Complete (Review Warnings)')
+            : (isBatch ? `Batch Complete — ${state.batchResults.length} Products` : 'Generation Complete');
+        const counts = `Videos ${s.videos_ready || 0}/${s.videos_expected || 0} • Packages ${s.packages_ready || 0}/${s.packages_expected || 0}`;
+        const issueLines = [...state.scriptErrors, ...state.videoWarnings, ...state.otherErrors, ...(state.jobWarnings || [])];
+        const issueBlock = issueLines.length
+            ? `<div style="font-size:13px;color:var(--text2);margin-top:12px;text-align:left;border-top:1px solid #2a2a2a;padding-top:10px;">
+                <strong style="color:var(--accent);">Issues logged during run:</strong>
+                ${issueLines.slice(0, 5).map((err) => `<div style="margin-top:6px;">• ${esc(err)}</div>`).join('')}
+                ${issueLines.length > 5 ? `<div style="margin-top:6px;color:var(--text2);">+ ${issueLines.length - 5} more</div>` : ''}
+              </div>`
+            : '';
+        const affiliateLink = (state.resultsProductInfo && state.resultsProductInfo.affiliate_link) || state.affiliateLink || '';
+        const checklist = `<div style="margin-top:12px;padding:12px;border:1px solid #2a2a2a;border-radius:10px;text-align:left;font-size:13px;color:var(--text2);">
+            <strong style="color:var(--pink);">Post-publish checklist</strong>
+            <div style="margin-top:8px;">1. Upload video and paste SEO title</div>
+            <div>2. Paste description with affiliate link above the fold</div>
+            <div>3. Pin the generated comment with your link</div>
+            <div>4. Reply early using the templates below</div>
+            ${affiliateLink ? `<div style="margin-top:10px;"><strong>Affiliate link:</strong> ${esc(affiliateLink)}</div>` : ''}
+            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+                ${affiliateLink ? `<button class="btn-sm btn-copy" onclick="copyText('${escJs(affiliateLink)}')">Copy Link</button>` : ''}
+                <button class="btn-sm btn-copy" onclick="copyPostingKit('${escJs(affiliateLink)}')">Copy Full Posting Kit</button>
+            </div>
+        </div>`;
+        const retryBtn = partial
+            ? `<button class="btn-primary" style="width:auto;margin-top:12px;" onclick="retryMissingOutputs()">Retry Missing Outputs</button>`
+            : '';
+        const audit = state.auditResult || {};
+        const auditBlock = (audit.fail_count || audit.warn_count)
+            ? `<div style="font-size:13px;color:var(--text2);margin-top:12px;text-align:left;border-top:1px solid #2a2a2a;padding-top:10px;">
+                <strong style="color:var(--pink);">Video claim audit:</strong>
+                <div style="margin-top:6px;">FAIL ${audit.fail_count || 0} • WARN ${audit.warn_count || 0} • checked ${audit.videos_checked || 0} videos</div>
+                <button class="btn-sm btn-copy" style="margin-top:8px;" onclick="runJobAudit(true)">Re-run Audit</button>
+              </div>`
+            : `<button class="btn-sm btn-copy" style="margin-top:12px;" onclick="runJobAudit(true)">Run Video Audit</button>`;
+        const batchZip = isBatch
+            ? `<button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;margin-top:12px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>`
+            : '';
+        return `<div class="card" style="text-align:center;border-color:${borderColor};">
+            <h2 style="color:${titleColor};justify-content:center;">${title}</h2>
+            <p style="color:var(--text2);font-size:14px;">${esc(counts)}${partial ? ' — some outputs may need a rerun.' : ' — ready to publish.'}</p>
+            ${retryBtn}
+            ${batchZip}
+            ${auditBlock}
+            ${checklist}
+            ${issueBlock}
+        </div>`;
+    }
+
+    function trustSignalLabel(status) {
+        if (status === 'provided') return { text: 'Your input', color: '#6f6' };
+        if (status === 'ai_guidance') return { text: 'AI inferred', color: 'var(--accent)' };
+        return { text: 'Missing', color: 'var(--red)' };
+    }
+
+    function renderTrustSignalsCard(isBatch) {
+        const fields = [
+            { key: 'common_complaints', label: 'Complaints' },
+            { key: 'common_praises', label: 'Praises' },
+            { key: 'who_not_for', label: 'Who NOT to buy' },
+            { key: 'competitors', label: 'Competitors' },
+            { key: 'price_comparison', label: 'Price comparison' },
+        ];
+        let signals = state.trustInputs || {};
+        if (isBatch) {
+            const products = Array.isArray(state.trustInputs) ? state.trustInputs : [];
+            const active = products[state.activeProductIdx] || products[0] || {};
+            signals = active.signals || {};
+        }
+        if (!signals || !Object.keys(signals).length) return '';
+        const rows = fields.map(({ key, label }) => {
+            const meta = trustSignalLabel(signals[key] || 'missing');
+            return `<div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;">
+                <span>${label}</span>
+                <span style="color:${meta.color};font-weight:600;">${meta.text}</span>
+            </div>`;
+        }).join('');
+        return `<div class="card" style="border-color:#2a2a2a;">
+            <h2>Trust Input Signals</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:8px;">Shows whether this run used your research fields or AI fallbacks.</p>
+            ${rows}
+        </div>`;
     }
 
     function renderSingleResults() {
@@ -626,10 +1057,8 @@
 
         return `
         <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
-        <div class="card" style="text-align:center;border-color:var(--green);">
-            <h2 style="color:var(--green);justify-content:center;">Generation Complete!</h2>
-            <p style="color:var(--text2);font-size:14px;">Your videos and YouTube posting packages are ready.</p>
-        </div>
+        ${renderResultsSummary(false)}
+        ${renderTrustSignalsCard(false)}
         <div class="results-tabs">
             ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
         </div>
@@ -637,7 +1066,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, '')}
-        ${renderPublishCard(ytAssets, '')}
+        ${renderPublishCard(ytAssets, '', data)}
         ${renderYTAssets(ytAssets, '')}`;
     }
 
@@ -652,16 +1081,13 @@
 
         return `
         <button class="new-gen-btn" onclick="resetToForm()">← New Generation</button>
-        <div class="card" style="text-align:center;border-color:var(--green);">
-            <h2 style="color:var(--green);justify-content:center;">Batch Complete! ${state.batchResults.length} Products</h2>
-            <p style="color:var(--text2);font-size:14px;margin-bottom:12px;">All videos and YouTube posting packages are ready.</p>
-            <button class="btn-sm btn-download" style="padding:10px 24px;font-size:14px;" onclick="downloadFile('all_products.zip')">Download All Products (ZIP)</button>
-        </div>
+        ${renderResultsSummary(true)}
 
         <div class="card"><h2>Select Product</h2>
         <div class="results-tabs">
             ${state.batchResults.map((p,i)=>`<button class="tab-btn product-tab ${state.activeProductIdx===i?'active':''}" onclick="setProduct(${i})">${esc(p.product_name||'Product '+(i+1))}</button>`).join('')}
         </div></div>
+        ${renderTrustSignalsCard(true)}
 
         <div class="results-tabs">
             ${hookKeys.map(h=>`<button class="tab-btn ${state.activeTab===h?'active':''}" onclick="setTab('${h}')">${h.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</button>`).join('')}
@@ -670,7 +1096,7 @@
             ${state.selectedFormats.map(f=>`<button class="tab-btn ${state.activeFormat===f?'active':''}" onclick="setFormat('${f}')">${f==='short_form'?'Short-Form':'Long-Form'}</button>`).join('')}
         </div>
         ${renderVideoSection(data, slug + '/')}
-        ${renderPublishCard(ytAssets, slug)}
+        ${renderPublishCard(ytAssets, slug, data)}
         ${renderYTAssets(ytAssets, slug + '/')}`;
     }
 
@@ -685,24 +1111,45 @@
         </div>`;
     }
 
-    function renderPublishCard(ytAssets, productSlug) {
+    function renderPublishCard(ytAssets, productSlug, hookData) {
         if (!state.jobId || !ytAssets || !ytAssets.seo_title) return '';
         const caption = ytAssets.pinned_comment || ytAssets.seo_description || '';
-        const hashtags = (ytAssets.hashtags || []).join(' ');
+        const thumbs = (hookData && hookData.thumbnails) || {};
+        const thumbKeys = Object.keys(thumbs);
+        const pathPrefix = productSlug ? `${productSlug}/` : '';
+        const thumbPicker = thumbKeys.length
+            ? `<div style="margin:12px 0;">
+                <h3 style="font-size:13px;color:var(--text2);margin-bottom:8px;">Thumbnail for publish (pick A/B/C)</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                    ${thumbKeys.map(k => {
+                        const selected = (state.publishThumbVariant || 'variant_a') === k;
+                        const fname = thumbs[k];
+                        return `<label style="cursor:pointer;border:2px solid ${selected?'var(--cyan)':'#2a2a2a'};border-radius:8px;padding:6px;display:block;max-width:160px;">
+                            <input type="radio" name="publishThumb" value="${esc(k)}" ${selected?'checked':''} onchange="setPublishThumbVariant('${escJs(k)}')" style="margin-bottom:6px;">
+                            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${esc(k.replace('variant_','Variant ').toUpperCase())}</div>
+                            <img src="${API}/download/${state.jobId}/${pathPrefix}${fname}" alt="${esc(k)}" style="width:140px;height:auto;display:block;border-radius:4px;">
+                        </label>`;
+                    }).join('')}
+                </div>
+              </div>`
+            : `<p style="font-size:12px;color:var(--text2);margin:8px 0;">No thumbnail variants on this hook — publish uses default.</p>`;
         return `<div class="card" style="border-color:var(--pink);">
             <h2>Publish to Social</h2>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video.</p>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Uses the posting package metadata generated with this video. Dry-run never uploads (safe for Rumble/YouTube checks).</p>
             <div class="result-block"><h3>Title Preview</h3><div class="content">${esc(ytAssets.seo_title)}</div></div>
             <div class="result-block"><h3>Caption Preview</h3><div class="content">${esc(caption.substring(0, 280))}${caption.length>280?'...':''}</div></div>
+            ${thumbPicker}
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
                 ${publishPlatformOptions.map(p=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
                     <input type="checkbox" ${state.publishPlatforms.includes(p.id)?'checked':''} onchange="togglePublishPlatform('${p.id}', this.checked)"> ${p.label}
                 </label>`).join('')}
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-sm" onclick="runPublishQuality('${escJs(productSlug)}')" style="background:var(--bg3);color:var(--cyan);" ${state.publishQualityLoading?'disabled':''}>${state.publishQualityLoading?'Checking...':'Pre-Publish QA'}</button>
                 <button class="btn-primary" style="width:auto;" onclick="publishFromResults(false, '${escJs(productSlug)}')" ${state.publishLoading?'disabled':''}>${state.publishLoading?'Publishing...':'Publish Now'}</button>
                 <button class="btn-sm" onclick="publishFromResults(true, '${escJs(productSlug)}')" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
             </div>
+            ${state.publishQuality?`<div style="margin-top:12px;font-size:12px;color:var(--text2);border:1px solid #2a2a2a;border-radius:8px;padding:10px;"><strong style="color:${state.publishQuality.overall==='FAIL'?'var(--pink)':state.publishQuality.overall==='WARN'?'var(--accent)':'var(--green)'};">QA ${esc(state.publishQuality.overall)}</strong><pre style="white-space:pre-wrap;margin-top:8px;">${esc(JSON.stringify(state.publishQuality.checks,null,2))}</pre></div>`:''}
             ${state.publishResults?`<div style="margin-top:12px;font-size:12px;color:var(--text2);"><pre style="white-space:pre-wrap;">${esc(JSON.stringify(state.publishResults,null,2))}</pre></div>`:''}
         </div>`;
     }
@@ -783,8 +1230,10 @@
             <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Track video performance, compare hook types, and find your top converters.</p>
             <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
                 <button class="btn-primary" onclick="loadDashboard()" ${state.analyticsLoading?'disabled':''}>${state.analyticsLoading?'Loading...':'Load Dashboard'}</button>
+                <button class="btn-sm btn-template" onclick="syncYouTubeAnalytics()" ${state.youtubeSyncLoading?'disabled':''}>${state.youtubeSyncLoading?'Syncing...':'Sync YouTube Stats'}</button>
                 <button class="btn-sm btn-template" onclick="exportAnalytics()">Export CSV</button>
             </div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Sync pulls views, watch time, likes, and subscribers from YouTube Analytics for tracked/published videos. Reconnect YouTube if you enabled analytics after first connect.</p>
         </div>
 
         ${state.analyticsData ? renderDashboardData() : ''}
@@ -807,12 +1256,17 @@
                         <option value="long_form" ${state.trackFormat==='long_form'?'selected':''}>Long Form</option>
                     </select>
                 </div>
+                <div class="form-group full"><label>Affiliate URL (for tracking link)</label><input id="trackAffiliateUrl" value="${esc(state.trackAffiliateUrl)}" placeholder="https://amzn.to/..."></div>
             </div>
-            <button class="btn-primary" onclick="trackVideo()" style="margin-top:10px;">Track Video</button>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                <button class="btn-primary" onclick="trackVideo()" style="width:auto;">Track Video</button>
+                <button class="btn-sm btn-template" onclick="buildTrackingLink()">Build Tracking Link</button>
+            </div>
+            ${state.trackingLinkResult ? `<div class="result-block" style="margin-top:12px;"><h3>Tracking URL</h3><div class="content">${esc(state.trackingLinkResult)}</div><div class="actions"><button class="btn-sm btn-copy" onclick="copyText(\`${escJs(state.trackingLinkResult)}\`)">Copy</button></div></div>` : ''}
         </div>
 
         <div class="card">
-            <h2>📈 Record Metrics</h2>
+            <h2>Record Metrics</h2>
             <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Update performance data for a tracked video.</p>
             <div class="form-grid">
                 <div class="form-group"><label>Video ID</label><input id="metricVideoId" value="${esc(state.metricVideoId)}" placeholder="Video ID from above"></div>
@@ -894,14 +1348,14 @@
         const tr = d.top_revenue_videos || [];
         if (tr.length) {
             html += `<div class="card">
-                <h2>💰 Top Revenue Videos</h2>
+                <h2>Top Revenue Videos</h2>
                 <div style="overflow-x:auto;"><table class="analytics-table">
                     <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Revenue</th><th>Views</th></tr>
                     ${tr.map((v,i)=>`<tr>
                         <td>${i+1}</td>
                         <td>${esc(v.video_id||'')}</td>
-                        <td>${esc(v.product||'')}</td>
-                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td>${esc(v.product||v.product_name||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||v.hook_type||'')}</span></td>
                         <td style="color:var(--green);font-weight:700;">${(v.total_revenue||v.revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
                         <td>${(v.total_views||v.views||0).toLocaleString()}</td>
                     </tr>`).join('')}
@@ -913,14 +1367,14 @@
         const tc = d.top_conversion_videos || [];
         if (tc.length) {
             html += `<div class="card">
-                <h2>🎯 Top Converting Videos</h2>
+                <h2>Top Converting Videos</h2>
                 <div style="overflow-x:auto;"><table class="analytics-table">
                     <tr><th>#</th><th>Video</th><th>Product</th><th>Hook</th><th>Conversion Rate</th><th>Clicks</th></tr>
                     ${tc.map((v,i)=>`<tr>
                         <td>${i+1}</td>
                         <td>${esc(v.video_id||'')}</td>
-                        <td>${esc(v.product||'')}</td>
-                        <td><span class="hook-badge">${esc(v.hook||'')}</span></td>
+                        <td>${esc(v.product||v.product_name||'')}</td>
+                        <td><span class="hook-badge">${esc(v.hook||v.hook_type||'')}</span></td>
                         <td style="color:var(--pink);font-weight:700;">${(v.conversion_rate||0).toFixed(2)}%</td>
                         <td>${(v.total_affiliate_clicks||v.clicks||0).toLocaleString()}</td>
                     </tr>`).join('')}
@@ -928,19 +1382,47 @@
             </div>`;
         }
 
+        const rr = d.revenue_report || {};
+        const byHook = rr.revenue_per_hook_type || {};
+        const hookKeys = Object.keys(byHook);
+        if (hookKeys.length) {
+            html += `<div class="card">
+                <h2>Revenue by Hook</h2>
+                <div style="overflow-x:auto;"><table class="analytics-table">
+                    <tr><th>Hook</th><th>Revenue</th></tr>
+                    ${hookKeys.map(k=>`<tr>
+                        <td><span class="hook-badge">${esc(k)}</span></td>
+                        <td>${(byHook[k]||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+                    </tr>`).join('')}
+                </table></div>
+                <p style="font-size:12px;color:var(--text2);margin-top:10px;">Total revenue: ${(rr.total_revenue||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}</p>
+            </div>`;
+        }
+
         return html;
     }
 
     function renderSocialPage() {
+        const cfg = state.oauthConfig || {};
+        const ytConnecting = state.oauthConnecting === 'youtube';
+        const metaConnecting = state.oauthConnecting === 'meta';
+        const tiktokConnecting = state.oauthConnecting === 'tiktok';
+        const configWarnings = [];
+        if (state.oauthConfig) {
+            if (!cfg.youtube) configWarnings.push('YouTube OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env, then restart the server.');
+            if (!cfg.meta) configWarnings.push('Meta OAuth not configured. Set META_APP_ID and META_APP_SECRET in backend/.env, then restart the server.');
+            if (!cfg.tiktok) configWarnings.push('TikTok OAuth not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in backend/.env, then restart the server.');
+        }
         return `
         <div class="card">
             <h2>Connect Accounts</h2>
             <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Connect platforms via OAuth before publishing. Rumble uses browser login.</p>
+            ${configWarnings.length ? `<div style="margin-bottom:16px;padding:12px;border-radius:8px;background:rgba(255,180,0,0.1);border:1px solid var(--pink);font-size:13px;color:var(--text2);">${configWarnings.map(m=>`<div style="margin-bottom:6px;">${esc(m)}</div>`).join('')}</div>` : ''}
             <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
                 <button class="btn-primary" onclick="loadOAuthStatus()" ${state.oauthLoading?'disabled':''}>${state.oauthLoading?'Loading...':'Refresh Status'}</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('youtube')">Connect YouTube</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('meta')">Connect Meta (IG+FB)</button>
-                <button class="btn-sm btn-template" onclick="connectOAuth('tiktok')">Connect TikTok</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('youtube')" ${ytConnecting?'disabled':''}>${ytConnecting?'Connecting...':'Connect YouTube'}</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('meta')" ${metaConnecting?'disabled':''}>${metaConnecting?'Connecting...':'Connect Meta (IG+FB)'}</button>
+                <button class="btn-sm btn-template" onclick="connectOAuth('tiktok')" ${tiktokConnecting?'disabled':''}>${tiktokConnecting?'Connecting...':'Connect TikTok'}</button>
             </div>
             ${state.oauthStatus ? renderOAuthStatus() : ''}
             <div class="form-grid" style="margin-top:16px;">
@@ -961,31 +1443,168 @@
 
         ${state.socialStatus ? renderSocialStatus() : ''}
 
-        <div class="card">
+        ${renderSocialPostCard()}
+
+        ${state.postingQueue.length ? renderPostingQueue() : ''}
+        `;
+    }
+
+    function socialVariantKey(v) {
+        return `${v.hook_type}|${v.video_format}|${v.product_slug || ''}`;
+    }
+
+    function getSocialSelectedJob() {
+        return state.postableJobs.find(j => j.job_id === state.socialSelectedJobId) || null;
+    }
+
+    function getSocialFilteredVariants() {
+        const job = getSocialSelectedJob();
+        if (!job) return [];
+        if (job.mode === 'batch' && state.socialSelectedProductSlug) {
+            return (job.variants || []).filter(v => v.product_slug === state.socialSelectedProductSlug);
+        }
+        return job.variants || [];
+    }
+
+    function getSocialSelectedVariant() {
+        const variants = getSocialFilteredVariants();
+        return variants.find(v => socialVariantKey(v) === state.socialSelectedVariantKey) || variants[0] || null;
+    }
+
+    function applySocialVariantSelection() {
+        const job = getSocialSelectedJob();
+        const variant = getSocialSelectedVariant();
+        if (!job || !variant) {
+            state.socialPostCaption = '';
+            state.socialPostHashtags = '';
+            return;
+        }
+        state.jobId = job.job_id;
+        state.activeTab = variant.hook_type;
+        state.activeFormat = variant.video_format;
+        state.socialPostCaption = variant.caption_hint || '';
+        state.socialPostHashtags = (variant.hashtags || []).join(' ');
+        if (!state.socialSelectedVariantKey) {
+            state.socialSelectedVariantKey = socialVariantKey(variant);
+        }
+    }
+
+    function onSocialJobSelect(jobId) {
+        state.socialSelectedJobId = jobId;
+        const job = getSocialSelectedJob();
+        if (job?.mode === 'batch' && job.batch_products?.length) {
+            state.socialSelectedProductSlug = job.batch_products[0].slug;
+        } else {
+            state.socialSelectedProductSlug = '';
+        }
+        const variants = getSocialFilteredVariants();
+        state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+        applySocialVariantSelection();
+        render();
+    }
+
+    function onSocialProductSelect(slug) {
+        state.socialSelectedProductSlug = slug;
+        const variants = getSocialFilteredVariants();
+        state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+        applySocialVariantSelection();
+        render();
+    }
+
+    function onSocialVariantSelect(key) {
+        state.socialSelectedVariantKey = key;
+        applySocialVariantSelection();
+        render();
+    }
+
+    function renderSocialPostCard() {
+        const job = getSocialSelectedJob();
+        const variant = getSocialSelectedVariant();
+        const variants = getSocialFilteredVariants();
+        const canPost = !!(variant && (variant.video_file || state.socialPostVideo));
+        const previewUrl = variant
+            ? `${API}/download/${job.job_id}/${variant.path_prefix || ''}${variant.video_file}`
+            : '';
+        const thumbUrl = variant?.thumbnail_file
+            ? `${API}/download/${job.job_id}/${variant.path_prefix || ''}${variant.thumbnail_file}`
+            : '';
+
+        let jobOptions = '<option value="">Select a completed job...</option>';
+        for (const j of state.postableJobs) {
+            const label = `${(j.product_name || j.job_id).slice(0, 45)} (${j.job_id.slice(0, 8)})`;
+            jobOptions += `<option value="${esc(j.job_id)}" ${state.socialSelectedJobId === j.job_id ? 'selected' : ''}>${esc(label)}</option>`;
+        }
+
+        let productSelect = '';
+        if (job?.mode === 'batch' && job.batch_products?.length) {
+            productSelect = `<div class="form-group"><label>Product</label>
+                <select onchange="onSocialProductSelect(this.value)">
+                    ${job.batch_products.map(p => `<option value="${esc(p.slug)}" ${state.socialSelectedProductSlug === p.slug ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                </select></div>`;
+        }
+
+        let variantOptions = variants.length
+            ? variants.map(v => `<option value="${esc(socialVariantKey(v))}" ${state.socialSelectedVariantKey === socialVariantKey(v) ? 'selected' : ''}>${esc(v.label)}</option>`).join('')
+            : '<option value="">No videos available</option>';
+
+        const emptyHint = state.postableJobsLoading
+            ? '<p style="color:var(--text2);font-size:13px;">Loading completed jobs...</p>'
+            : !state.postableJobs.length
+                ? '<p style="color:var(--text2);font-size:13px;">No completed jobs with videos yet. Generate a video first, then return here to post.</p>'
+                : '';
+
+        return `<div class="card">
             <h2>Post a Video</h2>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Choose a completed job, preview the video, then post.</p>
+            ${emptyHint}
             <div class="form-grid">
                 <div class="form-group"><label>Platform</label>
                     <select id="socialPlatform" onchange="state.socialPostPlatform=this.value">
                         ${publishPlatformOptions.map(p=>`<option value="${p.id}" ${state.socialPostPlatform===p.id?'selected':''}>${p.label}</option>`).join('')}
                     </select>
                 </div>
-                <div class="form-group"><label>Job ID (optional)</label><input id="socialJobId" value="${esc(state.jobId||'')}" placeholder="From completed generation"></div>
-                <div class="form-group"><label>Hook Type</label><input id="socialHook" value="${esc(state.activeTab||'curiosity')}" placeholder="curiosity"></div>
-                <div class="form-group"><label>Format</label><input id="socialFormat" value="${esc(state.activeFormat||'short_form')}" placeholder="short_form"></div>
-                <div class="form-group"><label>Video File Path (manual fallback)</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file"></div>
-                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Auto-filled when publishing from job results">${esc(state.socialPostCaption)}</textarea></div>
+                <div class="form-group"><label>Completed Job</label>
+                    <select id="socialJobSelect" onchange="onSocialJobSelect(this.value)" ${state.postableJobsLoading ? 'disabled' : ''}>
+                        ${jobOptions}
+                    </select>
+                </div>
+                ${productSelect}
+                <div class="form-group"><label>Video</label>
+                    <select id="socialVariantSelect" onchange="onSocialVariantSelect(this.value)" ${!variants.length ? 'disabled' : ''}>
+                        ${variantOptions}
+                    </select>
+                </div>
+                <div class="form-group full"><label>Caption</label><textarea id="socialCaption" placeholder="Auto-filled from posting package">${esc(state.socialPostCaption)}</textarea></div>
                 <div class="form-group"><label>Hashtags</label><input id="socialHashtags" value="${esc(state.socialPostHashtags)}" placeholder="#affiliate #review"></div>
                 <div class="form-group"><label>Schedule (optional)</label><input id="socialSchedule" type="datetime-local" value="${esc(state.socialPostSchedule)}"></div>
             </div>
+            <input type="hidden" id="socialJobId" value="${esc(state.socialSelectedJobId || state.jobId || '')}">
+            <input type="hidden" id="socialHook" value="${esc(variant?.hook_type || state.activeTab || 'curiosity')}">
+            <input type="hidden" id="socialFormat" value="${esc(variant?.video_format || state.activeFormat || 'short_form')}">
+            <details style="margin-top:12px;" ${state.socialShowManualPath ? 'open' : ''} ontoggle="state.socialShowManualPath=this.open">
+                <summary style="cursor:pointer;font-size:13px;color:var(--text2);">Advanced: manual video path</summary>
+                <div class="form-group" style="margin-top:10px;"><label>Video File Path</label><input id="socialVideo" value="${esc(state.socialPostVideo)}" placeholder="Path to video file"></div>
+            </details>
+            ${variant && previewUrl ? `<div class="card" style="margin-top:16px;background:var(--bg);">
+                <h2>Video Preview</h2>
+                <div class="social-preview-row">
+                    <video class="video-player" controls src="${previewUrl}"></video>
+                    <div class="social-preview-meta">
+                        <h3>${esc(variant.seo_title || variant.label)}</h3>
+                        <div>Job: <code>${esc(job.job_id)}</code></div>
+                        <div>Style: ${esc(job.content_style || '—')}</div>
+                        <div>Hook: ${esc(variant.hook_type)} · ${esc(variant.video_format === 'short_form' ? 'Short-Form' : 'Long-Form')}</div>
+                        ${thumbUrl ? `<img class="social-preview-thumb" src="${thumbUrl}" alt="Thumbnail preview" style="margin-top:10px;">` : ''}
+                    </div>
+                </div>
+            </div>` : ''}
             <div style="display:flex;gap:10px;margin-top:12px;">
-                <button class="btn-primary" onclick="postToSocial(false)">Post Now</button>
-                <button class="btn-sm btn-template" onclick="postToSocial(true)">Schedule Post</button>
-                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);">Dry Run</button>
+                <button class="btn-primary" onclick="postToSocial(false)" ${!canPost ? 'disabled' : ''}>Post Now</button>
+                <button class="btn-sm btn-template" onclick="postToSocial(true)" ${!canPost ? 'disabled' : ''}>Schedule Post</button>
+                <button class="btn-sm" onclick="postToSocial(false, true)" style="background:var(--bg3);color:var(--text2);" ${!canPost ? 'disabled' : ''}>Dry Run</button>
+                <button class="btn-sm" onclick="loadPostableJobs()" ${state.postableJobsLoading ? 'disabled' : ''}>Refresh Jobs</button>
             </div>
-        </div>
-
-        ${state.postingQueue.length ? renderPostingQueue() : ''}
-        `;
+        </div>`;
     }
 
     function renderOAuthStatus() {
@@ -1065,6 +1684,15 @@
                     <input id="settingsModel" value="${esc(state.llmModel||p.default_model||'')}" placeholder="e.g., gpt-4.1-mini, qwen2.5:14b-instruct-q5_K_M">
                     <span class="hint">For Ollama: run "ollama list" to see models. For LM Studio: check loaded model name.</span>
                 </div>
+                <div class="form-group">
+                    <label>Detected Models ${state.llmModelsSource?`(${esc(state.llmModelsSource)})`:''}</label>
+                    ${state.llmModelsLoading ? '<span class="hint">Loading models…</span>' : ''}
+                    ${!state.llmModelsLoading && !(state.llmModels||[]).length ? '<span class="hint">No models returned. Save settings / start Ollama, then reopen.</span>' : ''}
+                    ${(state.llmModels||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                        ${state.llmModels.slice(0,24).map(m=>`<button type="button" class="btn-sm btn-template" onclick="pickLlmModel('${esc(m).replace(/'/g,"\\'")}')">${esc(m)}</button>`).join('')}
+                    </div>` : ''}
+                    <button type="button" class="btn-sm btn-template" style="margin-top:8px;" onclick="loadLlmModels()" ${state.llmModelsLoading?'disabled':''}>Refresh Models</button>
+                </div>
                 ${recs.length?`<div class="model-rec">
                     <p style="font-weight:600;margin-bottom:6px;color:var(--cyan);">Recommended for your RTX 3080 (16GB VRAM):</p>
                     <table>
@@ -1078,6 +1706,7 @@
                 </div>`:''}
                 <div class="modal-actions">
                     <button class="cancel" onclick="toggleSettings()">Cancel</button>
+                    <button class="cancel" type="button" onclick="testLlmConnection()">Test LLM</button>
                     <button class="save" onclick="saveSettings()">Save Settings</button>
                 </div>
             </div>
@@ -1164,7 +1793,7 @@
                 html += '<p style="font-size:12px;color:var(--pink);font-weight:600;margin-bottom:4px;">Suggested Video Titles:</p>';
                 d.recommended_titles.forEach(t => { html += `<p style="font-size:12px;color:var(--text);margin-left:8px;">• ${t}</p>`; });
             }
-            html += '<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>';
+            html += `<p style="font-size:10px;color:var(--text2);margin-top:8px;">Click any keyword to add it to your list. ${d.long_tail_keywords?.length || 0} long-tail keywords found.</p>`;
             html += '</div>';
             results.innerHTML = html;
             showToast(`Found ${tags.length} keywords + ${d.long_tail_keywords?.length || 0} long-tail terms!`);
@@ -1199,7 +1828,18 @@
     function downloadFile(filename) { window.open(`${API}/download/${state.jobId}/${filename}`,'_blank'); }
 
     // ── Navigation ──────────────────────────────────────────
-    function setNavPage(p) { state.navPage = p; render(); }
+    function setNavPage(p) {
+        state.navPage = p;
+        render();
+        if (p === 'social') {
+            loadOAuthConfig();
+            loadOAuthStatus();
+            loadPostableJobs();
+        }
+        if (p === 'analytics') {
+            loadDashboard();
+        }
+    }
 
     // ── Analytics Actions ───────────────────────────────────
     async function loadDashboard() {
@@ -1210,6 +1850,65 @@
             state.analyticsData = data;
         } catch(e) { showToast('Error loading dashboard: ' + e.message); }
         state.analyticsLoading = false; render();
+    }
+
+    async function syncYouTubeAnalytics() {
+        state.youtubeSyncLoading = true; render();
+        try {
+            const res = await fetch(`${API}/analytics/sync-youtube`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast('Error: ' + (data.detail || 'YouTube sync failed'));
+                return;
+            }
+            showToast(`YouTube synced: ${data.synced || 0} video(s), ${data.fetched || 0} fetched`);
+            await loadDashboard();
+        } catch(e) { showToast('Error: ' + e.message); }
+        finally { state.youtubeSyncLoading = false; render(); }
+    }
+
+    async function refreshBgRecommend() {
+        const hook = (state.selectedHooks && state.selectedHooks[0]) || 'curiosity';
+        try {
+            const res = await fetch(
+                `${API}/bg-recommend?content_style=${encodeURIComponent(state.contentStyle || 'honest_review')}&hook_type=${encodeURIComponent(hook)}`
+            );
+            const data = await res.json().catch(() => ({}));
+            state.bgRecommend = res.ok ? (data.recommended_style || '') : '';
+        } catch (e) {
+            state.bgRecommend = '';
+        }
+    }
+
+    async function buildTrackingLink() {
+        const affiliateUrl = document.getElementById('trackAffiliateUrl')?.value?.trim()
+            || state.trackAffiliateUrl
+            || (state.resultsProductInfo && state.resultsProductInfo.affiliate_link)
+            || '';
+        const videoId = document.getElementById('trackVideoId')?.value?.trim()
+            || state.trackVideoId
+            || state.jobId
+            || 'manual';
+        if (!affiliateUrl) { showToast('Enter an affiliate URL first'); return; }
+        state.trackAffiliateUrl = affiliateUrl;
+        try {
+            const qs = new URLSearchParams({
+                affiliate_url: affiliateUrl,
+                video_id: videoId,
+                platform: 'youtube',
+            });
+            const res = await fetch(`${API}/tracking-link?${qs.toString()}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast('Error: ' + (data.detail || 'tracking link failed'));
+                return;
+            }
+            state.trackingLinkResult = data.tracking_url || '';
+            showToast('Tracking link ready');
+            render();
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
     }
 
     async function trackVideo() {
@@ -1260,6 +1959,14 @@
         render();
     }
 
+    async function loadOAuthConfig() {
+        try {
+            const res = await fetch(`${API}/oauth/config`);
+            if (res.ok) state.oauthConfig = await res.json();
+        } catch(e) { /* config check optional */ }
+        render();
+    }
+
     async function loadOAuthStatus() {
         state.oauthLoading = true; render();
         try {
@@ -1270,12 +1977,31 @@
     }
 
     async function connectOAuth(platform) {
+        state.oauthConnecting = platform;
+        render();
         try {
             const res = await fetch(`${API}/oauth/${platform}/authorize`);
             const data = await res.json();
-            if (data.authorize_url) window.location.href = data.authorize_url;
-            else showToast(data.message || 'OAuth URL not available');
-        } catch(e) { showToast('Error: ' + e.message); }
+            if (!res.ok) {
+                state.oauthConnecting = null;
+                render();
+                const detail = data.detail;
+                const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || d).join(', ') : 'OAuth authorize failed';
+                showToast('Error: ' + msg);
+                return;
+            }
+            if (data.authorize_url) {
+                window.location.href = data.authorize_url;
+                return;
+            }
+            state.oauthConnecting = null;
+            render();
+            showToast(data.message || 'OAuth URL not available');
+        } catch(e) {
+            state.oauthConnecting = null;
+            render();
+            showToast('Error: ' + e.message);
+        }
     }
 
     async function connectRumble() {
@@ -1293,27 +2019,85 @@
         } catch(e) { showToast('Error: ' + e.message); }
     }
 
+    async function publishJobBatch({ jobId, hookType, videoFormat, platforms, productSlug, dryRun, thumbnailVariant }) {
+        const res = await fetch(`${API}/publish/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                job_id: jobId,
+                hook_type: hookType,
+                video_format: videoFormat || 'short_form',
+                platforms,
+                product_slug: productSlug || null,
+                dry_run: !!dryRun,
+                thumbnail_variant: thumbnailVariant || state.publishThumbVariant || 'variant_a',
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const detail = data.detail;
+            const msg = typeof detail === 'string'
+                ? detail
+                : (Array.isArray(detail) ? detail.map((d) => d.msg || d).join(', ') : 'Publish failed');
+            throw new Error(msg);
+        }
+        return data;
+    }
+
+    function setPublishThumbVariant(v) {
+        state.publishThumbVariant = v || 'variant_a';
+        render();
+    }
+
     async function publishFromResults(dryRun, productSlug) {
         if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.activeTab) { showToast('Select a hook tab first'); return; }
         if (!state.publishPlatforms.length) { showToast('Select at least one platform'); return; }
         state.publishLoading = true; state.publishResults = null; render();
         try {
-            const res = await fetch(`${API}/publish/batch`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
+            const data = await publishJobBatch({
+                jobId: state.jobId,
+                hookType: state.activeTab,
+                videoFormat: state.activeFormat,
+                platforms: state.publishPlatforms,
+                productSlug: productSlug || null,
+                dryRun: !!dryRun,
+                thumbnailVariant: state.publishThumbVariant || 'variant_a',
+            });
+            state.publishResults = data;
+            showToast(dryRun ? 'Dry run complete' : 'Publish complete');
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
+        state.publishLoading = false; render();
+    }
+
+    async function runPublishQuality(productSlug) {
+        if (!state.jobId) { showToast('No job ID — generate a video first'); return; }
+        if (!state.activeTab) { showToast('Select a hook tab first'); return; }
+        state.publishQualityLoading = true; state.publishQuality = null; render();
+        try {
+            const res = await fetch(`${API}/publish/quality`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     job_id: state.jobId,
                     hook_type: state.activeTab,
-                    video_format: state.activeFormat,
-                    platforms: state.publishPlatforms,
+                    video_format: state.activeFormat || 'short_form',
                     product_slug: productSlug || null,
-                    dry_run: !!dryRun,
-                })
+                }),
             });
             const data = await res.json();
-            state.publishResults = data;
-            showToast(dryRun ? 'Dry run complete' : 'Publish complete');
-        } catch(e) { showToast('Error: ' + e.message); }
-        state.publishLoading = false; render();
+            if (!res.ok) {
+                const detail = data.detail || data;
+                throw new Error(typeof detail === 'string' ? detail : 'QA failed');
+            }
+            state.publishQuality = data;
+            showToast(`QA: ${data.overall}`);
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
+        state.publishQualityLoading = false; render();
     }
 
     async function loadSocialStatus() {
@@ -1323,6 +2107,38 @@
             state.socialStatus = await res.json();
         } catch(e) { showToast('Error: ' + e.message); }
         state.socialLoading = false; render();
+    }
+
+    async function loadPostableJobs() {
+        state.postableJobsLoading = true;
+        render();
+        try {
+            const res = await fetch(`${API}/jobs/postable`);
+            const data = await res.json();
+            state.postableJobs = data.jobs || [];
+            const preferId = state.socialSelectedJobId || state.jobId;
+            if (preferId && state.postableJobs.find(j => j.job_id === preferId)) {
+                state.socialSelectedJobId = preferId;
+            } else if (!state.socialSelectedJobId && state.postableJobs.length) {
+                state.socialSelectedJobId = state.postableJobs[0].job_id;
+            }
+            const job = getSocialSelectedJob();
+            if (job?.mode === 'batch' && job.batch_products?.length && !state.socialSelectedProductSlug) {
+                state.socialSelectedProductSlug = job.batch_products[0].slug;
+            }
+            if (!state.socialSelectedVariantKey) {
+                const variants = getSocialFilteredVariants();
+                state.socialSelectedVariantKey = variants[0] ? socialVariantKey(variants[0]) : '';
+            } else if (state.socialSelectedJobId && !state.postableJobs.find(j => j.job_id === state.socialSelectedJobId)) {
+                state.socialSelectedJobId = state.postableJobs[0]?.job_id || '';
+                state.socialSelectedVariantKey = '';
+            }
+            applySocialVariantSelection();
+        } catch (e) {
+            showToast('Error loading jobs: ' + e.message);
+        }
+        state.postableJobsLoading = false;
+        render();
     }
 
     async function loadPostingQueue() {
@@ -1337,38 +2153,75 @@
 
     async function postToSocial(schedule, dryRun) {
         const platform = document.getElementById('socialPlatform')?.value || 'instagram';
-        const jobId = document.getElementById('socialJobId')?.value?.trim() || state.jobId;
-        const hookType = document.getElementById('socialHook')?.value?.trim();
-        const videoFormat = document.getElementById('socialFormat')?.value?.trim() || 'short_form';
+        const variant = getSocialSelectedVariant();
+        const jobId = document.getElementById('socialJobId')?.value?.trim() || state.socialSelectedJobId || state.jobId;
+        const hookType = document.getElementById('socialHook')?.value?.trim() || variant?.hook_type;
+        const videoFormat = document.getElementById('socialFormat')?.value?.trim() || variant?.video_format || 'short_form';
         const videoPath = document.getElementById('socialVideo')?.value?.trim();
         const caption = document.getElementById('socialCaption')?.value?.trim();
         const hashtagsRaw = document.getElementById('socialHashtags')?.value?.trim();
         const scheduleTime = document.getElementById('socialSchedule')?.value;
         const hashtags = hashtagsRaw ? hashtagsRaw.split(/[,\s]+/).filter(Boolean) : [];
-        if (!jobId && !videoPath) { showToast('Job ID or video path required'); return; }
-        const body = { platform, caption: caption || '', hashtags, dry_run: !!dryRun };
-        if (jobId && hookType) {
-            body.job_id = jobId;
-            body.hook_type = hookType;
-            body.video_format = videoFormat;
-        } else {
-            body.video_path = videoPath;
-        }
+        if (!jobId && !videoPath) { showToast('Select a completed job or enter a video path'); return; }
+
         try {
-            let endpoint = `${API}/social/post`;
-            if (schedule && scheduleTime) {
-                endpoint = `${API}/social/schedule`;
-                body.scheduled_time = new Date(scheduleTime).toISOString();
+            if (schedule) {
+                if (!scheduleTime) {
+                    showToast('Set a schedule date/time, or use Post Now');
+                    return;
+                }
+                const body = { platform, caption: caption || '', hashtags, scheduled_time: new Date(scheduleTime).toISOString() };
+                if (jobId && hookType) {
+                    body.job_id = jobId;
+                    body.hook_type = hookType;
+                    body.video_format = videoFormat;
+                    if (variant?.product_slug) body.product_slug = variant.product_slug;
+                } else {
+                    body.video_path = videoPath;
+                }
+                const res = await fetch(`${API}/social/schedule`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (!res.ok) { showToast('Error: ' + (data.detail || 'Failed')); return; }
+                showToast('Post scheduled!');
+                loadPostingQueue();
+                return;
             }
-            const res = await fetch(endpoint, {
-                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+
+            // Job-backed posts go through publish_service (same path as Results).
+            if (jobId && hookType) {
+                const data = await publishJobBatch({
+                    jobId,
+                    hookType,
+                    videoFormat,
+                    platforms: [platform],
+                    productSlug: variant?.product_slug || null,
+                    dryRun: !!dryRun,
+                });
+                state.publishResults = data;
+                showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
+                return;
+            }
+
+            if (!videoPath) { showToast('Enter a video path for manual posts'); return; }
+            const res = await fetch(`${API}/social/post`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    platform,
+                    video_path: videoPath,
+                    caption: caption || '',
+                    hashtags,
+                    dry_run: !!dryRun,
+                }),
             });
             const data = await res.json();
-            if (res.ok) {
-                showToast(dryRun ? 'Dry run successful!' : (schedule ? 'Post scheduled!' : 'Posted successfully!'));
-                if (schedule) loadPostingQueue();
-            } else { showToast('Error: ' + (data.detail || 'Failed')); }
-        } catch(e) { showToast('Error: ' + e.message); }
+            if (!res.ok) { showToast('Error: ' + (data.detail || 'Failed')); return; }
+            showToast(dryRun ? 'Dry run successful!' : 'Posted successfully!');
+        } catch (e) {
+            showToast('Error: ' + e.message);
+        }
     }
 
     async function processQueue() {
@@ -1399,27 +2252,73 @@
             state.activeBatchIdx = idx;
             if (state.batchProducts[idx]) state.batchProducts[idx].content_style = s;
         }
-        render();
+        refreshBgRecommend().finally(() => render());
     }
     function toggleHook(id) {
-        const i=state.selectedHooks.indexOf(id);
-        if(i>=0){if(state.selectedHooks.length>1)state.selectedHooks.splice(i,1);}
-        else state.selectedHooks.push(id);
-        render();
+        const idx = state.selectedHooks.indexOf(id);
+        if (idx >= 0) {
+            if (state.selectedHooks.length === 1) return;
+            state.selectedHooks.splice(idx, 1);
+        } else {
+            state.selectedHooks.push(id);
+        }
+        refreshBgRecommend().finally(() => render());
     }
-    function toggleAllHooks() { state.selectedHooks=state.selectedHooks.length===hooks.length?['curiosity']:hooks.map(h=>h.id); render(); }
+    function toggleAllHooks() {
+        state.selectedHooks = state.selectedHooks.length === hooks.length ? ['curiosity'] : hooks.map((h) => h.id);
+        refreshBgRecommend().finally(() => render());
+    }
     function setFormats(f) { state.selectedFormats=f; render(); }
     function setTab(t) { state.activeTab=t; render(); }
     function setFormat(f) { state.activeFormat=f; render(); }
     function setProduct(i) { state.activeProductIdx=i; state.activeTab=null; render(); }
-    function toggleSettings() { state.showSettings=!state.showSettings; render(); }
-    function resetToForm() { state.page='form'; state.results=null; state.batchResults=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0; render(); }
+    function toggleSettings() {
+        state.showSettings = !state.showSettings;
+        render();
+        if (state.showSettings) loadLlmModels();
+    }
+    function resetToForm() {
+        state.page='form'; state.results=null; state.batchResults=null; state.resultsSummary=null; state.resultsProductInfo=null; state.trustInputs=null; state.jobId=null; state.activeTab=null; state.activeProductIdx=0;
+        state.errors=[]; state.scriptErrors=[]; state.videoWarnings=[]; state.otherErrors=[];
+        render();
+    }
 
     function onProviderChange(p) {
         state.llmProvider=p;
         const pr=state.providerPresets[p]||{};
         state.llmBaseUrl=pr.base_url||''; state.llmModel=pr.default_model||'';
+        state.llmModels=[]; state.llmModelsSource='';
         render();
+        loadLlmModels();
+    }
+
+    async function loadLlmModels() {
+        state.llmModelsLoading = true;
+        try {
+            const res = await fetch(`${API}/llm/models`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                state.llmModels = [];
+                state.llmModelsSource = '';
+                return;
+            }
+            const models = Array.isArray(data.models) ? data.models : [];
+            state.llmModels = models.map((m) => (typeof m === 'string' ? m : (m.name || m.id || String(m))));
+            state.llmModelsSource = data.source || '';
+        } catch (e) {
+            state.llmModels = [];
+            state.llmModelsSource = '';
+        } finally {
+            state.llmModelsLoading = false;
+            if (state.showSettings) render();
+        }
+    }
+
+    function pickLlmModel(name) {
+        const el = document.getElementById('settingsModel');
+        if (el) el.value = name;
+        state.llmModel = name;
+        showToast('Model set: ' + name);
     }
 
     async function saveSettings() {
@@ -1435,6 +2334,20 @@
         state.showSettings=false; render();
     }
 
+    async function testLlmConnection() {
+        try {
+            const res = await fetch(`${API}/llm/test`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast('LLM test failed: ' + (data.detail || res.status));
+                return;
+            }
+            showToast(data.ok === false ? ('LLM test failed: ' + (data.detail || data.error || 'unknown')) : 'LLM connection OK');
+        } catch (e) {
+            showToast('LLM test failed: ' + e.message);
+        }
+    }
+
     // ── CSV Upload ──────────────────────────────────────────
     function handleFileUpload(input) {
         const file = input.files[0];
@@ -1445,50 +2358,23 @@
         reader.readAsText(file);
     }
 
-    function handleAPFFileUpload(input) {
-        const file = input.files[0];
-        if (!file) return;
+    async function handleAPFFileUpload(input) {
+        const file = input && input.files && input.files[0];
+        if (!file) {
+            showToast('Please choose an APF JSON file.');
+            return;
+        }
         state.batchFileName = file.name;
-        const reader = new FileReader();
-        reader.onload = function(e) { parseAPFPreview(e.target.result); };
-        reader.readAsText(file);
-    }
-
-    function parseAPFPreview(text) {
         try {
-            const data = JSON.parse(text);
-            if (!Array.isArray(data)) {
-                showToast('JSON must be an array of products');
+            const payload = JSON.parse(await file.text());
+            if (typeof window.importAPFViaBackend === 'function') {
+                await window.importAPFViaBackend(payload);
                 return;
             }
-            const products = data.map(item => ({
-                product_name: item.product_name || '',
-                niche: item.niche || 'General',
-                key_features: Array.isArray(item.key_features) ? item.key_features : (item.key_features ? [item.key_features] : []),
-                price: item.price || '$49.99',
-                affiliate_link: item.affiliate_link || '[YOUR_AFFILIATE_LINK]',
-                keywords: Array.isArray(item.keywords) ? item.keywords : (item.keywords ? [item.keywords] : []),
-                target_audience: item.target_audience || 'General consumers',
-                product_category: item.product_category || item.niche || 'General',
-                competitors: Array.isArray(item.competitors) ? item.competitors : (item.competitors ? [item.competitors] : []),
-                unique_selling_point: item.unique_selling_point || '',
-                discount_info: item.discount_info || '',
-                coupon_code: item.coupon_code || '',
-                common_complaints: item.common_complaints || '',
-                common_praises: item.common_praises || '',
-                who_not_for: item.who_not_for || '',
-                series_name: item.series_name || '',
-                price_comparison: item.price_comparison || '',
-                content_style: item.content_style || 'honest_review',
-            })).filter(p => p.product_name);
-            state.batchProducts = products;
-            state.activeBatchIdx = 0;
-            if (products.length && products[0].content_style) state.contentStyle = products[0].content_style;
-            render();
-            if (products.length) showToast(`Imported ${products.length} products from APF!`);
-            else showToast('No valid products found in JSON.');
+            showToast('APF importer not ready — refresh and try again');
         } catch (err) {
-            showToast(`Error parsing JSON: ${err.message}`);
+            console.error('[APF upload] failed:', err);
+            showToast('Could not read APF JSON: ' + err.message);
         }
     }
 
@@ -1509,6 +2395,7 @@
                 key_features: (row.key_features||'').split(',').map(s=>s.trim()).filter(Boolean),
                 price: row.price||'$49.99',
                 affiliate_link: row.affiliate_link||'[YOUR_AFFILIATE_LINK]',
+                image_url: row.image_url||'',
                 keywords: (row.keywords||'').split(',').map(s=>s.trim()).filter(Boolean),
                 target_audience: row.target_audience||'General consumers',
                 product_category: row.product_category||row.niche||'General',
@@ -1545,9 +2432,6 @@
     }
 
     function downloadTemplate() { window.open(`${API}/csv-template`,'_blank'); }
-    function openGoogleSheet() {
-        window.open('https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/copy','_blank');
-    }
 
     // ── Generation ──────────────────────────────────────────
     function readFormValues() {
@@ -1556,6 +2440,7 @@
         state.keyFeatures=document.getElementById('keyFeatures')?.value||'';
         state.price=document.getElementById('price')?.value||'';
         state.affiliateLink=document.getElementById('affiliateLink')?.value||'';
+        state.imageUrl=document.getElementById('imageUrl')?.value||'';
         state.keywords=document.getElementById('keywords')?.value||'';
         state.targetAudience=document.getElementById('targetAudience')?.value||'';
         state.productCategory=document.getElementById('productCategory')?.value||'';
@@ -1568,6 +2453,7 @@
         state.whoNotFor=document.getElementById('whoNotFor')?.value||'';
         state.seriesName=document.getElementById('seriesName')?.value||'';
         state.priceComparison=document.getElementById('priceComparison')?.value||'';
+        state.amazonUrl=document.getElementById('amazonUrl')?.value||'';
     }
 
     async function startGeneration() {
@@ -1583,11 +2469,13 @@
         if (!state.productName||!state.keyFeatures||!state.affiliateLink) {
             showToast('Please fill in Product Name, Key Features, and Affiliate Link'); return;
         }
+        if (!(await ensurePreflight())) return;
         const body = {
             product_info: {
                 product_name:state.productName, niche:state.niche||'General',
                 key_features:state.keyFeatures.split(',').map(s=>s.trim()).filter(Boolean),
                 price:state.price||'$49.99', affiliate_link:state.affiliateLink,
+                image_url:state.imageUrl||'',
                 keywords:state.keywords?state.keywords.split(',').map(s=>s.trim()).filter(Boolean):[],
                 target_audience:state.targetAudience||'General consumers',
                 product_category:state.productCategory||state.niche||'General',
@@ -1599,24 +2487,27 @@
                 series_name:state.seriesName||'',
                 price_comparison:state.priceComparison||'',
                 content_style:state.contentStyle,
+                amazon_url:state.amazonUrl||'',
             },
             hook_types:state.selectedHooks, formats:state.selectedFormats,
             content_style:state.contentStyle,
             audio_enabled:state.audioEnabled, audio_mood:state.audioMood,
             use_tts:state.useTts, tts_provider:state.ttsProvider,
             tts_voice:state.ttsVoice || null,
+            video_preset:mapVideoPreset(state.videoPreset),
         };
         try {
             const res=await fetch(`${API}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             const data=await res.json();
             state.jobId=data.job_id; state.jobMode='single';
             state.page='progress'; state.progress=0; state.currentStep='Starting...';
-            render(); pollStatus();
+            render(); beginPolling();
         } catch(e) { showToast('Error: '+e.message); }
     }
 
     async function startBatchGeneration() {
         if (!state.batchProducts.length) { showToast('Please upload products first'); return; }
+        if (!(await ensurePreflight())) return;
         if (state.batchProducts[state.activeBatchIdx]) {
             state.batchProducts[state.activeBatchIdx].content_style = state.contentStyle;
         }
@@ -1624,41 +2515,157 @@
             ...p,
             content_style: p.content_style || state.contentStyle,
         }));
-        const body = { products, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null };
+        const body = { products, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null, video_preset:mapVideoPreset(state.videoPreset) };
         try {
             const res=await fetch(`${API}/batch-generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             const data=await res.json();
             state.jobId=data.job_id; state.jobMode='batch';
             state.page='progress'; state.progress=0; state.currentStep=`Starting batch: ${data.product_count} products...`;
-            render(); pollStatus();
+            render(); beginPolling();
         } catch(e) { showToast('Error: '+e.message); }
     }
 
     async function pollStatus() {
-        if (!state.jobId) return;
+        if (!state.jobId || !pollActive) return;
         try {
             const res=await fetch(`${API}/status/${state.jobId}`);
             const data=await res.json();
-            state.progress=data.progress; state.currentStep=data.current_step;
+            if (!res.ok) {
+                pollActive = false;
+                clearPollTimer();
+                state.jobStatus='error';
+                state.currentStep=(data&&data.detail)?String(data.detail):'Job not found (server may have restarted).';
+                state.errors=[state.currentStep];
+                const split = splitJobMessages(state.errors);
+                state.scriptErrors=split.scriptErrors;
+                state.videoWarnings=split.videoWarnings;
+                state.otherErrors=split.otherErrors;
+                state.progress=Number.isFinite(state.progress)?state.progress:0;
+                state.page='error'; render(); return;
+            }
+            state.progress=Number.isFinite(data.progress)?data.progress:(state.progress||0);
+            state.currentStep=data.current_step||state.currentStep||'';
             state.jobStatus=data.status; state.errors=data.errors||[];
+            state.jobWarnings=data.warnings||[];
+            if (data.audit) state.auditResult=data.audit;
+            const split = splitJobMessages(state.errors);
+            state.scriptErrors=data.script_errors || split.scriptErrors;
+            state.videoWarnings=data.video_warnings || split.videoWarnings;
+            state.otherErrors=data.other_errors || split.otherErrors;
 
-            if (data.status==='complete') {
+            if (state.progress === state.lastPollProgress && state.currentStep === state.lastPollStep) {
+                state.pollStaleCount = (state.pollStaleCount || 0) + 1;
+            } else {
+                state.pollStaleCount = 0;
+            }
+            state.lastPollProgress = state.progress;
+            state.lastPollStep = state.currentStep;
+
+            if (data.status==='complete' || data.status==='partial') {
+                pollActive = false;
+                clearPollTimer();
+                pollBackoffMs = 2000;
                 const rres=await fetch(`${API}/results/${state.jobId}`);
                 const rdata=await rres.json();
+                state.resultsSummary=rdata.summary||null;
+                state.trustInputs=rdata.trust_inputs||null;
+                state.jobWarnings=rdata.warnings||state.jobWarnings;
+                if (rdata.audit) state.auditResult=rdata.audit;
                 if (state.jobMode==='batch') {
                     state.batchResults=rdata.product_results||[];
                     state.activeProductIdx=0; state.activeTab=null;
                     state.selectedFormats=rdata.formats||state.selectedFormats;
+                    state.resultsProductInfo=null;
                 } else {
                     state.results=rdata.results;
+                    state.resultsProductInfo=rdata.product_info||null;
                     state.activeTab=Object.keys(state.results||{})[0]||null;
                 }
                 state.activeFormat=state.selectedFormats[0];
                 state.page='results'; render(); return;
             }
-            if (data.status==='error') { state.page='results'; render(); return; }
-            render(); setTimeout(pollStatus,2000);
-        } catch(e) { setTimeout(pollStatus,3000); }
+            if (data.status==='error') {
+                pollActive = false;
+                clearPollTimer();
+                pollBackoffMs = 2000;
+                state.page='error'; render(); return;
+            }
+            pollBackoffMs = Math.min(Math.round(pollBackoffMs * 1.35), POLL_BACKOFF_MAX);
+            render();
+            scheduleNextPoll();
+        } catch(e) {
+            pollBackoffMs = Math.min(Math.round((pollBackoffMs || 2000) * 1.5), POLL_BACKOFF_MAX);
+            scheduleNextPoll();
+        }
+    }
+
+    async function runJobAudit(refresh) {
+        if (!state.jobId) {
+            showToast('No job to audit.');
+            return;
+        }
+        try {
+            const url = `${API}/audit/${state.jobId}${refresh ? '?refresh=true' : ''}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!res.ok) {
+                showToast((data && data.detail) ? String(data.detail) : 'Audit failed.');
+                return;
+            }
+            state.auditResult = data.audit || null;
+            state.resultsSummary = data.summary || state.resultsSummary;
+            render();
+            const a = data.audit || {};
+            showToast(`Audit: FAIL ${a.fail_count || 0}, WARN ${a.warn_count || 0}`);
+        } catch (e) {
+            showToast('Audit failed: ' + e.message);
+        }
+    }
+
+    async function retryMissingOutputs() {
+        if (!state.jobId) {
+            showToast('No job to retry.');
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/retry-missing/${state.jobId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast((data && data.detail) ? String(data.detail) : 'Retry failed.');
+                return;
+            }
+            if (data.status === 'complete') {
+                showToast(data.message || 'Nothing missing to retry.');
+                return;
+            }
+            state.page = 'progress';
+            state.jobStatus = 'running';
+            state.currentStep = data.message || 'Resuming missing outputs...';
+            state.errors = [];
+            state.scriptErrors = [];
+            state.videoWarnings = [];
+            state.otherErrors = [];
+            render();
+            beginPolling();
+        } catch (e) {
+            showToast('Retry failed: ' + e.message);
+        }
+    }
+
+    function retryStatusPoll() {
+        if (!state.jobId) {
+            resetToForm();
+            return;
+        }
+        state.page = 'progress';
+        state.jobStatus = 'running';
+        state.currentStep = state.currentStep || 'Retrying status...';
+        state.errors = [];
+        state.scriptErrors = [];
+        state.videoWarnings = [];
+        state.otherErrors = [];
+        render();
+        beginPolling();
     }
 
     function attachEvents() {
@@ -1679,8 +2686,22 @@
         }
     }
 
+    function initOAuthFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const page = params.get('page');
+        const connected = params.get('connected');
+        const oauthError = params.get('oauth_error');
+        if (page === 'social') state.navPage = 'social';
+        if (connected) showToast(connected + ' connected!');
+        if (oauthError) showToast('OAuth error: ' + oauthError);
+        if (page || connected || oauthError) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     // ── Init ────────────────────────────────────────────────
     async function init() {
+        initOAuthFromUrl();
         try {
             const res=await fetch(`${API}/providers`);
             const data=await res.json();
@@ -1689,552 +2710,50 @@
             state.llmBaseUrl=data.current.base_url;
             state.llmModel=data.current.model||'';
         } catch(e) {
+            state.llmProvider='ollama';
+            state.llmBaseUrl='http://localhost:11434/v1';
+            state.llmModel='qwen2.5:14b-instruct-q5_K_M';
             state.providerPresets={
-                openai:{name:'OpenAI API',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'OpenAI cloud API. ~$0.02/video.'},
-                ollama:{name:'Ollama (Local — FREE)',base_url:'http://localhost:11434/v1',default_model:'qwen2.5:14b-instruct-q5_K_M',api_key_required:false,description:'Ollama local LLM. FREE. Recommended for RTX 3080.',recommended_models:[
+                ollama:{name:'Ollama (Local — FREE)',base_url:'http://localhost:11434/v1',default_model:'qwen2.5:14b-instruct-q5_K_M',api_key_required:false,description:'Ollama local LLM. Default for ShadowCast.',recommended_models:[
                     {name:'qwen2.5:14b-instruct-q5_K_M',vram:'~12GB',quality:'Best',speed:'Medium'},
                     {name:'llama3.1:8b-instruct-q6_K',vram:'~7GB',quality:'Good',speed:'Very Fast'},
                     {name:'phi3.5:3.8b-mini-instruct-q6_K',vram:'~4GB',quality:'Decent',speed:'Ultra Fast'},
                 ]},
                 lmstudio:{name:'LM Studio (Local — FREE)',base_url:'http://localhost:1234/v1',default_model:'local-model',api_key_required:false,description:'LM Studio with GUI model management.'},
-                custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any OpenAI-compatible API endpoint.'},
+                custom:{name:'Custom OpenAI-Compatible',base_url:'http://localhost:8000/v1',default_model:'custom-model',api_key_required:false,description:'Any local OpenAI-compatible API endpoint.'},
+                openai:{name:'OpenAI API (optional cloud)',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'Optional cloud API. ~$0.02/video.'},
             };
         }
-        // Also fetch content styles from backend
+        await Promise.all([loadReadiness(), loadTtsProviders()]);
         try {
             const sres=await fetch(`${API}/content-styles`);
             const sdata=await sres.json();
             if(sdata.default) state.contentStyle=sdata.default;
         } catch(e) {}
+        try {
+            const hres = await fetch(`${API}/hooks`);
+            const hdata = await hres.json();
+            const types = Array.isArray(hdata.hooks) ? hdata.hooks : [];
+            const descs = hdata.descriptions || {};
+            if (types.length) {
+                hooks = types.map((id) => ({
+                    id,
+                    name: String(id).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+                    desc: descs[id] || '',
+                    adv: ADVANCED_HOOK_IDS.has(id),
+                }));
+            }
+        } catch (e) {}
+        await refreshBgRecommend();
         render();
+        if (state.navPage === 'social') {
+            await Promise.all([loadOAuthConfig(), loadOAuthStatus(), loadPostableJobs()]);
+        }
     }
     init();
     </script>
 
-<!-- BEGIN APF_JSON_NORMALIZER_PATCH -->
-<script>
-/*
-  Enhanced APF JSON → ShadowCast creative brief normalizer.
 
-  APF is the product-data app.
-  ShadowCast is the creative/video app.
-
-  This adapter converts APF marketplace facts into the richer fields ShadowCast
-  needs for scripts, packages, videos, captions, thumbnails, and CTAs.
-*/
-(function () {
-  function isObject(value) {
-    return value && typeof value === "object" && !Array.isArray(value);
-  }
-
-  function clean(value) {
-    if (value === undefined || value === null) return "";
-    if (Array.isArray(value)) return value.filter(Boolean).map(clean).filter(Boolean).join(", ");
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value).trim();
-  }
-
-  function pick(obj, names) {
-    if (!isObject(obj)) return "";
-
-    for (const name of names) {
-      if (obj[name] !== undefined && obj[name] !== null && clean(obj[name]) !== "") {
-        return obj[name];
-      }
-    }
-
-    const lowerMap = {};
-    for (const key of Object.keys(obj)) lowerMap[key.toLowerCase()] = key;
-
-    for (const name of names) {
-      const realKey = lowerMap[String(name).toLowerCase()];
-      if (realKey && obj[realKey] !== undefined && obj[realKey] !== null && clean(obj[realKey]) !== "") {
-        return obj[realKey];
-      }
-    }
-
-    return "";
-  }
-
-  function firstProduct(payload) {
-    if (Array.isArray(payload)) return payload[0] || {};
-    if (!isObject(payload)) return {};
-
-    const objectWrappers = ["product", "selectedProduct", "apfProduct", "item", "offer"];
-    for (const key of objectWrappers) {
-      if (isObject(payload[key])) return payload[key];
-    }
-
-    const arrayWrappers = ["products", "items", "data", "results", "offers", "clickbank_products"];
-    for (const key of arrayWrappers) {
-      if (Array.isArray(payload[key]) && payload[key].length > 0) {
-        return firstProduct(payload[key]);
-      }
-    }
-
-    if (payload.result && payload.result.data && payload.result.data.json) {
-      return firstProduct(payload.result.data.json);
-    }
-
-    return payload;
-  }
-
-  function numberish(value) {
-    const raw = clean(value).replace(/[$,%]/g, "");
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function moneyLabel(value, fallback) {
-    const n = numberish(value);
-    if (n === null) return fallback || "Varies";
-    return "$" + n.toFixed(2);
-  }
-
-  function sanitizeProductName(name) {
-    let text = clean(name);
-    if (!text) return "";
-
-    text = text.replace(/^earn\s+\d+%?\s*commission\s+promoting\s+/i, "");
-    text = text.replace(/\s*-\s*(health|fitness|digistore\d*|clickbank|marketplace|supplements?)\s*$/i, "");
-    text = text.replace(/\s*\(?\d+%\s+commission\)?/gi, "");
-    text = text.replace(/\s*affiliate\s+offer/gi, "");
-    text = text.replace(/\s{2,}/g, " ").trim().replace(/^[ -:|]+|[ -:|]+$/g, "");
-
-    if (!text) {
-      const fallback = clean(name).split(" - ")[0].split(" | ")[0];
-      return fallback.slice(0, 120);
-    }
-    return text.slice(0, 120);
-  }
-
-  function inferAudience(category, productName) {
-    const c = clean(category).toLowerCase();
-
-    if (c.includes("health") || c.includes("fitness") || c.includes("weight")) {
-      return "Health-conscious adults comparing supplements, fitness products, or wellness options before they buy.";
-    }
-
-    if (c.includes("business") || c.includes("marketing") || c.includes("e-business")) {
-      return "People shopping for business tools, training, or software to solve a specific problem.";
-    }
-
-    if (c.includes("self") || c.includes("education") || c.includes("spiritual")) {
-      return "People looking for self-improvement, learning, or lifestyle products that match their goals.";
-    }
-
-    if (c.includes("home") || c.includes("garden")) {
-      return "Homeowners and everyday buyers comparing practical products for home or lifestyle needs.";
-    }
-
-    if (c.includes("software") || c.includes("technology")) {
-      return "Buyers comparing software, apps, or digital tools before choosing what to purchase.";
-    }
-
-    return productName
-      ? "Shoppers researching whether " + productName + " is worth buying for their needs."
-      : "People researching a product before deciding whether it is worth buying.";
-  }
-
-  function inferPainPoints(category) {
-    const c = clean(category).toLowerCase();
-
-    if (c.includes("health") || c.includes("fitness") || c.includes("weight")) {
-      return "Frustration with inconsistent results, confusing supplement choices, low energy, and not knowing which products are worth trusting.";
-    }
-
-    if (c.includes("business") || c.includes("marketing") || c.includes("e-business")) {
-      return "Too many tools, unclear ROI, wasted time, inconsistent traffic, and uncertainty about which offer is actually useful.";
-    }
-
-    if (c.includes("self") || c.includes("education")) {
-      return "Information overload, lack of structure, low motivation, and not knowing which program is credible.";
-    }
-
-    return "Uncertainty about whether the product is legitimate, useful, fairly priced, and worth clicking through to learn more.";
-  }
-
-  function inferBenefits(productName, category, vendor) {
-    const parts = [];
-
-    if (productName) parts.push(productName + " is positioned for buyers comparing options in this category.");
-    if (category) parts.push("Category: " + category + ".");
-    if (vendor) parts.push("Brand/vendor: " + vendor + ".");
-    parts.push("Focus on what the product claims to do, who it may help, and what buyers should verify before purchasing.");
-
-    return parts.join(" ");
-  }
-
-  function inferKeywords(productName, vendor, category) {
-    return [
-      productName,
-      vendor,
-      category,
-      "review",
-      "worth it",
-      "honest review",
-      "pros and cons",
-      "before you buy"
-    ].filter(Boolean).join(", ");
-  }
-
-  function inferHook(productName, category) {
-    if (productName) {
-      return "Is " + productName + " actually worth buying, or is the hype overrated?";
-    }
-
-    return "Is this " + (category || "product") + " worth buying for everyday shoppers?";
-  }
-
-  function normalizeAPFProduct(payload) {
-    const product = firstProduct(payload);
-
-    const productName = sanitizeProductName(clean(pick(product, [
-      "product_name", "productName", "name", "title", "product_title", "productTitle"
-    ])));
-
-    const vendor = clean(pick(product, [
-      "vendor", "vendor_name", "seller", "brand", "author"
-    ]));
-
-    const category = clean(pick(product, [
-      "niche", "category", "product_category", "marketplace_category", "vertical"
-    ])) || "General";
-
-    const rank = clean(pick(product, [
-      "rank", "product_rank", "gravity_rank"
-    ]));
-
-    const epc = clean(pick(product, [
-      "epc", "earnings_per_click"
-    ]));
-
-    const apv = clean(pick(product, [
-      "apv", "average_purchase_value", "average_payout", "avg_order_value"
-    ]));
-
-    const conversion = clean(pick(product, [
-      "hop_conversion_rate", "hopConversionRate", "conversion_rate"
-    ]));
-
-    const hiddenGemScore = clean(pick(product, [
-      "hidden_gem_score", "hiddenGemScore", "score"
-    ]));
-
-    const affiliateLink = clean(pick(product, [
-      "affiliate_link", "affiliateLink",
-      "affiliate_url", "affiliateUrl",
-      "hoplink", "hop_link",
-      "product_url", "productUrl",
-      "url", "link"
-    ]));
-
-    const price = clean(pick(product, [
-      "price", "product_price"
-    ])) || (apv ? "Avg order value: " + moneyLabel(apv) : "Varies");
-
-    const explicitFeatures = clean(pick(product, [
-      "key_features", "keyFeatures", "features", "benefits", "bullets", "description", "summary"
-    ]));
-
-    const keyFeatures = explicitFeatures || inferBenefits(
-      productName,
-      category,
-      vendor
-    );
-
-    const targetAudience = clean(pick(product, [
-      "target_audience", "targetAudience", "audience", "customer_avatar", "customerAvatar"
-    ])) || inferAudience(category, productName);
-
-    const painPoints = clean(pick(product, [
-      "pain_points", "painPoints", "problems", "common_complaints", "commonComplaints"
-    ])) || inferPainPoints(category);
-
-    const commonPraises = clean(pick(product, [
-      "common_praises", "commonPraises", "praises", "positive_reviews"
-    ])) || "Reviewers and product-page details should be checked before assuming the claims are accurate.";
-
-    const commonComplaints = clean(pick(product, [
-      "common_complaints", "commonComplaints", "complaints", "negative_reviews"
-    ])) || painPoints;
-
-    const uniqueSellingPoint = clean(pick(product, [
-      "unique_selling_point", "uniqueSellingPoint", "usp"
-    ])) || inferHook(productName, category);
-
-    const keywords = clean(pick(product, [
-      "keywords", "tags", "search_terms", "searchTerms"
-    ])) || inferKeywords(productName, vendor, category);
-
-    const cta = affiliateLink
-      ? "Click the link to check the current product page, details, price, and availability."
-      : "Check the product page for current details, price, and availability.";
-
-    return {
-      // ShadowCast frontend state fields
-      productName: productName,
-      niche: category,
-      keyFeatures: keyFeatures,
-      price: price,
-      affiliateLink: affiliateLink,
-      keywords: keywords,
-      targetAudience: targetAudience,
-
-      // Extra creative fields used by some backend generators if present
-      vendor: vendor,
-      productCategory: category,
-      uniqueSellingPoint: uniqueSellingPoint,
-      commonComplaints: commonComplaints,
-      commonPraises: commonPraises,
-      painPoints: painPoints,
-      whoNotFor: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
-      discountInfo: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
-      couponCode: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
-      priceComparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
-      seriesName: "Hidden Gem Review",
-      contentStyle: clean(pick(product, ["content_style", "contentStyle"])) || "honest_review",
-      cta: cta,
-
-      // Snake_case equivalents for backend compatibility
-      product_name: productName,
-      product_category: category,
-      key_features: keyFeatures,
-      affiliate_link: affiliateLink,
-      target_audience: targetAudience,
-      unique_selling_point: uniqueSellingPoint,
-      common_complaints: commonComplaints,
-      common_praises: commonPraises,
-      who_not_for: "People expecting guaranteed results, medical/legal/financial promises, or instant outcomes without reviewing the offer carefully.",
-      discount_info: clean(pick(product, ["discount_info", "discountInfo", "discount", "promo"])) || "",
-      coupon_code: clean(pick(product, ["coupon_code", "couponCode", "coupon"])) || "",
-      price_comparison: apv ? "APF reports an APV/average value signal of " + apv + ". Do not present this as a guaranteed retail price." : "",
-      series_name: "Hidden Gem Review",
-
-      // Preserve APF facts
-      marketplace: clean(pick(product, ["marketplace"])) || "clickbank",
-      rank: rank,
-      epc: epc,
-      apv: apv,
-      hopConversionRate: conversion,
-      hiddenGemScore: hiddenGemScore,
-      rawApfProduct: product
-    };
-  }
-
-  function setInput(id, value) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.value = value || "";
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function hydrateShadowCastState(mapped) {
-    try {
-      if (typeof state !== "undefined" && state) {
-        for (const [key, value] of Object.entries(mapped)) {
-          if (value !== undefined && value !== null && clean(value) !== "") {
-            state[key] = value;
-          }
-        }
-
-        if ("mode" in state) state.mode = "single";
-      }
-    } catch (err) {
-      console.warn("APF normalizer: could not write global state directly:", err);
-    }
-
-    try {
-      if (typeof render === "function") render();
-    } catch (err) {
-      console.warn("APF normalizer: render failed:", err);
-    }
-
-    setTimeout(function () {
-      setInput("productName", mapped.productName);
-      setInput("niche", mapped.niche);
-      setInput("keyFeatures", mapped.keyFeatures);
-      setInput("price", mapped.price);
-      setInput("affiliateLink", mapped.affiliateLink);
-      setInput("keywords", mapped.keywords);
-      setInput("targetAudience", mapped.targetAudience);
-
-      // Fill optional fields if the current UI has them.
-      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
-      setInput("commonComplaints", mapped.commonComplaints);
-      setInput("commonPraises", mapped.commonPraises);
-      setInput("painPoints", mapped.painPoints);
-      setInput("whoNotFor", mapped.whoNotFor);
-      setInput("discountInfo", mapped.discountInfo);
-      setInput("couponCode", mapped.couponCode);
-      setInput("seriesName", mapped.seriesName);
-
-      console.log("[APF JSON normalizer] mapped creative brief:", mapped);
-
-      const missing = [];
-      if (!mapped.productName) missing.push("product name");
-      if (!mapped.niche) missing.push("niche/category");
-      if (!mapped.keyFeatures) missing.push("key features");
-      if (!mapped.price) missing.push("price/value");
-      if (!mapped.affiliateLink) missing.push("affiliate/product link");
-      if (!mapped.keywords) missing.push("keywords");
-      if (!mapped.targetAudience) missing.push("target audience");
-
-      if (missing.length) {
-        alert("APF JSON imported, but still missing: " + missing.join(", "));
-      } else {
-        const msg = "Imported APF JSON and built full ShadowCast brief for: " + mapped.productName;
-        try {
-          if (typeof showToast === "function") showToast(msg, "success");
-          else alert(msg);
-        } catch (_) {
-          alert(msg);
-        }
-      }
-    }, 50);
-  }
-
-  window.normalizeAPFProductForShadowCast = normalizeAPFProduct;
-
-  window.handleAPFFileUpload = async function handleAPFFileUpload(input) {
-    const file = input && input.files && input.files[0];
-    if (!file) {
-      alert("Please choose an APF JSON file.");
-      return;
-    }
-    try {
-      const payload = JSON.parse(await file.text());
-      if (typeof window.importAPFViaBackend === "function") {
-        await window.importAPFViaBackend(payload);
-        return;
-      }
-      const mapped = normalizeAPFProduct(payload);
-      if (!mapped.productName) {
-        alert("APF JSON was read, but no product name was found. Check the APF export format.");
-        return;
-      }
-      hydrateShadowCastState(mapped);
-    } catch (err) {
-      console.error("[APF JSON normalizer] JSON import failed:", err);
-      alert("Could not read APF JSON: " + err.message);
-    }
-  };
-
-  console.log("[APF JSON normalizer] enhanced patch installed");
-})();
-</script>
-<!-- END APF_JSON_NORMALIZER_PATCH -->
-
-<!-- BEGIN APF_REVIEW_BRIEF_IMPORT_PATCH -->
-<script>
-(function () {
-  function obj(v){ return v && typeof v === "object" && !Array.isArray(v); }
-  function clean(v){
-    if (v === undefined || v === null) return "";
-    if (Array.isArray(v)) return v.filter(Boolean).map(clean).filter(Boolean).join("; ");
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v).trim();
-  }
-  function firstProduct(payload){
-    if (Array.isArray(payload)) return payload[0] || {};
-    if (!obj(payload)) return {};
-    return obj(payload.product) ? payload.product : payload;
-  }
-  function setInput(id, value){
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.value = value || "";
-    el.dispatchEvent(new Event("input", {bubbles:true}));
-    el.dispatchEvent(new Event("change", {bubbles:true}));
-  }
-  function normalize(payload){
-    let base = {};
-    try {
-      if (typeof window.normalizeAPFProductForShadowCast === "function") {
-        base = window.normalizeAPFProductForShadowCast(payload) || {};
-      }
-    } catch {}
-
-    const product = firstProduct(payload);
-    const brief = payload.review_brief || null;
-    const positive = brief?.positive_signals || [];
-    const negative = brief?.negative_signals || [];
-    const claims = brief?.common_claims || [];
-    const complaints = brief?.common_complaints || [];
-    const angles = brief?.best_video_angles || [];
-
-    const productName = base.productName || product.name || product.product_name || "";
-    const niche = base.niche || product.category || product.niche || "ClickBank";
-    const affiliateLink = base.affiliateLink || product.affiliate_url || product.affiliateLink || product.affiliate_link || product.product_url || "";
-
-    return {
-      ...base,
-      productName,
-      niche,
-      affiliateLink,
-      keyFeatures: brief
-        ? [brief.review_summary, positive.length ? "Positive signals: " + positive.map(clean).join("; ") : "", claims.length ? "Common claims: " + claims.map(clean).join("; ") : ""].filter(Boolean).join("\n")
-        : base.keyFeatures,
-      commonComplaints: brief
-        ? [negative.length ? "Negative signals: " + negative.map(clean).join("; ") : "", complaints.length ? "Common complaints: " + complaints.map(clean).join("; ") : ""].filter(Boolean).join("\n")
-        : base.commonComplaints,
-      targetAudience: brief ? clean(brief.target_audience || brief.who_it_may_help) : base.targetAudience,
-      uniqueSellingPoint: brief ? clean(angles[0] || brief.review_summary) : base.uniqueSellingPoint,
-      commonPraises: positive.map(clean).join("; ") || base.commonPraises,
-      whoNotFor: brief ? clean(brief.who_should_skip_it) : base.whoNotFor,
-      cta: brief ? clean(brief.cta_guidance) : base.cta,
-      keywords: base.keywords || [productName, niche, "review", "complaints", "pros and cons", "worth it", "ClickBank"].filter(Boolean).join(", "),
-      reviewBrief: brief,
-      reviewSources: payload.review_sources || []
-    };
-  }
-  function hydrate(mapped){
-    try {
-      if (typeof state !== "undefined" && state) {
-        Object.entries(mapped).forEach(([k,v]) => { if (clean(v)) state[k] = v; });
-        if ("mode" in state) state.mode = "single";
-      }
-    } catch {}
-    try { if (typeof render === "function") render(); } catch {}
-
-    setTimeout(() => {
-      setInput("productName", mapped.productName);
-      setInput("niche", mapped.niche);
-      setInput("keyFeatures", mapped.keyFeatures);
-      setInput("price", mapped.price);
-      setInput("affiliateLink", mapped.affiliateLink);
-      setInput("keywords", mapped.keywords);
-      setInput("targetAudience", mapped.targetAudience);
-      setInput("uniqueSellingPoint", mapped.uniqueSellingPoint);
-      setInput("commonComplaints", mapped.commonComplaints);
-      setInput("commonPraises", mapped.commonPraises);
-      setInput("whoNotFor", mapped.whoNotFor);
-      console.log("[APF review brief importer] mapped enriched ShadowCast brief:", mapped);
-      alert("Imported enriched APF review brief for: " + (mapped.productName || "product"));
-    }, 50);
-  }
-  window.handleAPFFileUpload = async function(input){
-    const file = input?.files?.[0];
-    if (!file) return alert("Please choose an APF JSON file.");
-    try {
-      const payload = JSON.parse(await file.text());
-      if (typeof window.importAPFViaBackend === "function") {
-        await window.importAPFViaBackend(payload);
-        return;
-      }
-      const mapped = normalize(payload);
-      if (!mapped.productName) return alert("APF JSON was read, but no product name was found.");
-      hydrate(mapped);
-    } catch (err) {
-      console.error("[APF review brief importer] failed:", err);
-      alert("Could not read APF JSON: " + err.message);
-    }
-  };
-  console.log("[APF review brief importer] installed");
-})();
-</script>
-<!-- END APF_REVIEW_BRIEF_IMPORT_PATCH -->
 <!-- BEGIN UNLOVED_DIRECT_APF_DRAFT_LOADER -->
 <script>
 (function () {
@@ -2271,8 +2790,10 @@
       productName: clean(normalized.productName || normalized.product_name),
       niche: clean(normalized.niche) || "Affiliate Product",
       keyFeatures: clean(
-        normalized.keyFeatures ||
-        (Array.isArray(normalized.key_features) ? normalized.key_features.join("\n") : normalized.key_features)
+        (Array.isArray(normalized.key_features) && normalized.key_features.length
+          ? normalized.key_features.join("\n")
+          : normalized.key_features) ||
+        normalized.keyFeatures
       ),
       price: clean(normalized.price) || "Varies",
       affiliateLink: clean(normalized.affiliateLink || normalized.affiliate_link),
@@ -2317,6 +2838,7 @@
       key_features: featureList,
       price: clean(n.price) || "Varies",
       affiliate_link: clean(n.affiliateLink || n.affiliate_link) || "[YOUR_AFFILIATE_LINK]",
+      image_url: clean(n.imageUrl || n.image_url || n.image || n.productImage || n.mainImage),
       keywords: keywordList,
       target_audience: clean(n.targetAudience || n.target_audience) || "General consumers",
       product_category: clean(n.productCategory || n.product_category || n.niche) || "General",
