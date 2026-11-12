@@ -43,7 +43,9 @@ from sound_design import (
     add_audio_to_video,
     SAMPLE_RATE as AUDIO_SAMPLE_RATE,
 )
-from scipy.io.wavfile import write as write_wav
+from audio_options import MOOD_TEMPO, resolve_audio_mood
+from scipy.io.wavfile import read as read_wav
+from tts_generator import generate_voiceover_for_script
 
 from comparison_layouts import (
     render_vs_split_screen,
@@ -116,26 +118,39 @@ def normalize_text_style(text_style: str) -> str:
     return TEXT_STYLE_ALIASES.get(text_style, text_style)
 
 
-def _short_audio_mood(content_style: str) -> str:
-    style = normalize_content_style(content_style)
-    if style in ("vs_battle", "elimination"):
-        return "energetic"
-    if style in ("honest_review", "worth_it_or_waste"):
-        return "chill"
-    if style == "budget_challenge":
-        return "energetic"
-    return "energetic"
+def _load_voiceover_array(script: dict, output_path: str, provider: str, voice: str | None):
+    """Generate TTS for script segments and return a float32 numpy array, or None."""
+    try:
+        vo_dir = os.path.dirname(output_path) or "."
+        vo_path = generate_voiceover_for_script(script, vo_dir, provider=provider, voice=voice)
+        if not vo_path or not os.path.exists(vo_path):
+            return None
+        rate, data = read_wav(vo_path) if vo_path.endswith(".wav") else (None, None)
+        if data is None:
+            # mp3 / other: decode via moviepy AudioFileClip → resample to AUDIO_SAMPLE_RATE
+            clip = AudioFileClip(vo_path)
+            arr = clip.to_soundarray(fps=AUDIO_SAMPLE_RATE)
+            clip.close()
+            if arr.ndim > 1:
+                arr = arr.mean(axis=1)
+            return arr.astype(np.float64)
+        if data.dtype == np.int16:
+            arr = data.astype(np.float64) / 32767.0
+        else:
+            arr = data.astype(np.float64)
+        if arr.ndim > 1:
+            arr = arr.mean(axis=1)
+        if rate and rate != AUDIO_SAMPLE_RATE and len(arr) > 0:
+            duration = len(arr) / float(rate)
+            target_len = int(duration * AUDIO_SAMPLE_RATE)
+            x_old = np.linspace(0, 1, len(arr), endpoint=False)
+            x_new = np.linspace(0, 1, target_len, endpoint=False)
+            arr = np.interp(x_new, x_old, arr)
+        return arr
+    except Exception as e:
+        print(f"Warning: TTS voiceover failed ({e})")
+        return None
 
-
-def _long_audio_mood(content_style: str) -> str:
-    style = normalize_content_style(content_style)
-    if style in ("vs_battle", "elimination"):
-        return "dramatic"
-    if style in ("honest_review", "worth_it_or_waste"):
-        return "chill"
-    if style == "budget_challenge":
-        return "energetic"
-    return "energetic"
 
 # Animation types that use kinetic effects instead of simple fades
 KINETIC_ANIMATIONS = {
@@ -580,6 +595,10 @@ def render_short_form_video(
     series_name: str = "",
     content_style: str = "honest_review",
     competitors=None,
+    audio_enabled: bool = True,
+    audio_mood: str | None = None,
+    tts_provider: str = "auto",
+    tts_voice: str | None = None,
 ) -> str:
     """Render a short-form (YouTube Shorts) video from script JSON."""
     if competitors is None:
@@ -694,57 +713,67 @@ def render_short_form_video(
     )
     
     # ── Generate and add audio ──
-    try:
-        video_duration = final.duration
-        
-        # Generate background music
-        bg_music = generate_background_music(
-            video_duration,
-            mood=_short_audio_mood(content_style),
-            tempo=120 if _short_audio_mood(content_style) == "energetic" else 80,
-        )
-        
-        # Generate SFX timed to segment transitions
-        sfx_list = []
-        current_time = 2.0  # After intro
-        for seg in segments:
-            seg_dur = seg.get("duration", 2.5)
-            anim = seg.get("animation", "fade_in")
-            trans = seg.get("transition_to_next", "fade")
-            
-            # Text reveal SFX
-            if anim in ("word_by_word", "typewriter"):
-                sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.4), current_time + 0.1))
-            elif anim in ("impact_scale", "shake"):
-                sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.5), current_time))
-            elif anim in ("slide_up", "slide_left"):
-                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), current_time))
-            
-            # Transition SFX
-            trans_time = current_time + seg_dur
-            if trans in ("glitch", "flash"):
-                sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.5), trans_time - 0.2))
-            elif trans == "swipe":
-                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), trans_time - 0.1))
-            
-            current_time += seg_dur
-        
-        # Mix audio
-        audio_path = output_path.replace(".mp4", "_audio.wav")
-        mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
-        
-        # Combine video + audio
-        add_audio_to_video(video_only_path, audio_path, output_path)
-        
-        # Clean up temp files
-        if os.path.exists(video_only_path):
-            os.remove(video_only_path)
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
-    except Exception as e:
-        print(f"Warning: Audio generation failed ({e}), using video without audio")
+    if not audio_enabled and not use_tts:
         if os.path.exists(video_only_path):
             os.rename(video_only_path, output_path)
+    else:
+        try:
+            video_duration = final.duration
+
+            mood = resolve_audio_mood(audio_mood, content_style, "short_form")
+            tempo = MOOD_TEMPO.get(mood, 100)
+
+            bg_music = None
+            sfx_list = []
+            if audio_enabled:
+                bg_music = generate_background_music(
+                    video_duration,
+                    mood=mood,
+                    tempo=tempo,
+                )
+
+                current_time = 2.0  # After intro
+                for seg in segments:
+                    seg_dur = seg.get("duration", 2.5)
+                    anim = seg.get("animation", "fade_in")
+                    trans = seg.get("transition_to_next", "fade")
+
+                    if anim in ("word_by_word", "typewriter"):
+                        sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.4), current_time + 0.1))
+                    elif anim in ("impact_scale", "shake"):
+                        sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.5), current_time))
+                    elif anim in ("slide_up", "slide_left"):
+                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), current_time))
+
+                    trans_time = current_time + seg_dur
+                    if trans in ("glitch", "flash"):
+                        sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.5), trans_time - 0.2))
+                    elif trans == "swipe":
+                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.4), trans_time - 0.1))
+
+                    current_time += seg_dur
+            else:
+                bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
+
+            voiceover_array = None
+            if use_tts:
+                voiceover_array = _load_voiceover_array(
+                    script, output_path, tts_provider, tts_voice
+                )
+
+            audio_path = output_path.replace(".mp4", "_audio.wav")
+            mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
+
+            add_audio_to_video(video_only_path, audio_path, output_path)
+
+            if os.path.exists(video_only_path):
+                os.remove(video_only_path)
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except Exception as e:
+            print(f"Warning: Audio generation failed ({e}), using video without audio")
+            if os.path.exists(video_only_path):
+                os.rename(video_only_path, output_path)
     
     # Cleanup
     final_with_overlays.close()
@@ -767,6 +796,10 @@ def render_long_form_video(
     series_name: str = "",
     content_style: str = "honest_review",
     competitors=None,
+    audio_enabled: bool = True,
+    audio_mood: str | None = None,
+    tts_provider: str = "auto",
+    tts_voice: str | None = None,
 ) -> str:
     if competitors is None:
         competitors = []
@@ -948,67 +981,76 @@ def render_long_form_video(
         )
 
         # ── Generate and add audio ──
-        try:
-            video_duration = final.duration
-
-            # Generate background music (chill for long-form)
-            bg_music = generate_background_music(
-                video_duration,
-                mood=_long_audio_mood(content_style),
-                tempo=80 if _long_audio_mood(content_style) == "chill" else 110,
-            )
-
-            # Generate SFX timed to chapter transitions and key moments
-            sfx_list = []
-            current_time = 3.0  # After intro
-
-            for ch_idx, chapter in enumerate(chapters):
-                # Chapter transition ding
-                sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
-                current_time += 2.5  # Chapter title card duration
-
-                for seg in chapter.get("segments", []):
-                    seg_dur = seg.get("duration", 4.0)
-                    anim = seg.get("animation", "fade_in")
-                    trans = seg.get("transition_to_next", "fade")
-
-                    # Text reveal SFX
-                    if anim in ("word_by_word", "typewriter"):
-                        sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
-                    elif anim in ("impact_scale", "shake"):
-                        sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
-                    elif anim in ("slide_up", "slide_left"):
-                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
-                    elif anim == "highlight_sweep":
-                        sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
-
-                    # Transition SFX
-                    trans_time = current_time + seg_dur
-                    if trans in ("glitch", "flash"):
-                        sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
-                    elif trans == "swipe":
-                        sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
-                    elif trans == "zoom":
-                        sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
-
-                    current_time += seg_dur
-
-            # Mix audio
-            audio_path = output_path.replace(".mp4", "_audio.wav")
-            mix_audio(bg_music, sfx_list, voiceover_array=None, output_path=audio_path)
-
-            # Combine video + audio
-            add_audio_to_video(video_only_path, audio_path, output_path)
-
-            # Clean up temp files
-            if os.path.exists(video_only_path):
-                os.remove(video_only_path)
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-        except Exception as e:
-            print(f"Warning: Audio generation failed ({e}), using video without audio")
+        if not audio_enabled and not use_tts:
             if os.path.exists(video_only_path):
                 os.rename(video_only_path, output_path)
+        else:
+            try:
+                video_duration = final.duration
+
+                mood = resolve_audio_mood(audio_mood, content_style, "long_form")
+                tempo = MOOD_TEMPO.get(mood, 100)
+
+                bg_music = None
+                sfx_list = []
+                if audio_enabled:
+                    bg_music = generate_background_music(
+                        video_duration,
+                        mood=mood,
+                        tempo=tempo,
+                    )
+
+                    current_time = 3.0  # After intro
+
+                    for ch_idx, chapter in enumerate(chapters):
+                        sfx_list.append((generate_sfx("ding", duration=0.5, amplitude=0.5), current_time))
+                        current_time += 2.5  # Chapter title card duration
+
+                        for seg in chapter.get("segments", []):
+                            seg_dur = seg.get("duration", 4.0)
+                            anim = seg.get("animation", "fade_in")
+                            trans = seg.get("transition_to_next", "fade")
+
+                            if anim in ("word_by_word", "typewriter"):
+                                sfx_list.append((generate_sfx("pop", duration=0.1, amplitude=0.3), current_time + 0.1))
+                            elif anim in ("impact_scale", "shake"):
+                                sfx_list.append((generate_sfx("bass_drop", duration=0.8, amplitude=0.4), current_time))
+                            elif anim in ("slide_up", "slide_left"):
+                                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), current_time))
+                            elif anim == "highlight_sweep":
+                                sfx_list.append((generate_sfx("whoosh", duration=0.4, amplitude=0.3), current_time))
+
+                            trans_time = current_time + seg_dur
+                            if trans in ("glitch", "flash"):
+                                sfx_list.append((generate_sfx("whoosh", duration=0.5, amplitude=0.4), trans_time - 0.2))
+                            elif trans == "swipe":
+                                sfx_list.append((generate_sfx("swoosh", duration=0.4, amplitude=0.3), trans_time - 0.1))
+                            elif trans == "zoom":
+                                sfx_list.append((generate_sfx("bass_drop", duration=0.6, amplitude=0.3), trans_time - 0.1))
+
+                            current_time += seg_dur
+                else:
+                    bg_music = np.zeros(int(video_duration * AUDIO_SAMPLE_RATE))
+
+                voiceover_array = None
+                if use_tts:
+                    voiceover_array = _load_voiceover_array(
+                        script, output_path, tts_provider, tts_voice
+                    )
+
+                audio_path = output_path.replace(".mp4", "_audio.wav")
+                mix_audio(bg_music, sfx_list, voiceover_array=voiceover_array, output_path=audio_path)
+
+                add_audio_to_video(video_only_path, audio_path, output_path)
+
+                if os.path.exists(video_only_path):
+                    os.remove(video_only_path)
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+            except Exception as e:
+                print(f"Warning: Audio generation failed ({e}), using video without audio")
+                if os.path.exists(video_only_path):
+                    os.rename(video_only_path, output_path)
 
         # Cleanup
         final_with_overlays.close()

@@ -45,5 +45,7 @@ Local checklist — no full video renders required. Verify script JSON, layout s
 ## Automated regression
 
 ```bash
-python3 -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py -q
+python3 -m pytest tests/test_content_styles.py tests/test_script_postprocessor.py tests/test_apf_import.py tests/test_style_matrix.py tests/test_audio_options.py -q
 ```
+
+Automated layout/badge matrix (`tests/test_style_matrix.py`) covers all 6 styles × short/long script enrichment. Manual MP4 eyeball and full APF→SC E2E still recommended when services are up.

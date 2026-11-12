@@ -262,6 +262,10 @@
         selectedFormats: ['short_form', 'long_form'],
         audioMood: 'chill',
         audioEnabled: true,
+        useTts: false,
+        ttsProvider: 'auto',
+        ttsVoice: '',
+        ttsProviders: null,
         // Job
         jobId: null, jobMode: 'single', progress: 0, currentStep: '', jobStatus: '',
         results: null, batchResults: null, errors: [],
@@ -495,9 +499,13 @@
                     <input type="checkbox" ${state.audioEnabled?'checked':''} onchange="state.audioEnabled=this.checked;render()">
                     <span style="font-size:13px;">Enable Background Music & SFX</span>
                 </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" ${state.useTts?'checked':''} onchange="state.useTts=this.checked;if(this.checked)loadTtsProviders();render()">
+                    <span style="font-size:13px;">Enable Voiceover (TTS)</span>
+                </label>
             </div>
             ${state.audioEnabled ? `
-            <div class="format-grid" style="grid-template-columns:repeat(4,1fr);">
+            <div class="format-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px;">
                 <div class="format-option ${state.audioMood==='chill'?'selected':''}" onclick="state.audioMood='chill';render()">
                     <div class="icon">🎵</div><h3>Chill</h3><p>Lo-fi ambient, relaxed</p>
                 </div>
@@ -511,7 +519,55 @@
                     <div class="icon">🔇</div><h3>Minimal</h3><p>Subtle, barely there</p>
                 </div>
             </div>` : ''}
+            ${state.useTts ? `
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                <div class="form-group" style="min-width:180px;flex:1;">
+                    <label>TTS Provider</label>
+                    <select class="input-field" onchange="state.ttsProvider=this.value;state.ttsVoice='';render()">
+                        <option value="auto" ${state.ttsProvider==='auto'?'selected':''}>Auto (best available)</option>
+                        ${ttsProviderOptions()}
+                    </select>
+                </div>
+                <div class="form-group" style="min-width:180px;flex:1;">
+                    <label>Voice</label>
+                    <select class="input-field" onchange="state.ttsVoice=this.value">
+                        <option value="">Default</option>
+                        ${ttsVoiceOptions()}
+                    </select>
+                </div>
+            </div>` : ''}
         </div>`;
+    }
+
+    function ttsProviderOptions() {
+        const providers = (state.ttsProviders && state.ttsProviders.providers) || {};
+        return Object.entries(providers).map(([key, info]) => {
+            const avail = info.available ? '' : ' (not installed)';
+            return `<option value="${key}" ${state.ttsProvider===key?'selected':''} ${info.available?'':'disabled'}>${esc(info.name)}${avail}</option>`;
+        }).join('');
+    }
+
+    function ttsVoiceOptions() {
+        const providers = (state.ttsProviders && state.ttsProviders.providers) || {};
+        const key = state.ttsProvider === 'auto'
+            ? (state.ttsProviders && state.ttsProviders.best) || 'gtts'
+            : state.ttsProvider;
+        const voices = (providers[key] && providers[key].voices) || [];
+        return voices.map(v => `<option value="${esc(v)}" ${state.ttsVoice===v?'selected':''}>${esc(v)}</option>`).join('');
+    }
+
+    async function loadTtsProviders() {
+        if (state.ttsProviders) return;
+        try {
+            const res = await fetch(`${API}/tts-providers`);
+            state.ttsProviders = await res.json();
+            if (!state.ttsProvider || state.ttsProvider === 'auto') {
+                state.ttsProvider = 'auto';
+            }
+            render();
+        } catch (e) {
+            console.warn('TTS providers unavailable', e);
+        }
     }
 
     function renderProgress() {
@@ -1372,6 +1428,8 @@
             hook_types:state.selectedHooks, formats:state.selectedFormats,
             content_style:state.contentStyle,
             audio_enabled:state.audioEnabled, audio_mood:state.audioMood,
+            use_tts:state.useTts, tts_provider:state.ttsProvider,
+            tts_voice:state.ttsVoice || null,
         };
         try {
             const res=await fetch(`${API}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1384,7 +1442,7 @@
 
     async function startBatchGeneration() {
         if (!state.batchProducts.length) { showToast('Please upload a CSV file with products first'); return; }
-        const body = { products:state.batchProducts, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood };
+        const body = { products:state.batchProducts, hook_types:state.selectedHooks, formats:state.selectedFormats, content_style:state.contentStyle, audio_enabled:state.audioEnabled, audio_mood:state.audioMood, use_tts:state.useTts, tts_provider:state.ttsProvider, tts_voice:state.ttsVoice || null };
         try {
             const res=await fetch(`${API}/batch-generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             const data=await res.json();
