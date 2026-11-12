@@ -408,10 +408,15 @@ def _clamp_overlay_text(text: str, max_words: int) -> str:
 
 
 def _apply_kinetic_presets(script: dict) -> None:
-    """Short-form retention presets: tight overlays, beat cadence, strong first frame."""
+    """Retention presets: short-form word/duration clamps; long-form duration + hook only.
+
+    Hard word clamps apply to short_form only. Long-form `text` is also TTS/narration
+    (RENDERER_CONTRACT); truncating it silently destroys spoken script and cached JSON.
+    """
     fmt = str(script.get("format") or "").strip()
-    is_short = fmt == "short_form" or ("segments" in script and "chapters" not in script)
-    max_words = 6 if is_short else 12
+    is_short = fmt == "short_form" or (
+        fmt != "long_form" and "segments" in script and "chapters" not in script
+    )
     min_dur = 1.0 if is_short else 3.0
     max_dur = 1.5 if is_short else 5.0
 
@@ -421,11 +426,13 @@ def _apply_kinetic_presets(script: dict) -> None:
             if not isinstance(seg, dict):
                 continue
             text = str(seg.get("text") or "").strip()
-            if text and not seg.get("layout"):
-                clamped = _clamp_overlay_text(text, max_words)
+            # Short-form overlays are the spoken line; contract hard-caps at 6 words.
+            # Do not hard-truncate long-form text — "prefer ≤12 on-screen" is guidance only.
+            if is_short and text and not seg.get("layout"):
+                clamped = _clamp_overlay_text(text, 6)
                 if clamped != text:
                     seg["text"] = clamped
-            elif text:
+            elif is_short and text:
                 repaired = _repair_truncated_text(text)
                 if repaired != text:
                     seg["text"] = repaired
