@@ -90,6 +90,7 @@ def _mock_script_output(fmt: str, content_style: str, hook_type: str, product: d
         if content_style == "vs_battle":
             segs.insert(1, {"segment_id": 6, "text": "A vs B", "text_style": "comparison", "duration": 2, "layout": "vs_split"})
             segs.insert(2, {"segment_id": 7, "text": "Score", "text_style": "scorecard", "duration": 2, "layout": "scorecard"})
+            segs.insert(3, {"segment_id": 10, "text": "Winner", "text_style": "verdict", "duration": 2, "layout": "winner_reveal"})
         if content_style == "budget_challenge":
             segs.insert(1, {"segment_id": 8, "text": "Under $50", "text_style": "stat_number", "duration": 2, "layout": "price_compare"})
         if content_style == "worth_it_or_waste":
@@ -97,9 +98,48 @@ def _mock_script_output(fmt: str, content_style: str, hook_type: str, product: d
         base["segments"] = segs
     else:
         chapters = [
-            {"chapter_name": "Intro", "segments": [{"segment_id": 1, "text": "Hook", "text_style": "headline_bold", "duration": 3}]},
-            {"chapter_name": "Body", "segments": [{"segment_id": 2, "text": "Detail", "text_style": "subtitle", "duration": 3}]},
-            {"chapter_name": "Outro", "segments": [{"segment_id": 3, "text": "CTA", "text_style": "cta_button", "duration": 3}]},
+            {"chapter_name": "Intro",
+             "segments": [{
+                 "segment_id": 1,
+                 "text": (
+                     "Before deciding whether this product belongs in your daily routine, think "
+                     "about what you actually need it to do. Start with the task that comes up "
+                     "most often, then decide how much time or effort you want it to save. A "
+                     "feature can sound impressive in a product listing, but its value depends on "
+                     "whether you will use it regularly and whether the setup fits the space and "
+                     "equipment you already have."
+                 ),
+                 "text_style": "headline_bold",
+                 "duration": 3,
+             }]},
+            {"chapter_name": "Body",
+             "segments": [{
+                 "segment_id": 2,
+                 "text": (
+                     "Next, compare the product with an option you already know. Look at the "
+                     "controls, check what comes in the box, and read the instructions for any "
+                     "extra steps you would need to take. Pay attention to maintenance, "
+                     "replacement parts, and how easily you could return it if the fit is wrong. "
+                     "Those practical details matter more than a long list of features when you "
+                     "are choosing between products that promise similar results."
+                 ),
+                 "text_style": "subtitle",
+                 "duration": 3,
+             }]},
+            {"chapter_name": "Outro",
+             "segments": [{
+                 "segment_id": 3,
+                 "text": (
+                     "Finally, take a moment to compare the total price, including anything you "
+                     "would have to buy separately. Check the seller's return policy and confirm "
+                     "that the version in the listing matches the one you are considering. If the "
+                     "price fits your budget and the product covers the tasks you care about, it "
+                     "may be worth a closer look. If your current setup already does those jobs "
+                     "well, waiting is also a reasonable choice."
+                 ),
+                 "text_style": "cta_button",
+                 "duration": 3,
+             }]},
         ]
         if content_style == "honest_review":
             chapters[1]["segments"].append({"segment_id": 4, "text": "Limitation", "text_style": "cons", "duration": 3})
@@ -107,6 +147,12 @@ def _mock_script_output(fmt: str, content_style: str, hook_type: str, product: d
             chapters[1]["segments"].append({"segment_id": 5, "text": "Cut", "text_style": "elimination", "duration": 3, "layout": "winner_reveal"})
         if content_style == "vs_battle":
             chapters[1]["segments"].append({"segment_id": 6, "text": "Vs", "text_style": "comparison", "duration": 3, "layout": "vs_split"})
+            chapters[1]["segments"].append(
+                {"segment_id": 9, "text": "Score", "text_style": "scorecard", "duration": 3, "layout": "scorecard"}
+            )
+            chapters[2]["segments"].insert(
+                0, {"segment_id": 10, "text": "Winner", "text_style": "verdict", "duration": 3, "layout": "winner_reveal"}
+            )
         if content_style == "budget_challenge":
             chapters[1]["segments"].append({"segment_id": 7, "text": "Prices", "text_style": "stat_number", "duration": 3, "layout": "price_compare"})
         if content_style == "worth_it_or_waste":

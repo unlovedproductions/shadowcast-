@@ -136,7 +136,9 @@ def _write_silence_wav(path: str, duration_s: float, rate: int = 24000) -> None:
 def make_mock_generate(
     words_per_sec: float = _MOCK_WORDS_PER_SEC,
 ) -> Callable[..., str]:
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(
+        text, output_path, provider="auto", voice=None, aliases=None, product_names=None
+    ):
         _write_silence_wav(output_path, mock_tts_duration_seconds(text, words_per_sec))
         return output_path
 

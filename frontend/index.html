@@ -2788,7 +2788,7 @@
 
     return {
       productName: clean(normalized.productName || normalized.product_name),
-      niche: clean(normalized.niche) || "Affiliate Product",
+      niche: clean(normalized.niche) || "General",
       keyFeatures: clean(
         (Array.isArray(normalized.key_features) && normalized.key_features.length
           ? normalized.key_features.join("\n")

@@ -10,7 +10,7 @@ test.describe('generate flow', () => {
   });
 
   test('mocked generate reaches results', async ({ page, mockApi }) => {
-    void mockApi;
+    mockApi.holdRunning(true);
     await page.goto('/');
     await page.locator(ids.productName).fill('E2E Test Widget');
     await page.locator(ids.keyFeatures).fill('fast, cheap, quiet');
@@ -20,6 +20,7 @@ test.describe('generate flow', () => {
     await expect(page.getByText(/Rendering video|Starting|Cancel Job|Writing script/i).first()).toBeVisible({
       timeout: 15_000,
     });
+    mockApi.holdRunning(false);
     await expect(page.getByText(/Generation Complete/i)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: buttons.publishNow })).toBeVisible();
   });

@@ -32,10 +32,12 @@ def test_youtube_assets_uses_prompt_builder():
     assert "Include it 3+ times" not in text
 
 
-def test_frontend_apf_fallback_avoids_affiliate_marketer_copy():
+def test_frontend_apf_uses_backend_normalization_and_buyer_facing_copy():
     text = (ROOT / "frontend" / "index.html").read_text()
-    assert "sanitizeProductName" in text
-    assert "affiliate product" not in text
+    assert 'fetch("/api/import-apf/direct"' in text
+    assert "window.hydrateAPFBackendImport(JSON.parse(getBody))" in text
+    assert 'niche: clean(normalized.niche) || "General"' in text
+    assert "affiliate product" not in text.split("<!-- BEGIN UNLOVED_DIRECT_APF_DRAFT_LOADER -->", 1)[1].lower()
     assert "ClickBank product imported from APF" not in text
 
 

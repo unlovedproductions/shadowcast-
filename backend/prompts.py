@@ -15,7 +15,7 @@ Canonical text_style values: headline_bold|subtitle|accent_pop|cta_button|stat_n
 
 RENDERER_CONTRACT = """RENDERER CONTRACT:
 - Timeline uses segment "duration" only. start_time / chapter_start_time are advisory (ignored for sequencing).
-- Set total_duration_seconds = sum of all segment durations. Intro/outro/transitions are renderer chrome.
+- total_duration_seconds must equal the sum of segment durations. Intro/outro/transitions are renderer chrome.
 - Short-form segment duration: 1.0–1.5s. Long-form: 3.0–5.0s.
 - text must be TTS-safe: no emoji, pronounceable, fit duration at ~2.5–3 words/sec. On-screen punch is fine; keep speakable.
 - Short-form overlays: 4–6 words MAX (never a full sentence). Visual change every segment.
@@ -228,8 +228,7 @@ def get_style_instructions(content_style: str) -> str:
 TONE: {style['tone']}
 SPECIAL INSTRUCTIONS:
 - MUST include genuine CONS/LIMITATIONS (at least 2-3). This builds trust.
-- Include a "Who This Is NOT For" segment — be specific.
-- Include a "Who This IS For" segment — match to target audience.
+- Use separate segments for the intended audience and shoppers who should skip it.
 - Frame the recommendation honestly: "If [specific need], this is great. If [other need], look elsewhere."
 - Use natural purchase-guidance CTAs for shoppers:
   1. Soft mention at ~30% through: "Check the current price in the description if you want details."
@@ -356,8 +355,8 @@ def get_long_form_structure(content_style: str) -> str:
     return """STRUCTURE (5–7 chapters; each segment duration 3.0–5.0s; total_duration_seconds = sum of segment durations):
 1. Hook chapter
 2. Intro chapter: what this video covers
-3. The Good chapter: strengths with review evidence (text_style: pros)
-4. The Bad chapter: limitations with review evidence (text_style: cons)
+3. Strengths chapter: substantiate benefits (text_style: pros)
+4. Limitations chapter: cite reviewer concerns (text_style: cons)
 5. Who It's For / Not For chapter
 6. Verdict chapter
 7. CTA chapter"""
@@ -442,7 +441,7 @@ def long_form_json_schema(hook_type: str, content_style: str) -> str:
   "cta_text": string,
   "cta_placement": "end_screen_and_description"
 }}
-Generate 60-100+ segments across 5-7 chapters. Each text: 5-15 words, TTS-safe (no emoji). duration 3.0–5.0. total_duration_seconds MUST equal sum(duration). start_time/chapter_start_time are advisory. Omit unused layout fields when layout is null.
+Generate 60-100+ segments across 5-7 chapters. Omit unused layout fields when layout is null.
 
 HARD LENGTH REQUIREMENT: the segment "text" fields are narrated aloud, and their combined word count is what sets the video's runtime. Across all chapters the script MUST total at least 250 spoken words (roughly 35+ segments averaging 8-12 words). A script under 200 words will be rejected. Add substance — specific features, evidence, caveats, comparisons — rather than padding with filler or repeating the product name."""
 
@@ -480,8 +479,7 @@ def youtube_assets_json_schema(affiliate_link: str) -> str:
 Constraints: seo_title max 70 chars; tags: 30 buyer-intent tags; pinned_comment 300-600 chars; seo_description 2000-3000 chars.
 thumbnail_text_primary: max 6 words (billboard, not brochure); thumbnail_text_secondary optional ≤4 words.
 Include a clear affiliate disclosure for shoppers in seo_description and pinned_comment (FTC).
-Include the product affiliate URL as a raw https URL labeled "Paid link:" or "Affiliate link:" — never markdown [label](url).
-Product link: {affiliate_link}"""
+Affiliate URL: {affiliate_link}"""
 
 
 def build_script_user_prompt(
@@ -514,9 +512,6 @@ HOOK TYPE: {hook_type}
 
 SHORT-FORM RULES:
 - First segment: extremely compelling hook text (headline_bold + impact_scale)
-- Segment duration 1.0–1.5 seconds; visual change every segment (pattern interrupt)
-- Each text segment: 4-6 words MAX, TTS-safe (no emoji)
-- total_duration_seconds must equal the sum of segment durations
 - End with a helpful CTA to check price/details if the product fits their needs
 
 {short_form_json_schema(hook_type, content_style)}"""
@@ -541,9 +536,7 @@ HOOK TYPE: {hook_type}
 
 LONG-FORM RULES:
 - Each text segment: 5-15 words, TTS-safe (no emoji)
-- Segment duration 3.0–5.0 seconds
-- total_duration_seconds must equal the sum of all segment durations across chapters
-- Pattern interrupts every few segments (question, stat, style change)
+- Add a question, statistic, or style change every 3 segments
 - Mix styles: headlines, bullets, stats, questions, pros, cons
 - Include engagement trigger questions that encourage comments
 - For trust-based styles: dedicate real chapters to cons/limitations
@@ -598,4 +591,4 @@ Buyer Signal Lines:
 {youtube_assets_json_schema(affiliate_link)}
 
 {AFFILIATE_DISCLOSURE_ASSETS}
-Include the product link naturally in the description and pinned comment as a raw https URL (never markdown [label](url))."""
+Include the labeled URL in both the description and pinned comment. Do not wrap it in Markdown."""
