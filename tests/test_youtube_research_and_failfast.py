@@ -32,6 +32,21 @@ def test_script_ready_for_render_rejects_empty():
     assert detail == ""
 
 
+def test_script_ready_for_render_rejects_short_long_form():
+    ok, detail = _script_ready_for_render(
+        {
+            "format": "long_form",
+            "chapters": [
+                {"chapter_name": "A", "segments": [{"text": "Hook", "duration": 4.0}]},
+                {"chapter_name": "B", "segments": [{"text": "Body", "duration": 4.0}]},
+                {"chapter_name": "C", "segments": [{"text": "CTA", "duration": 4.0}]},
+            ],
+        }
+    )
+    assert ok is False
+    assert "120" in detail
+
+
 def test_research_youtube_keywords_includes_angles(monkeypatch):
     monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)

@@ -16,11 +16,15 @@ Pipeline: **product → LLM scripts → TTS (optional/recommended) → MoviePy k
 ## Honest boundaries
 
 - Motion-graphics / kinetic typography product — not UGC filming or diffusion gen-video.
-- Product stills are supported when `image_url` is provided **or auto-extracted from APF vendor sales/offer pages** (og:image / product `<img>`); otherwise procedural backgrounds.
+- Product stills are supported when `image_url` is provided **or auto-extracted from APF vendor sales/offer pages** (og:image / product `<img>`; Digistore CDN resolve hardened); otherwise procedural backgrounds.
+- APF import prefers cited `claim_ledger` entries when seeding `key_features`.
 - Optional long-form B-roll pads when clips exist under `backend/assets/broll/` (see ATTRIBUTION).
+- Royalty-free music beds under `backend/assets/music/` are required for live publish (synth fallback blocked unless `ALLOW_SYNTH_MUSIC_PUBLISH=1`). Fetch with `./scripts/fetch_operator_media.sh`; inventory via `GET /api/media-library`.
 - Ship-quality voice needs Kokoro, Piper, or OpenAI TTS (gTTS is smoke-only).
+- Optional encode accel: `SHADOWCAST_FFMPEG_CODEC=auto` uses NVENC when ffmpeg reports `h264_nvenc`.
+- Optional Sentry: `SENTRY_DSN` / `SENTRY_FRONTEND_DSN`.
 - Postable checklist: Pre-Publish QA, `.srt` sidecars, thumb A/B/C pick, dry-run before live.
-- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores (~90% / ~75% after P0–P2 + claim-audit QA).
+- See [docs/SOCIAL_READINESS.md](docs/SOCIAL_READINESS.md) for dual-bar readiness scores (~90% / ~75% after P0–P2 + H5–H8).
 
 ## Quickstart
 
@@ -30,6 +34,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 # system: ffmpeg + ffprobe on PATH
+./scripts/fetch_operator_media.sh   # Mixkit music + B-roll (recommended before live publish)
 python3 backend/app.py
 # open http://127.0.0.1:8000
 ```
@@ -52,7 +57,7 @@ Override bind with `HOST` / `PORT` (defaults `127.0.0.1:8000`).
 
 ## Stack
 
-FastAPI + MoviePy + Pillow + ffmpeg · optional Ollama/OpenAI LLM · Kokoro/Piper/OpenAI/gTTS · YouTube / Meta / TikTok / Rumble publishers.
+FastAPI + MoviePy + Pillow + ffmpeg · optional Ollama/OpenAI LLM · Kokoro/Piper/OpenAI/gTTS · optional Sentry · YouTube / Meta / TikTok / Rumble publishers.
 
 ## Repo
 

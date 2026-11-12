@@ -21,6 +21,35 @@
 
 TTS-first timing (segment duration follows measured speech), Shorts burn-in captions, music ducking, and two-pass loudnorm (~−14 LUFS) are part of the assemble pipeline when TTS/audio are enabled.
 
+### Operator media (required for live publish)
+
+```bash
+./scripts/fetch_operator_media.sh
+```
+
+Drops Mixkit beds into `backend/assets/music/{mood}.wav` and B-roll into `backend/assets/broll/`. Inventory: `GET /api/media-library`. Live publish blocks when music beds are missing unless `ALLOW_SYNTH_MUSIC_PUBLISH=1`. Details: `docs/RUNBOOK.md`, `backend/assets/music/ATTRIBUTION.md`.
+
+### Quality TTS (Kokoro local ONNX)
+
+```bash
+pip install kokoro-onnx soundfile
+# download kokoro-v1.0.onnx + voices-v1.0.bin into backend/assets/kokoro/
+# https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0
+```
+
+Piper and OpenAI TTS also qualify. gTTS is smoke-only (`ALLOW_GTTS_PUBLISH=1` to force live).
+
+### Optional env (ops)
+
+| Variable | Purpose |
+|----------|---------|
+| `SENTRY_DSN` / `SENTRY_FRONTEND_DSN` / `SENTRY_ENVIRONMENT` | Error monitoring |
+| `SHADOWCAST_FFMPEG_CODEC` | `auto` (NVENC when available), `libx264`, or `h264_nvenc` |
+| `SHADOWCAST_VIDEO_PRESET` | Encode preset |
+| `SHADOWCAST_TTS_PRONUNCIATIONS` / `SHADOWCAST_TTS_CROSSFADE` | VO lexicon + seam crossfade |
+| `ALLOW_SYNTH_MUSIC_PUBLISH` | Escape hatch for live publish without music beds |
+| `SHADOWCAST_REQUIRE_PRODUCT_IMAGE` | Fail pre-publish QA when `image_url` missing |
+
 ---
 
 ## Your Machine Specs (Razer Blade 15 Advanced)
@@ -616,7 +645,10 @@ output/
 | `No module named 'PIL'` | `pip install Pillow` |
 | Ollama not connecting | Check status: `systemctl status ollama`. Restart: `sudo systemctl restart ollama` |
 | `CUDA out of memory` | Switch to a smaller model (8B instead of 14B), or close other GPU apps. Check with `nvidia-smi` |
-| Video rendering slow | Long-form videos take 2-5 min. Short-form is much faster. This is normal for CPU-based rendering |
+| Video rendering slow | Long-form videos take 2-5 min. Short-form is much faster on CPU. Try `SHADOWCAST_FFMPEG_CODEC=auto` if ffmpeg has NVENC |
+| Live publish blocked (music) | Run `./scripts/fetch_operator_media.sh` or set `ALLOW_SYNTH_MUSIC_PUBLISH=1` |
+| Media library missing moods | `curl -fsS http://127.0.0.1:8000/api/media-library` — drop `{mood}.wav` under `backend/assets/music/` |
+| Kokoro unavailable | Install `kokoro-onnx` + place `kokoro-v1.0.onnx` and `voices-v1.0.bin` in `backend/assets/kokoro/` |
 | JSON parse errors from LLM | Use Qwen2.5 models — they're best at structured JSON output. Avoid smaller quantizations (Q2, Q3) |
 | Model loading slow first time | Normal — first inference loads model into VRAM. Subsequent requests are fast |
 | Port 8000 in use | Run with `PORT=8001 python3 backend/app.py` (bind via `HOST`/`PORT` env; do not edit `app.py`) |
@@ -684,7 +716,9 @@ shadowcast-/
 │   ├── kinetic_effects.py          # Word-by-word, typewriter, impact scale, etc.
 │   ├── brand_overlays.py           # Branded intro/outro, lower thirds, engagement cards
 │   ├── youtube_assets_generator.py # YouTube SEO package generator
-│   ├── tts_generator.py            # Optional voiceover (gTTS — free)
+│   ├── tts_generator.py            # Voiceover (Kokoro/Piper/OpenAI/gTTS)
+│   ├── tts_pronounce.py            # Pronunciation lexicon
+│   ├── media_library.py            # Music/B-roll inventory API
 │   ├── llm_config.py              # LLM provider config + model recommendations
 │   ├── .env.example               # Environment config template
 │   ├── requirements.txt           # Python dependencies

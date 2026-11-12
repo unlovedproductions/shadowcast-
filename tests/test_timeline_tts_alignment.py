@@ -40,7 +40,7 @@ def test_tts_starts_match_segment_events_with_transitions(tmp_path, monkeypatch)
 
     speech = [0.80, 1.00, 0.60]
 
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(text, output_path, provider="auto", voice=None, **_kwargs):
         idx = 0 if "one" in text else (1 if "two" in text else 2)
         _write_silence_wav(output_path, speech[idx])
         return output_path
@@ -57,7 +57,7 @@ def test_tts_starts_match_segment_events_with_transitions(tmp_path, monkeypatch)
             segments, out, provider="gtts", audio_driven=True, apply_durations=True
         )
 
-    assert timing[0]["transition_duration"] == pytest.approx(0.15)
+    assert timing[0]["transition_duration"] == pytest.approx(0.0)
     assert timing[1]["transition_duration"] == pytest.approx(0.30)
     assert timing[2]["transition_duration"] == pytest.approx(0.0)
     # Segment visual duration must NOT include transition (renderer adds it separately).
@@ -106,7 +106,7 @@ def test_long_form_no_false_transition_between_chapters():
         ],
     }
     gaps = transition_gaps_for_script(script)
-    assert gaps == pytest.approx([0.15, 0.0, 0.20, 0.0])
+    assert gaps == pytest.approx([0.0, 0.0, 0.20, 0.0])
     # Chapter card before ch1 + comment prompt after mid chapter (ch_idx=1).
     assert leading_chrome_for_script(script) == pytest.approx(LONG_CHAPTER_CARD_SECONDS)
     assert chrome_gaps_for_script(script) == pytest.approx(
@@ -122,7 +122,7 @@ def test_long_form_no_false_transition_between_chapters():
 def test_generate_voiceover_for_script_uses_chapter_local_gaps(tmp_path, monkeypatch):
     monkeypatch.setenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.35")
 
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(text, output_path, provider="auto", voice=None, **_kwargs):
         _write_silence_wav(output_path, 0.5)
         return output_path
 
@@ -148,13 +148,13 @@ def test_generate_voiceover_for_script_uses_chapter_local_gaps(tmp_path, monkeyp
     with patch("tts_generator.generate_segment_audio", side_effect=fake_generate):
         _path, timing = generate_voiceover_for_script(script, str(tmp_path), provider="gtts")
 
-    assert timing[0]["transition_duration"] == pytest.approx(0.15)
+    assert timing[0]["transition_duration"] == pytest.approx(0.0)
     assert timing[1]["transition_duration"] == pytest.approx(0.0)  # chapter boundary
     assert timing[2]["transition_duration"] == pytest.approx(0.0)
     assert timing[0]["start"] == pytest.approx(LONG_CHAPTER_CARD_SECONDS, abs=0.05)
     assert timing[1]["chrome_duration"] == pytest.approx(LONG_CHAPTER_CARD_SECONDS)
     assert timing[1]["start"] == pytest.approx(
-        timing[0]["start"] + timing[0]["duration"] + 0.15, abs=0.05
+        timing[0]["start"] + timing[0]["duration"] + 0.0, abs=0.05
     )
     # Next chapter after chapter-card chrome (not swipe 0.30).
     assert timing[2]["start"] == pytest.approx(
@@ -167,7 +167,7 @@ def test_generate_voiceover_for_script_uses_chapter_local_gaps(tmp_path, monkeyp
 def test_long_form_tts_starts_match_segment_events_with_chrome(tmp_path, monkeypatch):
     monkeypatch.setenv("SHADOWCAST_TTS_INTER_SEGMENT_PAUSE", "0.35")
 
-    def fake_generate(text, output_path, provider="auto", voice=None):
+    def fake_generate(text, output_path, provider="auto", voice=None, **_kwargs):
         _write_silence_wav(output_path, 0.6)
         return output_path
 

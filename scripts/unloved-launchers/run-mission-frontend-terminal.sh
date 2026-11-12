@@ -35,6 +35,6 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Opening Mission Control frontend on http://localhost:3100"
+echo "Opening Mission Control frontend on http://127.0.0.1:3100 (localhost-only)"
 
-pnpm run dev -- --host 0.0.0.0 --port 3100
+pnpm run dev -- --host 127.0.0.1 --port 3100

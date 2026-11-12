@@ -44,6 +44,8 @@ source .env
 set +a
 
 echo "Python: $(python --version)"
-echo "Opening ShadowCast on http://localhost:8000"
+echo "Opening ShadowCast on http://127.0.0.1:8000 (localhost-only trust)"
 
-python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+# Match docs/RUNBOOK localhost trust model. For LAN bind use HOST=0.0.0.0 in
+# backend/.env with INTERNAL_SERVICE_SECRET set, then: python backend/app.py
+python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload

@@ -12,3 +12,8 @@ repos:
         language: system
         pass_filenames: false
         files: ^docs/openapi\.json$
+      - id: no-private-keys
+        name: Block private key material
+        entry: bash -c 'rg -n --hidden -g "!*.lock" -g "!.git/**" "BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false

@@ -15,10 +15,15 @@ from brand_overlays import (
     SHORTS_WORD_HIGHLIGHT_MIN_SEC,
     caption_events_from_timing,
     chunk_caption_text,
+    displayable_price,
     expand_caption_word_highlights,
+    longform_burnin_captions_enabled,
     lower_third_event_from_timing,
     render_lower_third,
     render_shorts_caption,
+    render_subscribe_card,
+    render_watermark_overlay,
+    shorts_burnin_captions_enabled,
     shorts_word_highlight_enabled,
 )
 from tts_generator import resolve_tts_timing
@@ -130,6 +135,17 @@ def test_shorts_word_highlight_env_gate(monkeypatch):
     assert shorts_word_highlight_enabled() is True
 
 
+def test_burnin_captions_default_off(monkeypatch):
+    monkeypatch.delenv("SHADOWCAST_SHORTS_BURNIN", raising=False)
+    monkeypatch.delenv("SHADOWCAST_LONGFORM_BURNIN", raising=False)
+    assert shorts_burnin_captions_enabled() is False
+    assert longform_burnin_captions_enabled() is False
+    monkeypatch.setenv("SHADOWCAST_SHORTS_BURNIN", "1")
+    monkeypatch.setenv("SHADOWCAST_LONGFORM_BURNIN", "1")
+    assert shorts_burnin_captions_enabled() is True
+    assert longform_burnin_captions_enabled() is True
+
+
 def test_render_shorts_caption_ui_safe_zone():
     img = render_shorts_caption(1080, 1920, "muted viewers still read this")
     assert img.size == (1080, 1920)
@@ -238,3 +254,42 @@ def test_shorts_lower_third_above_caption_band():
     px_bar = img.getpixel((540, bar_bottom - 10))
     assert px_bottom_edge[3] == 0
     assert px_bar[3] > 0
+
+
+def test_displayable_price_hides_placeholders():
+    assert displayable_price("Varies") == ""
+    assert displayable_price("see official offer page") == ""
+    assert displayable_price("$29.99") == "$29.99"
+    assert displayable_price("Free") == "Free"
+    img = render_lower_third(1080, 1920, "CitrusBurn", "Varies", is_short_form=True)
+    bar_bottom = int(1920 * SHORTS_LOWER_THIRD_BOTTOM_FRAC)
+    # Price side of the bar should not contain extra glyphs for 'Varies'
+    assert img.size == (1080, 1920)
+    assert img.getpixel((540, bar_bottom - 10))[3] > 0
+
+
+def test_watermark_is_inset_and_small():
+    img = render_watermark_overlay(1080, 1920)
+    opaque = [
+        (x, y)
+        for y in range(0, 1920, 4)
+        for x in range(0, 1080, 8)
+        if img.getpixel((x, y))[3] > 0
+    ]
+    assert opaque
+    max_x = max(p[0] for p in opaque)
+    max_y = max(p[1] for p in opaque)
+    min_x = min(p[0] for p in opaque)
+    assert max_x < 1080 - int(1080 * 0.03)
+    assert max_y < 1920 - int(1920 * 0.03)
+    assert max_y - min(p[1] for p in opaque) < 1920 * 0.08
+    assert min_x > 1080 * 0.7
+
+
+def test_subscribe_card_tagline_fits_shorts_card():
+    arr = render_subscribe_card(1080, 1920)
+    assert arr.shape[1] == 1080
+    assert arr.shape[0] == 1920
+    # Card interior should not be clipped: sample right edge of canvas is background
+    edge = tuple(int(v) for v in arr[960, 1070][:3])
+    assert edge[0] < 40 and edge[1] < 40 and edge[2] < 40

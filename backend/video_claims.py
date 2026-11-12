@@ -42,7 +42,8 @@ FORMAT_CLAIMS: dict[str, FormatClaim] = {
 }
 
 # Renderer chrome constants (seconds).
-SHORT_INTRO_SECONDS = 2.0
+# Shorts: no branded intro — hook must be frame 0.
+SHORT_INTRO_SECONDS = 0.0
 SHORT_OUTRO_SECONDS = 2.0
 SHORT_SUBSCRIBE_SECONDS = 2.0
 
@@ -55,7 +56,8 @@ LONG_OUTRO_SECONDS = 3.0
 SHORT_SUBSCRIBE_THRESHOLD_SEGMENTS = 5
 
 TRANSITION_DURATIONS = {
-    "glitch": 0.15,
+    # Glitch on text cards reads as a render bug; treat as a cut.
+    "glitch": 0.0,
     "flash": 0.10,
     "swipe": 0.30,
     "zoom": 0.20,
@@ -144,6 +146,16 @@ def sum_segment_durations(script: dict, fmt: str) -> float:
     return sum(_segment_duration(seg, default) for seg in _iter_segments(script, fmt))
 
 
+# With TTS enabled the renderer discards LLM `duration` values and re-times every
+# segment to measured speech, so spoken word count is what sets final runtime.
+# Fitted against rendered long-form jobs: runtime ≈ 0.52 * words + 26s.
+MIN_LONG_FORM_SPOKEN_WORDS = 200
+
+
+def count_spoken_words(script: dict, fmt: str) -> int:
+    return sum(len(str(seg.get("text") or "").split()) for seg in _iter_segments(script, fmt))
+
+
 def expected_transition_overhead(script: dict, fmt: str) -> float:
     total = 0.0
     for segment_list in _iter_segment_lists(script, fmt):
@@ -175,8 +187,10 @@ def build_render_timeline(script: dict, fmt: str) -> dict:
     chrome_events: list[dict] = []
 
     if fmt == SHORT_FORM:
-        t = SHORT_INTRO_SECONDS
-        chrome_events.append({"kind": "intro", "start": 0.0, "duration": SHORT_INTRO_SECONDS})
+        t = 0.0
+        if SHORT_INTRO_SECONDS > 0:
+            chrome_events.append({"kind": "intro", "start": 0.0, "duration": SHORT_INTRO_SECONDS})
+            t = SHORT_INTRO_SECONDS
         segments = list(script.get("segments", []))
         for idx, seg in enumerate(segments):
             seg_dur = _segment_duration(seg, 2.5)
