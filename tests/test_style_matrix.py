@@ -14,6 +14,10 @@ PRODUCT = {
     "key_features": ["ANC", "50hr battery", "IPX4"],
     "competitors": ["AirPods Pro 2", "Sony WF-1000XM5"],
     "price_comparison": "AirPods Pro 2 costs $249 for similar ANC",
+    "comparison_specs": [
+        {"spec_name": "ANC", "value_a": "Strong", "value_b": "Moderate", "winner": "a"},
+        {"spec_name": "Battery", "value_a": "50hr", "value_b": "30hr", "winner": "a"},
+    ],
 }
 
 STYLES = [
@@ -27,8 +31,12 @@ STYLES = [
 
 EXPECTED_LAYOUTS = {
     "elimination": {"winner_reveal"},
-    "vs_battle": {"vs_split", "scorecard", "winner_reveal"},
+    "vs_battle": {"vs_split", "spec_compare", "scorecard", "winner_reveal"},
     "budget_challenge": {"price_compare"},
+}
+
+EXPECTED_TEXT_STYLES = {
+    "elimination": {"elimination"},
 }
 
 EXPECTED_BADGES = {
@@ -84,9 +92,15 @@ def test_style_badge_matrix():
 def test_short_form_layout_matrix():
     for style in STYLES:
         enriched = enrich_script(_short_script(), PRODUCT, style)
-        layouts = {seg.get("layout") for seg in _all_segments(enriched) if seg.get("layout")}
+        segs = _all_segments(enriched)
+        layouts = {seg.get("layout") for seg in segs if seg.get("layout")}
         expected = EXPECTED_LAYOUTS.get(style, set())
         assert expected.issubset(layouts), f"{style} short_form missing {expected - layouts}"
+        if style in ("honest_review", "standard"):
+            assert not layouts, f"{style} short_form should not inject layout segments"
+        text_styles = {seg.get("text_style") for seg in segs if seg.get("text_style")}
+        for required in EXPECTED_TEXT_STYLES.get(style, set()):
+            assert required in text_styles, f"{style} short_form missing text_style {required}"
 
 
 def test_long_form_layout_and_verdict_matrix():
@@ -96,8 +110,13 @@ def test_long_form_layout_and_verdict_matrix():
         layouts = {seg.get("layout") for seg in segs if seg.get("layout")}
         expected = EXPECTED_LAYOUTS.get(style, set())
         assert expected.issubset(layouts), f"{style} long_form missing {expected - layouts}"
+        if style in ("honest_review", "standard"):
+            assert not layouts, f"{style} long_form should not inject layout segments"
+        text_styles = {seg.get("text_style") for seg in segs if seg.get("text_style")}
+        for required in EXPECTED_TEXT_STYLES.get(style, set()):
+            assert required in text_styles, f"{style} long_form missing text_style {required}"
         if style == "worth_it_or_waste":
-            assert any(seg.get("text_style") == "verdict" for seg in segs)
+            assert "verdict" in text_styles, f"{style} long_form missing text_style verdict"
 
 
 def test_normalize_round_trip_aliases():

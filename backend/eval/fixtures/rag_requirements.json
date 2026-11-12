@@ -1,0 +1,12 @@
+{
+  "document_types": ["markdown", "json"],
+  "document_count": 12,
+  "avg_document_size": 4500,
+  "queries_per_day": 50,
+  "query_patterns": ["style selection", "hook format", "buyer language rules", "prompt compliance"],
+  "latency_requirement": "under_500ms",
+  "budget_monthly": 25,
+  "accuracy_priority": 0.85,
+  "cost_priority": 0.7,
+  "maintenance_complexity": "low"
+}
