@@ -5,8 +5,8 @@ fastapi
 uvicorn
 python-multipart
 openai
-moviepy>=2.0
-Pillow
+moviepy @ git+https://github.com/Zulko/moviepy.git@97316f37f6a8d3843abfb53eba8f3bb0ea46a008
+Pillow>=13.0.0
 numpy
 gtts
 python-dotenv

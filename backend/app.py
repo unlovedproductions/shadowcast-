@@ -2793,7 +2793,7 @@ from fastapi import Request as _UnlovedRequest, HTTPException as _UnlovedHTTPExc
 _UNLOVED_APF_IMPORT_DIR = _UnlovedPath(
     _unloved_os.getenv(
         "SHADOWCAST_APF_IMPORT_DIR",
-        "/home/unloved/shadowcast-/backend/apf_imports"
+        str(_UnlovedPath(__file__).resolve().parent / "apf_imports"),
     )
 )
 _UNLOVED_APF_IMPORT_DIR.mkdir(parents=True, exist_ok=True)
