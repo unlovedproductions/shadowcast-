@@ -58,7 +58,7 @@ def segment_wants_product_hero(seg: dict | None, *, segment_index: int = 0) -> b
 
 
 def _safe_cache_name(url: str) -> str:
-    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+    digest = hashlib.sha256(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:24]
     path = urlparse(url).path
     ext = os.path.splitext(path)[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):

@@ -300,7 +300,7 @@ def compute_render_fingerprint(script: dict, *, fmt: str, render_options: dict |
         "options": render_options or {},
     }
     raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return hashlib.sha256(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def fingerprint_seed(fingerprint: str) -> int:

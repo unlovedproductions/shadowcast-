@@ -473,7 +473,11 @@ def check_sec08(root, stack):
     # Weak hash for passwords
     weak = grep_files(root, r"\b(md5|sha1|sha256)\s*\(",
                       exts=ALL_CODE_EXTS,
-                      exclude_patterns=[r"//.*\b(md5|sha1|sha256)\b"])
+                      exclude_patterns=[
+                          r"//.*\b(md5|sha1|sha256)\b",
+                          # Explicit non-security SHA-256 uses (cache keys and fingerprints).
+                          r"\bsha256\([^#]*\busedforsecurity=False\s*\)",
+                      ])
     if weak:
         return Result(c, Status.FAIL, "Weak hashing algorithm (md5/sha1/sha256) detected", weak)
     strong = grep_files(root, r"(bcrypt|argon2|scrypt|pbkdf2)", exts=ALL_CODE_EXTS)
