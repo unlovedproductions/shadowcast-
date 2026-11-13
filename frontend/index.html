@@ -734,7 +734,7 @@
         return voices.map(v => `<option value="${esc(v)}" ${state.ttsVoice===v?'selected':''}>${esc(v)}</option>`).join('');
     }
 
-    async function loadTtsProviders(force=false) {
+    async function loadTtsProviders(force=false, renderAfterLoad=true) {
         if (state.ttsProviders && !force) {
             applySmartTtsDefault();
             return;
@@ -746,7 +746,7 @@
                 state.ttsProvider = 'auto';
             }
             applySmartTtsDefault();
-            render();
+            if (renderAfterLoad) render();
         } catch (e) {
             console.warn('TTS providers unavailable', e);
         }
@@ -2724,7 +2724,7 @@
                 openai:{name:'OpenAI API (optional cloud)',base_url:'https://api.openai.com/v1',default_model:'gpt-4.1-mini',api_key_required:true,description:'Optional cloud API. ~$0.02/video.'},
             };
         }
-        await Promise.all([loadReadiness(), loadTtsProviders()]);
+        await Promise.all([loadReadiness(), loadTtsProviders(false, false)]);
         try {
             const sres=await fetch(`${API}/content-styles`);
             const sdata=await sres.json();

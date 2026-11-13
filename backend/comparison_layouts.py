@@ -1,5 +1,7 @@
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+from brand_overlays import load_font
 
 # Brand colors
 DARK_PINK = (196, 80, 122)
@@ -16,11 +18,7 @@ FONT_EXTRABOLD = _os.path.join(_ASSETS_DIR, "Montserrat-ExtraBold.ttf")
 FALLBACK_FONT = "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
 
 def get_font(font_path, size):
-    try:
-        return ImageFont.truetype(font_path, size)
-    except IOError:
-        print(f"Warning: Font not found at {font_path}. Using fallback font.")
-        return ImageFont.truetype(FALLBACK_FONT, size)
+    return load_font(font_path, FALLBACK_FONT, size)
 
 
 def render_vs_split_screen(width, height, product_a_name, product_b_name, accent_color=DARK_PINK):
